@@ -373,25 +373,59 @@ export class LinkToolbarComponent implements OnInit, OnChanges, OnDestroy {
         return;
       }
 
-      const t = clamp01(this.anchor);
-      const world = path.pointAt(t);
-      if (!world) {
-        this.applyHidden();
-        return;
-      }
-      this.anchorPoint = world;
-      this.anchorTangent = path.tangentAt(t);
-
-      const screen = this.worldToScreen(world, canvasEl);
-      const normal = path.normalAt(t) ?? { x: 0, y: -1 };
+      const anchorT = clamp01(this.anchor);
+      const size = this.toolbarSize();
+      // The link's bends (and ends): their handles must stay grabbable, so the
+      // toolbar is never placed on one. Screen px.
+      const bends = (this.link.points ?? [])
+        .filter((p) => p && isFinite(p.x) && isFinite(p.y))
+        .map((p) => this.worldToScreen(p, canvasEl));
 
       // Lift OFF the stroke along the normal (screen px — the normal is a unit
       // vector, and the world→screen map is a uniform scale, so direction survives).
-      const size = this.toolbarSize();
-      let x = screen.x + normal.x * this.offset - size.width / 2;
-      let y = screen.y + normal.y * this.offset - size.height / 2;
+      const place = (t: number, side: 1 | -1): { x: number; y: number; world: Point } | null => {
+        const world = path.pointAt(t);
+        if (!world) return null;
+        const screen = this.worldToScreen(world, canvasEl);
+        const normal = path.normalAt(t) ?? { x: 0, y: -1 };
+        const x = screen.x + side * normal.x * this.offset - size.width / 2;
+        const y = screen.y + side * normal.y * this.offset - size.height / 2;
+        return { ...this.clampToCanvas(x, y, size, canvasEl), world };
+      };
+      const BEND_CLEARANCE = 8; // a bend handle's radius plus a little air
+      const coversBend = (c: { x: number; y: number }) =>
+        bends.some(
+          (b) =>
+            b.x >= c.x - BEND_CLEARANCE &&
+            b.x <= c.x + size.width + BEND_CLEARANCE &&
+            b.y >= c.y - BEND_CLEARANCE &&
+            b.y <= c.y + size.height + BEND_CLEARANCE
+        );
 
-      ({ x, y } = this.clampToCanvas(x, y, size, canvasEl));
+      // The requested place first; if it would cover a bend, the other side of
+      // the stroke, then step along the path (both directions) until clear.
+      let chosen = place(anchorT, 1);
+      let t = anchorT;
+      if (chosen && size.width > 0 && coversBend(chosen)) {
+        search: for (const dt of [0, 0.08, -0.08, 0.16, -0.16, 0.24, -0.24, 0.32, -0.32]) {
+          const tt = clamp01(anchorT + dt);
+          for (const side of [1, -1] as const) {
+            const c = place(tt, side);
+            if (c && !coversBend(c)) {
+              chosen = c;
+              t = tt;
+              break search;
+            }
+          }
+        }
+      }
+      if (!chosen) {
+        this.applyHidden();
+        return;
+      }
+      this.anchorPoint = chosen.world;
+      this.anchorTangent = path.tangentAt(t);
+      const { x, y } = chosen;
 
       this.lastPosition = { x, y };
       this.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
