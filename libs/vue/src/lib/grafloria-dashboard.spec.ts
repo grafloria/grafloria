@@ -6,6 +6,7 @@
 import { createApp, defineComponent, h, ref, type App } from 'vue';
 import { GrafloriaDashboard } from './grafloria-dashboard';
 import type { DashboardViewSpec } from '@grafloria/element';
+import { listTools } from '@grafloria/renderer';
 
 const flush = () => new Promise((r) => setTimeout(r, 50));
 
@@ -108,5 +109,25 @@ describe('<GrafloriaDashboard> (Vue) live switches', () => {
     expect(first.getSizing()).toBe('grow');
     expect(ready).toBe(1);
     expect(handle).toBe(first);
+  });
+});
+
+describe('<GrafloriaDashboard> (Vue) teardown', () => {
+  it('unmount unregisters the board\'s tools, so a re-mount in the page owns one set', async () => {
+    const dashTools = () => listTools().filter((id) => id.startsWith('dashboard-'));
+    const before = dashTools().length;
+    const perBoard: number[] = [];
+    for (let round = 0; round < 2; round++) {
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const app = createApp(defineComponent({ setup: () => () => h(GrafloriaDashboard, { views: VIEWS }) }));
+      app.mount(host);
+      await flush();
+      perBoard.push(dashTools().length - before); // one tool per view board
+      app.unmount();
+      host.remove();
+      expect(dashTools().length).toBe(before);
+    }
+    expect(perBoard).toEqual([VIEWS.length, VIEWS.length]);
   });
 });

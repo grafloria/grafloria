@@ -136,6 +136,29 @@ export function render(
     }
   }
 
+  // A kit that hands out a live handle (dashboard()) registers process-wide
+  // canvas tools and listens on `element`, which outlives the instance. Disposing
+  // the instance must dispose the handle too: left behind, the old board's tools
+  // kept claiming presses on the next board mounted in the same element (React
+  // StrictMode mounts twice), so its drags went to a dead history, its dividers
+  // did nothing and its section chrome was painted twice.
+  const kitHandle = (spec as { handle?: { dispose?: () => void } } | null)?.handle;
+  if (kitHandle && typeof kitHandle.dispose === 'function') {
+    const disposeInstance = instance.dispose.bind(instance);
+    let disposed = false;
+    instance.dispose = () => {
+      if (!disposed) {
+        disposed = true;
+        try {
+          kitHandle.dispose?.();
+        } catch {
+          /* the instance still tears down */
+        }
+      }
+      disposeInstance();
+    };
+  }
+
   return instance;
 }
 
