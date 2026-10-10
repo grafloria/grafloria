@@ -313,7 +313,39 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       mouse('mouseup', -200, 125);
     });
 
+    // A8: OFF by default, like the engine's `enableProximityConnect` — a pasted
+    // copy dragged next to its original used to auto-link to it.
+    test('proximity connect is OFF by default (the engine default): a near drop does not link', async () => {
+      addNode(0, 0);
+      const moving = addNode(400, 0);
+      diagram.selectNode(moving);
+      paint();
+
+      mouse('mousedown', 450, 25);
+      mouse('mousemove', 190, 25);
+      mouse('mouseup', 190, 25);
+      await settle();
+
+      expect(diagram.getLinks()).toHaveLength(0);
+    });
+
+    test('the engine config turns it on when the input is unset', async () => {
+      engine.setInteractionConfig({ enableProximityConnect: true } as never);
+      addNode(0, 0);
+      const moving = addNode(400, 0);
+      diagram.selectNode(moving);
+      paint();
+
+      mouse('mousedown', 450, 25);
+      mouse('mousemove', 190, 25);
+      mouse('mouseup', 190, 25);
+      await settle();
+
+      expect(diagram.getLinks()).toHaveLength(1);
+    });
+
     test('proximity connect: dropping a node near a compatible port AUTO-LINKS it', async () => {
+      fixture.componentRef.setInput('enableProximityConnect', true);
       addNode(0, 0); // right port at (100, 25)
       const moving = addNode(400, 0); // left port at (400, 25)
       diagram.selectNode(moving);
@@ -335,7 +367,8 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       expect(moving.position.x).toBe(400);
     });
 
-    test('proximity connect can be switched off', async () => {
+    test('proximity connect can be switched off (the input wins over the engine config)', async () => {
+      engine.setInteractionConfig({ enableProximityConnect: true } as never);
       fixture.componentRef.setInput('enableProximityConnect', false);
       addNode(0, 0);
       const moving = addNode(400, 0);

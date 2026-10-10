@@ -945,8 +945,20 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** Card 6: alignment snaplines, equal spacing, grid snap, keep-in-bounds. */
   readonly enableSnapping = input(true);
 
-  /** Card 6: drop a node near a compatible port → auto-link it. */
-  readonly enableProximityConnect = input(true);
+  /**
+   * Card 6: drop a node near a compatible port → auto-link it.
+   *
+   * Unset (the default) follows the engine's `enableProximityConnect`, which is
+   * OFF — as in the JS canvas. It used to default to `true` here, so a pasted copy
+   * dragged next to its original auto-linked to it.
+   */
+  readonly enableProximityConnect = input<boolean | undefined>(undefined);
+
+  /** The input when set, else the engine's interaction config. */
+  private proximityConnectOn(): boolean {
+    const own = this.enableProximityConnect();
+    return own ?? this.eng?.getInteractionConfig().enableProximityConnect === true;
+  }
 
   /** Card 7: Tab/arrow focus, nudge, keyboard connect, ARIA announcements. */
   readonly enableKeyboardNavigation = input(true);
@@ -2149,7 +2161,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // Card 6: proximity connect — is a port of the dragged node close enough to a
     // compatible port to auto-link on drop? Highlight it so the user can see it
     // BEFORE releasing (React Flow's "drop near a node to connect" affordance).
-    if (this.enableProximityConnect() && primaryId) {
+    if (this.proximityConnectOn() && primaryId) {
       this.proximityCandidate = this.snapController.findProximityConnection(
         this.eng,
         primaryId
@@ -2216,7 +2228,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.clearGuides();
 
     const linkCommand =
-      candidate && this.enableProximityConnect()
+      candidate && this.proximityConnectOn()
         ? this.snapController.buildProximityLinkCommand(candidate)
         : null;
 
