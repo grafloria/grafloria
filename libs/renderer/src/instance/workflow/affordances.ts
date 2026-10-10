@@ -3,7 +3,8 @@
  *
  *  - `portAdd`: a "+" just off every OUTPUT port with nothing attached.
  *  - `linkAdd` / `linkDelete`: on a hovered link, a "+" at its midpoint (insert a
- *    step here) and a delete button beside it.
+ *    step here) and a delete button beside it (`linkButtons` picks hover,
+ *    hover-and-selected, or selected only).
  *
  * A press that MOVES past the drag threshold on a port's "+" starts a connection
  * from that port, exactly as a drag from the port does — the "+" is the bigger
@@ -35,8 +36,15 @@ export interface AffordanceOptions {
    * When a link's buttons show. `'hover'` (default): while it is hovered.
    * `'hover-and-selected'`: also while it is SELECTED (a click selects it), until
    * the selection changes — the only way to reach them on a touch screen.
+   * `'selected'`: ONLY while it is selected — never on hover, so the whole line
+   * stays a click target (on a short link the hover buttons cover most of it).
    */
-  linkButtons?: 'hover' | 'hover-and-selected';
+  linkButtons?: 'hover' | 'hover-and-selected' | 'selected';
+  /**
+   * How far a free output's "+" sits from its port, in world px — a number, or
+   * per port (say, just past an output name drawn beside the card). Default 26.
+   */
+  portAddOffset?: number | ((port: PortModel, node: NodeModel) => number);
 }
 
 export interface PortAddRequest {
@@ -55,10 +63,10 @@ const AFF_CSS = `
 .grafloria-port-add,.grafloria-link-add,.grafloria-link-delete{position:absolute;box-sizing:border-box;width:22px;height:22px;margin:-11px 0 0 -11px;padding:0;border-radius:6px;display:grid;place-items:center;pointer-events:auto;cursor:pointer;font:600 15px/1 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--grafloria-add-bg,#fff);color:var(--grafloria-add-fg,#4b5563);border:1.5px solid var(--grafloria-add-line,#9aa3b2);transition:transform .12s,background .12s,color .12s}
 .grafloria-port-add:hover,.grafloria-link-add:hover{background:var(--grafloria-add-fg,#4b5563);color:var(--grafloria-add-bg,#fff);transform:scale(1.08)}
 .grafloria-port-add::before{content:"";position:absolute;border-color:var(--grafloria-add-line,#9aa3b2);border-style:solid;border-width:0}
-.grafloria-port-add[data-side="right"]::before{right:100%;top:50%;width:14px;border-top-width:1.5px}
-.grafloria-port-add[data-side="left"]::before{left:100%;top:50%;width:14px;border-top-width:1.5px}
-.grafloria-port-add[data-side="bottom"]::before{bottom:100%;left:50%;height:14px;border-left-width:1.5px}
-.grafloria-port-add[data-side="top"]::before{top:100%;left:50%;height:14px;border-left-width:1.5px}
+.grafloria-port-add[data-side="right"]::before{right:100%;top:50%;width:var(--grafloria-port-add-reach,14px);border-top-width:1.5px}
+.grafloria-port-add[data-side="left"]::before{left:100%;top:50%;width:var(--grafloria-port-add-reach,14px);border-top-width:1.5px}
+.grafloria-port-add[data-side="bottom"]::before{bottom:100%;left:50%;height:var(--grafloria-port-add-reach,14px);border-left-width:1.5px}
+.grafloria-port-add[data-side="top"]::before{top:100%;left:50%;height:var(--grafloria-port-add-reach,14px);border-left-width:1.5px}
 .grafloria-link-delete{font-size:13px;background:var(--grafloria-delete-bg,#fff);color:var(--grafloria-delete-fg,#b42318);border-color:var(--grafloria-delete-fg,#b42318)}
 .grafloria-link-delete:hover{background:var(--grafloria-delete-fg,#b42318);color:var(--grafloria-delete-bg,#fff)}
 @media (prefers-reduced-motion: reduce){.grafloria-port-add,.grafloria-link-add,.grafloria-link-delete{transition:none}}
@@ -163,8 +171,13 @@ export function installAffordances(ctx: FeatureContext, options: AffordanceOptio
           }
           const at = portWorldPosition(port, node);
           const side = port.side ?? 'right';
-          const x = at.x + (side === 'right' ? OFFSET : side === 'left' ? -OFFSET : 0);
-          const y = at.y + (side === 'bottom' ? OFFSET : side === 'top' ? -OFFSET : 0);
+          const given = options.portAddOffset;
+          const offset = typeof given === 'function' ? given(port, node) : given ?? OFFSET;
+          const x = at.x + (side === 'right' ? offset : side === 'left' ? -offset : 0);
+          const y = at.y + (side === 'bottom' ? offset : side === 'top' ? -offset : 0);
+          // The stub from the port to the "+" spans the whole offset (11 = half the button).
+          if (offset === OFFSET) b.style.removeProperty('--grafloria-port-add-reach');
+          else b.style.setProperty('--grafloria-port-add-reach', `${Math.max(0, offset - 11)}px`);
           b.setAttribute('data-side', side);
           b.setAttribute('data-port-id', port.id);
           b.style.left = `${x}px`;
@@ -190,8 +203,9 @@ export function installAffordances(ctx: FeatureContext, options: AffordanceOptio
     if ((!options.linkAdd && !options.linkDelete) || ctx.isReadonly()) return hideLink();
     const model = ctx.getModel();
     const links = model.getLinks() as LinkModel[];
-    const hovered = links.find((l) => l.state === 'hovered');
-    const selected = options.linkButtons === 'hover-and-selected' ? links.find((l) => l.state === 'selected') : undefined;
+    const mode = options.linkButtons ?? 'hover';
+    const hovered = mode !== 'selected' ? links.find((l) => l.state === 'hovered') : undefined;
+    const selected = mode !== 'hover' ? links.find((l) => l.state === 'selected') : undefined;
     const id = hovered?.id ?? (overButtons ? shownLink : null) ?? selected?.id ?? null;
     const link = id ? model.getLink(id) : undefined;
     const mid = link ? midpoint(link.points ?? []) : null;

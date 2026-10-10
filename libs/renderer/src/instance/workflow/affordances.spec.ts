@@ -115,3 +115,55 @@ describe('affordances: "+" where the next step can go — they only ask', () => 
     expect(container.querySelector('.grafloria-affordances')).toBeNull();
   });
 });
+
+describe('affordances: link buttons only once selected, and where a port\'s "+" sits', () => {
+  let container: HTMLElement;
+  let d: DiagramInstance | undefined;
+  beforeEach(() => (container = makeContainer()));
+  afterEach(() => {
+    d?.dispose();
+    d = undefined;
+    container.remove();
+  });
+  const mount = (affordances: CreateDiagramOptions['affordances']) => {
+    d = createDiagram(container, {
+      nodes: [step('if', 0, ['true', 'false']), step('x', 400, ['out'])],
+      edges: [{ id: 'e', source: 'if', sourceHandle: 'if:true', target: 'x', targetHandle: 'x:in' }],
+      affordances,
+    });
+    return d;
+  };
+  const plusLeft = (portId: string) =>
+    parseFloat((container.querySelector(`.grafloria-port-add[data-port-id="${portId}"]`) as HTMLElement).style.left);
+
+  it("linkButtons 'selected': none on hover — the whole line is a click target — and both once selected", () => {
+    mount({ linkAdd: true, linkDelete: true, linkButtons: 'selected' });
+    const link = d!.getModel().getLink('e')!;
+    link.setState('hovered');
+    d!.renderNow();
+    expect(container.querySelector('.grafloria-link-add')).toBeNull();
+    expect(container.querySelector('.grafloria-link-delete')).toBeNull();
+
+    link.setState('selected');
+    d!.renderNow();
+    expect(container.querySelector('.grafloria-link-add')).not.toBeNull();
+    expect(container.querySelector('.grafloria-link-delete')).not.toBeNull();
+
+    link.setState('normal' as never);
+    d!.renderNow();
+    expect(container.querySelector('.grafloria-link-add')).toBeNull();
+  });
+
+  it('portAddOffset: a number, or per port from (port, node)', () => {
+    mount({ portAdd: true });
+    const base = plusLeft('if:false'); // the default 26 px
+    d!.dispose();
+    const seen: string[] = [];
+    mount({ portAdd: true, portAddOffset: (port, node) => (seen.push(`${node.id}/${port.id}`), 70) });
+    expect(plusLeft('if:false') - base).toBeCloseTo(44, 5); // 70 − 26
+    expect(seen).toContain('if/if:false');
+    d!.dispose();
+    mount({ portAdd: true, portAddOffset: 40 });
+    expect(plusLeft('if:false') - base).toBeCloseTo(14, 5);
+  });
+});
