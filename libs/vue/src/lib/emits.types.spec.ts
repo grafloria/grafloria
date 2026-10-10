@@ -10,6 +10,7 @@
 import { h } from 'vue';
 import type { LinkModel, NodeModel, SyncAdapter } from '@grafloria/engine';
 import type { DiagramInstance, EdgeSpec, NodeSpec } from '@grafloria/renderer';
+import { shadcnBridge } from '@grafloria/renderer';
 import type { DashboardHandle, DashboardWidgetSpec } from '@grafloria/element';
 import { GrafloriaFlow } from './grafloria-flow';
 import { GrafloriaDiagram } from './grafloria-diagram';
@@ -58,5 +59,17 @@ describe('Vue emits are typed with their payloads', () => {
       h(GrafloriaCommentPanel, { store: {} as never, onSelect: (n: number) => n.toFixed() }),
     ];
     expect(vnodes).toHaveLength(6);
+  });
+
+  // PROPS too: a prop declared `PropType<unknown>` accepts anything in `h()` and
+  // is inferred as `undefined` by vue-tsc in a template — the tokenBridge prop did
+  // both, so `:token-bridge="shadcnBridge()"` failed a reader's `vue-tsc -b`.
+  it('props carry their real types: tokenBridge is a TokenBridge', () => {
+    const ok = h(GrafloriaFlow, { tokenBridge: shadcnBridge() });
+    const bad = [
+      // @ts-expect-error — a token bridge is a map of CSS variables, not a number
+      h(GrafloriaFlow, { tokenBridge: 42 }),
+    ];
+    expect([ok, ...bad]).toHaveLength(2);
   });
 });

@@ -80,6 +80,7 @@ import {
   type HighlighterConfig,
   type HighlightConnectedOptions,
   type GroupSpec,
+  type TokenBridge,
 } from '@grafloria/renderer';
 
 export interface GrafloriaLayoutRequest {
@@ -207,7 +208,7 @@ export const GrafloriaFlow = defineComponent({
     /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
     interaction: { type: Object as PropType<Record<string, unknown>>, default: undefined },
     /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
-    tokenBridge: { type: Object as PropType<unknown>, default: undefined },
+    tokenBridge: { type: Object as PropType<TokenBridge>, default: undefined },
     /**
      * The outline layer Angular's canvas draws: outlines around the hovered node,
      * the selected node, nodes with a validation issue, and valid connection
@@ -339,7 +340,7 @@ export const GrafloriaFlow = defineComponent({
         commentsViewer: props.commentsViewer,
         renderer: props.rendererConfig as never,
         interaction: props.interaction,
-        tokenBridge: props.tokenBridge as never,
+        tokenBridge: props.tokenBridge,
         highlighterConfig: props.highlighterConfig,
         highlightConnected: props.highlightConnected,
         renderCustomNode: (node: NodeModel, element: HTMLElement) => {
