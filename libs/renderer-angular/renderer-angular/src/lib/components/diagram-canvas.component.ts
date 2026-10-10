@@ -1188,10 +1188,24 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly interactionHandler = inject(InteractionHandlerService);
   private readonly componentRenderer = inject(ComponentRendererService);
+
+  /**
+   * A1: what the canvas draws besides the built-in shapes — a template
+   * (`<ng-template grafloriaNode>`), a registered component, or a `custom: true`
+   * node on the HTML layer. Those types are not "unregistered".
+   */
+  private canDrawNode(node: NodeModel): boolean {
+    return (
+      node.getMetadata('useHTMLLayer') === true ||
+      untracked(() => this.nodeDefMap()).has(node.type) ||
+      this.componentRenderer.hasComponent(node.type)
+    );
+  }
   private readonly environmentInjector = inject(EnvironmentInjector);
   private readonly handleRegistry = inject(HandleRegistryService);
 
   constructor() {
+    this.highlighterController.canDraw = (node) => this.canDrawNode(node);
     // Outputs and model() signals are marked destroyed BEFORE ngOnDestroy runs,
     // and any later emit()/set() warns NG0953. Flip `destroyed` at that same
     // moment so everything that guards on it (queued frames, awaited layouts,
