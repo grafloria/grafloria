@@ -283,3 +283,34 @@ describe('anchor survival — under CONCURRENCY, which is where it actually gets
     expect(ada.store.thread(tid)!.resolvedAnchor.attached).toBe(true);
   });
 });
+
+// C7 (docs review v3): `attached` is derived — and nothing TOLD the store's listeners
+// it had changed. A panel wired to `store.onChange` kept saying "attached" after the
+// node was deleted, until something unrelated (a click on the thread) repainted it.
+describe('anchor survival — listeners hear an attach/detach', () => {
+  it('onChange fires when an anchored node is deleted, and again when it comes back', () => {
+    const { diagram, store } = session('alice');
+    const tid = store.createThread({ kind: 'node', id: 'n1' }, 'why here?');
+    let calls = 0;
+    store.onChange(() => calls++);
+
+    const removed = diagram.getNode('n1')!;
+    diagram.removeNode('n1');
+    expect(store.thread(tid)!.resolvedAnchor.attached).toBe(false);
+    expect(calls).toBe(1);
+
+    diagram.addNode(removed);
+    expect(store.thread(tid)!.resolvedAnchor.attached).toBe(true);
+    expect(calls).toBe(2);
+  });
+
+  it('does NOT fire for entities no thread is anchored to', () => {
+    const { diagram, store } = session('alice');
+    store.createThread({ kind: 'node', id: 'n1' }, 'why here?');
+    let calls = 0;
+    store.onChange(() => calls++);
+    diagram.addNode(node('n2', 400, 100, 'Other'));
+    diagram.removeNode('n2');
+    expect(calls).toBe(0);
+  });
+});
