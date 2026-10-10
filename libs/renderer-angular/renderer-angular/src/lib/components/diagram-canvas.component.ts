@@ -203,6 +203,7 @@ import {
   ToolInteractionMode,
 } from '../interaction';
 import { CanvasHighlighterController } from '../interaction/canvas-highlighter';
+import { CanvasEventHub, type GrafloriaCanvasInstance } from './diagram-canvas.instance';
 // Wave 3 (Edges & links): path-anchored edge toolbar. The canvas only HOSTS it
 // (picks the target link, forwards viewport/zoom) — all toolbar logic lives in
 // the component.
@@ -761,6 +762,71 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   readonly selectionChange = output<SelectionChange>();
 
+  /**
+   * The canvas's instance, once, after the first paint — the same hand-over
+   * `<grafloria-diagram (ready)>` and the other bindings give: `instance.on(...)`,
+   * `instance.export(...)`, `instance.exportText()`, `instance.undo()`.
+   * `instance()` returns the same object at any time.
+   */
+  readonly ready = output<GrafloriaCanvasInstance>();
+  private readyEmitted = false;
+  private readonly hub = new CanvasEventHub();
+  private instanceHandle?: GrafloriaCanvasInstance;
+
+  /** The canvas's instance (see `(ready)`). It follows an `[engine]` swap. */
+  instance(): GrafloriaCanvasInstance {
+    if (this.instanceHandle) return this.instanceHandle;
+    const model = (): DiagramModel => {
+      const diagram = this.eng?.getDiagram();
+      if (!diagram) throw new Error('grafloria-diagram-canvas: there is no diagram yet.');
+      return diagram;
+    };
+    this.instanceHandle = {
+      getModel: model,
+      getEngine: () => {
+        if (!this.eng) throw new Error('grafloria-diagram-canvas: there is no engine yet.');
+        return this.eng;
+      },
+      getCommentStore: () => this.getCommentStore(),
+      setNodes: (nodes) => {
+        if (applyNodes(model(), nodes as Array<NodeSpec | NodeModel>)) this.scheduleRender();
+      },
+      setEdges: (edges) => {
+        if (applyEdges(model(), edges as Array<EdgeSpec | LinkModel>)) this.scheduleRender();
+      },
+      export: (format, options) => this.exportDiagram(format as never, options),
+      exportSvgString: (options) => this.exportSvg(options),
+      exportPdf: (options) => this.exportPdf(options),
+      exportText: (options) => this.exportText(options),
+      loadText: (text, options) => this.loadText(text, options) as never,
+      fitView: (padding) => this.fitToContent(padding),
+      render: () => this.scheduleRender(),
+      renderNow: () => this.renderNow(),
+      batchUpdate: (mutate) => {
+        const diagram = model();
+        diagram.beginBatch();
+        try {
+          mutate(diagram);
+        } finally {
+          diagram.endBatch();
+        }
+        this.scheduleRender();
+      },
+      on: (event, handler) => this.hub.on(event, handler),
+      off: (event, handler) => this.hub.off(event, handler),
+      undo: () => this.undo(),
+      redo: () => this.redo(),
+    };
+    return this.instanceHandle;
+  }
+
+  /** Emit `(ready)` once: after the first paint, when there is an engine to hand over. */
+  private emitReadyOnce(): void {
+    if (this.readyEmitted || this.destroyed || !this.viewReady || !this.eng?.getDiagram()) return;
+    this.readyEmitted = true;
+    this.ready.emit(this.instance());
+  }
+
   // ==========================================================================
   // Derived / internal state
   // ==========================================================================
@@ -1283,10 +1349,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // AfterViewInit are visible right away.
       this.renderNow();
     }
+    this.emitReadyOnce();
   }
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.hub.clear();
     this.presenceBinding?.dispose();
     this.presenceBinding = undefined;
     this.commentRepaintUnsub?.();
@@ -1506,6 +1574,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.lastSelectionKey = diagram ? this.selectionKey(diagram) : '';
 
     this.scheduleRender();
+    // An [engine] bound after the view: hand the instance over now.
+    if (this.viewReady) this.emitReadyOnce();
   }
 
   /** Drop every subscription/resource tied to the previously attached engine. */
@@ -3083,6 +3153,23 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       this.engineSubscriptions.push(diagram.on(event, onMutation));
     }
 
+    // The instance's events (`instance.on`), raised exactly where the JS canvas
+    // raises them: every node/link add or remove, `connect` on every added link.
+    const nodesChanged = () => this.hub.emit('nodes:change', { nodes: diagram.getNodes() });
+    const edgesChanged = () => this.hub.emit('edges:change', { edges: diagram.getLinks() });
+    for (const event of ['node:added', 'node:removed', 'nodes:cleared'] as const) {
+      this.engineSubscriptions.push(diagram.on(event, nodesChanged));
+    }
+    for (const event of ['link:removed', 'links:cleared'] as const) {
+      this.engineSubscriptions.push(diagram.on(event, edgesChanged));
+    }
+    this.engineSubscriptions.push(
+      diagram.on('link:added', ((link: LinkModel) => {
+        edgesChanged();
+        if (link) this.hub.emit('connect', { link });
+      }) as never)
+    );
+
     // (selectionChange): every event that can change WHAT is selected — the
     // model's selection API, a node/link state change (marquee, link click,
     // node.setSelected), a selected entity being removed.
@@ -3139,10 +3226,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       return;
     }
     this.lastSelectionKey = key;
-    this.selectionChange.emit({
+    const change = {
       nodes: diagram.getSelectedNodes(),
       edges: diagram.getLinks().filter((link) => link.state === 'selected'),
-    });
+    };
+    this.selectionChange.emit(change);
+    this.hub.emit('selection:change', change);
   }
 
   /**
@@ -3529,7 +3618,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   private emitViewportChanged(): void {
     if (this.destroyed) return;
-    this.viewportChanged.emit(this.getViewBox());
+    const viewport = this.getViewBox();
+    this.viewportChanged.emit(viewport);
+    this.hub.emit('viewport:change', { viewport, zoom: this.zoom() });
   }
 
   // ==========================================================================
