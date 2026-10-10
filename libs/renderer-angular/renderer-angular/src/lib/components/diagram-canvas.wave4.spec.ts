@@ -181,12 +181,11 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       expect(diagram.getNodes()).toHaveLength(2);
     });
 
-    // KNOWN PRE-EXISTING FAILURE (predates the repo extraction): the renderer's
-    // line-algorithm overhaul made link.points PAINTED geometry, so a selected
-    // link now grows one vertex-add handle PER SEGMENT (16) where this spec
-    // expects 1. The behaviour needs a product decision (cap the handles vs
-    // re-spec); until then the spec is skipped so CI reflects real regressions.
-    test.skip('a selected link shows endpoint + add-vertex tools, and adding a vertex undoes', async () => {
+    // A12: a curved link's link.points is its PAINTED, sampled geometry — not
+    // vertices. Until it has bends of its own (manual waypoints) it gets ONE
+    // add-vertex tool on the drawn line and no remove tools (it showed 15 − and
+    // 16 +). This spec was skipped while that needed a decision.
+    test('a selected link shows endpoint + add-vertex tools, and adding a vertex undoes', async () => {
       const a = addNode(0, 0);
       const b = addNode(300, 0);
       const link = new LinkModel(a.getPortBySide('right')!.id, b.getPortBySide('left')!.id);
@@ -202,14 +201,17 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
 
       expect(overlay('.grafloria-tool-link-endpoint')).toHaveLength(2);
       expect(overlay('.grafloria-tool-vertex-add')).toHaveLength(1);
+      expect(overlay('.grafloria-tool-vertex-remove')).toHaveLength(0);
 
       const add = component.toolLayer.handles.find((h) => h.kind === 'vertex-add')!;
       mouse('mousedown', add.world.x, add.world.y);
       await settle();
 
       expect(link.points).toHaveLength(3);
+      expect(link.getMetadata('hasManualWaypoints')).toBe(true);
       await engine.undo();
-      expect(link.points).toHaveLength(2);
+      // Back to a plain curve the renderer routes itself (no bends of its own).
+      expect(link.getMetadata('hasManualWaypoints')).toBe(false);
     });
 
     test('double-clicking a node opens an in-place editor that commits undoably', async () => {
