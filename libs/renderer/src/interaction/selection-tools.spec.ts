@@ -10,6 +10,7 @@ import {
   DiagramEngine,
   DiagramModel,
   NodeModel,
+  PortModel,
   LinkModel,
   MacroCommand,
   ResizeNodeCommand,
@@ -191,6 +192,8 @@ describe('Card 5 — SelectionToolsController', () => {
         { x: 200, y: 100 },
         { x: 300, y: 25 },
       ]);
+      // Bends the user placed (a curved link's own points are its sampled curve).
+      link.setMetadata('hasManualWaypoints', true);
       link.setState('selected');
 
       const removes = tools.computeLayer(engine).handles.filter((h) => h.kind === 'vertex-remove');
@@ -456,6 +459,8 @@ describe('Card 5 — SelectionToolsController', () => {
         { x: 200, y: 100 },
         { x: 300, y: 25 },
       ]);
+      // Bends the user placed (a curved link's own points are its sampled curve).
+      link.setMetadata('hasManualWaypoints', true);
       link.setState('selected');
 
       const remove = tools.computeLayer(engine).handles.find((h) => h.kind === 'vertex-remove')!;
@@ -476,6 +481,7 @@ describe('Card 5 — SelectionToolsController', () => {
         { x: 200, y: 25 },
         { x: 300, y: 25 },
       ]);
+      link.setMetadata('hasManualWaypoints', true);
       link.setState('selected');
 
       const handle = tools.computeLayer(engine).handles.find((h) => h.kind === 'vertex-remove')!;
@@ -542,5 +548,38 @@ describe('Card 5 — SelectionToolsController', () => {
       expect(diagram.getNodes()).toHaveLength(1);
       expect(diagram.getLinks()).toHaveLength(0);
     });
+  });
+});
+
+describe('Card 5 — SelectionToolsController — a curved link without bends (A12)', () => {
+  test('its sampled curve gets ONE add-vertex tool on the line and no remove tools', () => {
+    const engine = new DiagramEngine();
+    const diagram = engine.createDiagram('curve');
+    const a = new NodeModel({ type: 'rect', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+    const b = new NodeModel({ type: 'rect', position: { x: 300, y: 0 }, size: { width: 100, height: 50 } });
+    a.addPort(new PortModel({ id: 'ar', type: 'output', side: 'right' }));
+    b.addPort(new PortModel({ id: 'bl', type: 'input', side: 'left' }));
+    diagram.addNode(a);
+    diagram.addNode(b);
+    const link = new LinkModel('ar', 'bl'); // pathType 'smooth' by default
+    link.setSourcePort('ar', a.id);
+    link.setTargetPort('bl', b.id);
+    // What the renderer syncs onto a curved link: its painted, sampled polyline.
+    link.points = Array.from({ length: 17 }, (_, i) => ({ x: 100 + (200 * i) / 16, y: 25 + Math.sin((Math.PI * i) / 16) * 10 }));
+    diagram.addLink(link);
+    link.setState('selected');
+
+    const tools = new SelectionToolsController();
+    const handles = tools.computeLayer(engine).handles;
+    expect(handles.filter((h) => h.kind === 'vertex-remove')).toHaveLength(0);
+    const adds = handles.filter((h) => h.kind === 'vertex-add');
+    expect(adds).toHaveLength(1);
+
+    // Adding there makes ONE bend between the two ends.
+    const command = tools.addVertexCommand(adds[0]!, engine)!;
+    void engine.commandManager.execute(command);
+    expect(link.points).toHaveLength(3);
+    expect(link.getMetadata('hasManualWaypoints')).toBe(true);
+    engine.destroy();
   });
 });

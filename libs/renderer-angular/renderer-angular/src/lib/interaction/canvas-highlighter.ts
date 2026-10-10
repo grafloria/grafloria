@@ -1,4 +1,4 @@
-import type { DiagramEngine } from '@grafloria/engine';
+import type { DiagramEngine, NodeModel } from '@grafloria/engine';
 import { HighlighterController, hasShape, type ValidationIssue } from '@grafloria/renderer';
 
 /**
@@ -13,8 +13,15 @@ import { HighlighterController, hasShape, type ValidationIssue } from '@graflori
  * a shape for is not an unknown type, so exactly that warning is dropped; every
  * other issue — a registered type's rules, ports, links, an unknown type that is
  * not a shape — still shows.
+ *
+ * The same goes for every type the canvas draws by other means — an
+ * `<ng-template grafloriaNode="…">`, a `ComponentRendererService` component, a
+ * `custom: true` node on the HTML layer: the host passes `canDraw` for those.
  */
 export class CanvasHighlighterController extends HighlighterController {
+  /** Extra "the canvas draws this node" test, beyond the built-in shapes. */
+  canDraw: (node: NodeModel) => boolean = () => false;
+
   override refreshValidation(engine: DiagramEngine): ValidationIssue[] {
     const all = super.refreshValidation(engine);
     const diagram = engine?.getDiagram?.();
@@ -22,8 +29,9 @@ export class CanvasHighlighterController extends HighlighterController {
 
     const isShapeTypeWarning = (issue: ValidationIssue): boolean => {
       if (issue.code !== 'UNREGISTERED_NODE_TYPE' || issue.entity !== 'node') return false;
-      const type = diagram.getNode(issue.entityId)?.type;
-      return typeof type === 'string' && hasShape(type);
+      const node = diagram.getNode(issue.entityId);
+      if (!node) return false;
+      return (typeof node.type === 'string' && hasShape(node.type)) || this.canDraw(node);
     };
 
     for (const [entityId, list] of this.issues) {

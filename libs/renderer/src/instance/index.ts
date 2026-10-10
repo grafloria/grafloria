@@ -15,3 +15,4 @@ export type { InsertNodeOnLinkOptions, InsertNodeOnLinkResult } from './workflow
 export type { FlowPlaceOptions, PlaceNodesOptions } from './workflow/flow-place';
 export type { NodeTemplate, NodeTemplateDef, NodeTemplateFn, NodeTemplateContext, NodeTemplateOutput } from './workflow/node-templates';
 export type { AffordanceOptions, PortAddRequest, LinkAddRequest } from './workflow/affordances';
+export * from './load-text';

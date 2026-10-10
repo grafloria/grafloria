@@ -95,7 +95,10 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       diagram.selectNode(node);
       paint();
 
-      expect(overlay('.grafloria-tool-resize')).toHaveLength(8);
+      // 4 corner dots + 4 side handles drawn as edge lines (the side ports sit on
+      // the edge midpoints, so a dot there would cover them — like the JS canvas).
+      expect(overlay('.grafloria-tool-resize')).toHaveLength(4);
+      expect(overlay('.grafloria-tool-resize-edge')).toHaveLength(4);
       expect(overlay('.grafloria-tool-remove')).toHaveLength(1);
       expect(overlay('.grafloria-tool-halo')).toHaveLength(4);
       expect(overlay('.grafloria-selection-frame')).toHaveLength(1);
@@ -178,12 +181,11 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       expect(diagram.getNodes()).toHaveLength(2);
     });
 
-    // KNOWN PRE-EXISTING FAILURE (predates the repo extraction): the renderer's
-    // line-algorithm overhaul made link.points PAINTED geometry, so a selected
-    // link now grows one vertex-add handle PER SEGMENT (16) where this spec
-    // expects 1. The behaviour needs a product decision (cap the handles vs
-    // re-spec); until then the spec is skipped so CI reflects real regressions.
-    test.skip('a selected link shows endpoint + add-vertex tools, and adding a vertex undoes', async () => {
+    // A12: a curved link's link.points is its PAINTED, sampled geometry — not
+    // vertices. Until it has bends of its own (manual waypoints) it gets ONE
+    // add-vertex tool on the drawn line and no remove tools (it showed 15 − and
+    // 16 +). This spec was skipped while that needed a decision.
+    test('a selected link shows endpoint + add-vertex tools, and adding a vertex undoes', async () => {
       const a = addNode(0, 0);
       const b = addNode(300, 0);
       const link = new LinkModel(a.getPortBySide('right')!.id, b.getPortBySide('left')!.id);
@@ -199,14 +201,17 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
 
       expect(overlay('.grafloria-tool-link-endpoint')).toHaveLength(2);
       expect(overlay('.grafloria-tool-vertex-add')).toHaveLength(1);
+      expect(overlay('.grafloria-tool-vertex-remove')).toHaveLength(0);
 
       const add = component.toolLayer.handles.find((h) => h.kind === 'vertex-add')!;
       mouse('mousedown', add.world.x, add.world.y);
       await settle();
 
       expect(link.points).toHaveLength(3);
+      expect(link.getMetadata('hasManualWaypoints')).toBe(true);
       await engine.undo();
-      expect(link.points).toHaveLength(2);
+      // Back to a plain curve the renderer routes itself (no bends of its own).
+      expect(link.getMetadata('hasManualWaypoints')).toBe(false);
     });
 
     test('double-clicking a node opens an in-place editor that commits undoably', async () => {
@@ -310,7 +315,39 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       mouse('mouseup', -200, 125);
     });
 
+    // A8: OFF by default, like the engine's `enableProximityConnect` — a pasted
+    // copy dragged next to its original used to auto-link to it.
+    test('proximity connect is OFF by default (the engine default): a near drop does not link', async () => {
+      addNode(0, 0);
+      const moving = addNode(400, 0);
+      diagram.selectNode(moving);
+      paint();
+
+      mouse('mousedown', 450, 25);
+      mouse('mousemove', 190, 25);
+      mouse('mouseup', 190, 25);
+      await settle();
+
+      expect(diagram.getLinks()).toHaveLength(0);
+    });
+
+    test('the engine config turns it on when the input is unset', async () => {
+      engine.setInteractionConfig({ enableProximityConnect: true } as never);
+      addNode(0, 0);
+      const moving = addNode(400, 0);
+      diagram.selectNode(moving);
+      paint();
+
+      mouse('mousedown', 450, 25);
+      mouse('mousemove', 190, 25);
+      mouse('mouseup', 190, 25);
+      await settle();
+
+      expect(diagram.getLinks()).toHaveLength(1);
+    });
+
     test('proximity connect: dropping a node near a compatible port AUTO-LINKS it', async () => {
+      fixture.componentRef.setInput('enableProximityConnect', true);
       addNode(0, 0); // right port at (100, 25)
       const moving = addNode(400, 0); // left port at (400, 25)
       diagram.selectNode(moving);
@@ -332,7 +369,8 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       expect(moving.position.x).toBe(400);
     });
 
-    test('proximity connect can be switched off', async () => {
+    test('proximity connect can be switched off (the input wins over the engine config)', async () => {
+      engine.setInteractionConfig({ enableProximityConnect: true } as never);
       fixture.componentRef.setInput('enableProximityConnect', false);
       addNode(0, 0);
       const moving = addNode(400, 0);

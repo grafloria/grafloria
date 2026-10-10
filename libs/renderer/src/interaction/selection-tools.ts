@@ -242,6 +242,34 @@ function distToSegmentSq(px: number, py: number, a: Point, b: Point): number {
   return (px - cx) * (px - cx) + (py - cy) * (py - cy);
 }
 
+/**
+ * A CURVED link (`smooth` / `bezier`) without manual waypoints: the renderer
+ * keeps its `points` as the painted, sampled curve (16-odd points along it), so
+ * none of its interior points is a vertex a user placed — vertex tools there
+ * showed 15 "−" and 16 "+" handles on one plain two-node edge.
+ */
+function isSampledCurve(link: LinkModel): boolean {
+  return (link.pathType === 'smooth' || link.pathType === 'bezier') && link.getMetadata('hasManualWaypoints') !== true;
+}
+
+/** The point halfway along a polyline, by arc length. */
+function polylineMidpoint(points: Point[]): Point {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) total += Math.hypot(points[i]!.x - points[i - 1]!.x, points[i]!.y - points[i - 1]!.y);
+  let remaining = total / 2;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!;
+    const b = points[i]!;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (remaining <= len) {
+      const t = len > 0 ? remaining / len : 0;
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    remaining -= len;
+  }
+  return { ...points[0]! };
+}
+
 const HALO_ORDER: HaloAction[] = ['connect', 'clone', 'fork', 'delete'];
 
 const HALO_LABELS: Record<HaloAction, string> = {
@@ -724,8 +752,23 @@ export class SelectionToolsController {
         label: 'Reconnect target',
       });
 
+      // A curved link with no bends of its own: its points are the PAINTED,
+      // sampled curve, not vertices — one "+" on the drawn line, no "−".
+      if (isSampledCurve(link)) {
+        handles.push({
+          id: `vertex-add-${link.id}-0`,
+          kind: 'vertex-add',
+          index: 0,
+          linkId: link.id,
+          world: polylineMidpoint(points),
+          hitRadius: hitRadius * 0.9,
+          cursor: 'copy',
+          label: 'Add vertex on segment 1',
+        });
+      }
+
       // One "+" per segment midpoint → add a vertex there.
-      for (let i = 0; i < points.length - 1; i++) {
+      for (let i = 0; !isSampledCurve(link) && i < points.length - 1; i++) {
         const a = points[i]!;
         const b = points[i + 1]!;
         handles.push({
@@ -741,7 +784,7 @@ export class SelectionToolsController {
       }
 
       // One "−" per interior vertex → remove it.
-      for (let i = 1; i < points.length - 1; i++) {
+      for (let i = 1; !isSampledCurve(link) && i < points.length - 1; i++) {
         handles.push({
           id: `vertex-remove-${link.id}-${i}`,
           kind: 'vertex-remove',
@@ -1162,6 +1205,11 @@ export class SelectionToolsController {
 
     const points = link.points.map((p: Point) => ({ ...p }));
     if (handle.index < 0 || handle.index >= points.length - 1) return null;
+
+    // A sampled curve has two real vertices, its ends: the new bend goes between them.
+    if (isSampledCurve(link)) {
+      return new SetLinkPointsCommand(link.id, [points[0]!, { ...handle.world }, points[points.length - 1]!], points);
+    }
 
     const next = [...points];
     next.splice(handle.index + 1, 0, { ...handle.world });

@@ -7,12 +7,40 @@
  * node spec — is a shape the renderer draws, not a domain type somebody forgot
  * to register in the engine's TypeRegistry.
  */
-import { Component, signal } from '@angular/core';
+import { Component, Input, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { DiagramEngine } from '@grafloria/engine';
 import { buildNode, type NodeSpec } from '@grafloria/renderer';
 import { DiagramCanvasComponent } from './diagram-canvas.component';
+import { GrafloriaNodeDefDirective } from '../directives/grafloria-node-def.directive';
+import { ComponentRendererService } from '../services/component-renderer.service';
+import type { NodeModel } from '@grafloria/engine';
+
+@Component({ selector: 'test-job', template: `<b>{{ node?.id }}</b>` })
+class JobComponent {
+  @Input() node: NodeModel | undefined = undefined;
+}
+
+/** The three ways a canvas draws a custom type: a template, a registered component, `custom: true`. */
+@Component({
+  imports: [DiagramCanvasComponent, GrafloriaNodeDefDirective],
+  providers: [ComponentRendererService],
+  template: `<grafloria-diagram-canvas style="display:block;width:800px;height:600px" [(nodes)]="nodes">
+    <ng-template grafloriaNode="card" let-data="data"><div>{{ data.title }}</div></ng-template>
+  </grafloria-diagram-canvas>`,
+})
+class CustomTypesHost {
+  constructor(renderer: ComponentRendererService) {
+    renderer.registerComponent('registered-job', JobComponent);
+  }
+  nodes = signal<NodeSpec[]>([
+    { id: 'tpl', type: 'card', custom: true, position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, data: { title: 'T' } },
+    { id: 'cmp', type: 'registered-job', custom: true, position: { x: 150, y: 0 }, size: { width: 100, height: 50 } },
+    { id: 'html', type: 'html-only', custom: true, position: { x: 300, y: 0 }, size: { width: 100, height: 50 } },
+    { id: 'unknown', type: 'mystery-type', position: { x: 450, y: 0 }, size: { width: 100, height: 50 } },
+  ]);
+}
 
 const SHAPES = ['rect', 'circle', 'ellipse', 'diamond', 'hexagon', 'cylinder', 'document', 'parallelogram'];
 
@@ -29,7 +57,7 @@ class ControlledHost {
 
 describe('DiagramCanvasComponent — validation outline on built-in shapes', () => {
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [DiagramCanvasComponent, ControlledHost] }).compileComponents();
+    await TestBed.configureTestingModule({ imports: [DiagramCanvasComponent, ControlledHost, CustomTypesHost] }).compileComponents();
   });
 
   const validationOutlines = (canvas: DiagramCanvasComponent) =>
@@ -49,6 +77,16 @@ describe('DiagramCanvasComponent — validation outline on built-in shapes', () 
     expect(canvas.activeEngine()!.getDiagram()!.getNodes()).toHaveLength(SHAPES.length + 1);
     expect(validationOutlines(canvas).map((h) => h.message)).toEqual([]);
     expect(fixture.nativeElement.querySelectorAll('.grafloria-highlighter-validation')).toHaveLength(0);
+    fixture.destroy();
+  });
+
+  test('custom types the canvas draws (template, registered component, custom: true) are not outlined', () => {
+    const fixture = TestBed.createComponent(CustomTypesHost);
+    fixture.detectChanges();
+    const canvas = fixture.debugElement.query(By.directive(DiagramCanvasComponent)).componentInstance as DiagramCanvasComponent;
+    paint(fixture, canvas);
+    // Only the plain node with a type nothing can draw keeps its warning.
+    expect(validationOutlines(canvas).map((h) => h.entityId)).toEqual(['unknown']);
     fixture.destroy();
   });
 

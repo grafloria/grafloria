@@ -139,6 +139,11 @@
   pointer-events: auto;
 }
 
+.grafloria-tool-resize-edge {
+  fill: none;
+  pointer-events: stroke;
+}
+
 .grafloria-tool-rotate {
   fill: #3b82f6;
   stroke: #ffffff;

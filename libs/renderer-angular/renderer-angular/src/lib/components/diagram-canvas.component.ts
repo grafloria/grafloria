@@ -55,7 +55,6 @@ import {
   type SerializedDiagram,
   // Advanced domains wave 1: Mermaid-compatible text on the component.
   exportDiagramText,
-  importDiagramText,
   // Tier 3: real-time collaboration.
   createSyncSession,
   type SyncAdapter,
@@ -117,6 +116,7 @@ import {
   // Angular delegates to exactly the same code: one diff algorithm, not two.
   applyNodes,
   applyEdges,
+  loadTextInto,
   toNodeSpec,
   toEdgeSpec,
   // Advanced domains: the same minimap/controls/background the React and Vue
@@ -132,6 +132,7 @@ import {
   // @grafloria/renderer (framework-agnostic). This component only routes DOM events
   // into it, draws the geometry it returns, and dispatches the commands it builds.
   SelectionToolsController,
+  sideHandleYieldsToPort,
   type SelectionToolLayer,
   type ToolHandle,
   SnapController,
@@ -203,6 +204,8 @@ import {
   ToolInteractionMode,
 } from '../interaction';
 import { CanvasHighlighterController } from '../interaction/canvas-highlighter';
+import { GroupDragController } from '../interaction/group-drag';
+import { CanvasEventHub, type GrafloriaCanvasInstance } from './diagram-canvas.instance';
 // Wave 3 (Edges & links): path-anchored edge toolbar. The canvas only HOSTS it
 // (picks the target link, forwards viewport/zoom) — all toolbar logic lives in
 // the component.
@@ -211,6 +214,15 @@ import {
   LinkToolbarAction,
   createDefaultLinkActions,
 } from './link-toolbar';
+
+/**
+ * The canvas the person is working in: the last one pressed in or focused. Every
+ * canvas listens for keys on `window` (a canvas is rarely focused), so without
+ * this one ⌘Z undid — and one Delete deleted — in EVERY canvas on the page. Null
+ * until a canvas is touched, so a page with one canvas behaves exactly as before.
+ * The same rule as the JS canvas (DomEventBinder).
+ */
+let activeCanvas: DiagramCanvasComponent | null = null;
 
 /**
  * DiagramCanvasComponent
@@ -664,28 +676,16 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   /**
    * Parse Mermaid-compatible text (sidecar-aware) and reconcile it into the
-   * live diagram — same mechanics as `loadSnapshot`.
+   * live diagram — the SAME load path as `createDiagram().loadText`
+   * (`loadTextInto` from `@grafloria/renderer`): text it cannot read (empty, an
+   * unsupported type, a parse error) throws and leaves the canvas unchanged, and
+   * the diagram type is kept, so `exportText` writes the grammar the text came in.
    */
   loadText(text: string, options?: unknown): unknown {
     const diagram = this.eng?.getDiagram();
     if (!diagram) return undefined;
-    const result = importDiagramText(text, options as never);
-    // The imported MODELS, not spec projections of them — see the same call in
-    // createDiagram's loadText. Projecting through toNodeSpec/toEdgeSpec drops
-    // custom ports, styles and all metadata but `label`, which turned "open a
-    // saved file" into a quiet data loss.
-    applyNodes(diagram, result.diagram.getNodes());
-    applyEdges(diagram, result.diagram.getLinks());
-
-    // Groups ride in neither collection, so they need their own reconcile.
-    const incoming = result.diagram.getGroups();
-    const wanted = new Set(incoming.map((g) => g.id));
-    for (const existing of diagram.getGroups()) {
-      if (!wanted.has(existing.id)) diagram.removeGroup(existing.id);
-    }
-    for (const group of incoming) {
-      if (!diagram.getGroup(group.id)) diagram.addGroup(group);
-    }
+    const result = loadTextInto(diagram, text, options as never);
+    this.scheduleRender();
     return result;
   }
 
@@ -772,6 +772,71 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * (re-clicking the selected node, dragging it) emits nothing.
    */
   readonly selectionChange = output<SelectionChange>();
+
+  /**
+   * The canvas's instance, once, after the first paint — the same hand-over
+   * `<grafloria-diagram (ready)>` and the other bindings give: `instance.on(...)`,
+   * `instance.export(...)`, `instance.exportText()`, `instance.undo()`.
+   * `instance()` returns the same object at any time.
+   */
+  readonly ready = output<GrafloriaCanvasInstance>();
+  private readyEmitted = false;
+  private readonly hub = new CanvasEventHub();
+  private instanceHandle?: GrafloriaCanvasInstance;
+
+  /** The canvas's instance (see `(ready)`). It follows an `[engine]` swap. */
+  instance(): GrafloriaCanvasInstance {
+    if (this.instanceHandle) return this.instanceHandle;
+    const model = (): DiagramModel => {
+      const diagram = this.eng?.getDiagram();
+      if (!diagram) throw new Error('grafloria-diagram-canvas: there is no diagram yet.');
+      return diagram;
+    };
+    this.instanceHandle = {
+      getModel: model,
+      getEngine: () => {
+        if (!this.eng) throw new Error('grafloria-diagram-canvas: there is no engine yet.');
+        return this.eng;
+      },
+      getCommentStore: () => this.getCommentStore(),
+      setNodes: (nodes) => {
+        if (applyNodes(model(), nodes as Array<NodeSpec | NodeModel>)) this.scheduleRender();
+      },
+      setEdges: (edges) => {
+        if (applyEdges(model(), edges as Array<EdgeSpec | LinkModel>)) this.scheduleRender();
+      },
+      export: (format, options) => this.exportDiagram(format as never, options),
+      exportSvgString: (options) => this.exportSvg(options),
+      exportPdf: (options) => this.exportPdf(options),
+      exportText: (options) => this.exportText(options),
+      loadText: (text, options) => this.loadText(text, options) as never,
+      fitView: (padding) => this.fitToContent(padding),
+      render: () => this.scheduleRender(),
+      renderNow: () => this.renderNow(),
+      batchUpdate: (mutate) => {
+        const diagram = model();
+        diagram.beginBatch();
+        try {
+          mutate(diagram);
+        } finally {
+          diagram.endBatch();
+        }
+        this.scheduleRender();
+      },
+      on: (event, handler) => this.hub.on(event, handler),
+      off: (event, handler) => this.hub.off(event, handler),
+      undo: () => this.undo(),
+      redo: () => this.redo(),
+    };
+    return this.instanceHandle;
+  }
+
+  /** Emit `(ready)` once: after the first paint, when there is an engine to hand over. */
+  private emitReadyOnce(): void {
+    if (this.readyEmitted || this.destroyed || !this.viewReady || !this.eng?.getDiagram()) return;
+    this.readyEmitted = true;
+    this.ready.emit(this.instance());
+  }
 
   // ==========================================================================
   // Derived / internal state
@@ -880,8 +945,20 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** Card 6: alignment snaplines, equal spacing, grid snap, keep-in-bounds. */
   readonly enableSnapping = input(true);
 
-  /** Card 6: drop a node near a compatible port → auto-link it. */
-  readonly enableProximityConnect = input(true);
+  /**
+   * Card 6: drop a node near a compatible port → auto-link it.
+   *
+   * Unset (the default) follows the engine's `enableProximityConnect`, which is
+   * OFF — as in the JS canvas. It used to default to `true` here, so a pasted copy
+   * dragged next to its original auto-linked to it.
+   */
+  readonly enableProximityConnect = input<boolean | undefined>(undefined);
+
+  /** The input when set, else the engine's interaction config. */
+  private proximityConnectOn(): boolean {
+    const own = this.enableProximityConnect();
+    return own ?? this.eng?.getInteractionConfig().enableProximityConnect === true;
+  }
 
   /** Card 7: Tab/arrow focus, nudge, keyboard connect, ARIA announcements. */
   readonly enableKeyboardNavigation = input(true);
@@ -906,11 +983,15 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   readonly highlighterConfig = input<boolean | Partial<HighlighterConfig>>(true);
 
-  private readonly selectionTools = new SelectionToolsController();
+  // haloGap 20 (default 12): the halo column and the ✕ start clear of the right
+  // side port's grab radius and the NE resize corner, so neither covers them.
+  private readonly selectionTools = new SelectionToolsController({ haloGap: 20 });
   private readonly snapController = new SnapController();
   // Not the bare HighlighterController: built-in shape types (`rect`, the
   // default type of every node spec) are not flagged as unregistered.
   private readonly highlighterController = new CanvasHighlighterController();
+  /** A6: the frame / lane drag (JS canvas parity, `enableGroupDrag`). */
+  private readonly groupDrag = new GroupDragController();
   private readonly keyboardNav = new KeyboardNavigationController();
   private readonly inPlaceEditor = new InPlaceTextEditor();
 
@@ -1122,10 +1203,24 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly interactionHandler = inject(InteractionHandlerService);
   private readonly componentRenderer = inject(ComponentRendererService);
+
+  /**
+   * A1: what the canvas draws besides the built-in shapes — a template
+   * (`<ng-template grafloriaNode>`), a registered component, or a `custom: true`
+   * node on the HTML layer. Those types are not "unregistered".
+   */
+  private canDrawNode(node: NodeModel): boolean {
+    return (
+      node.getMetadata('useHTMLLayer') === true ||
+      untracked(() => this.nodeDefMap()).has(node.type) ||
+      this.componentRenderer.hasComponent(node.type)
+    );
+  }
   private readonly environmentInjector = inject(EnvironmentInjector);
   private readonly handleRegistry = inject(HandleRegistryService);
 
   constructor() {
+    this.highlighterController.canDraw = (node) => this.canDrawNode(node);
     // Outputs and model() signals are marked destroyed BEFORE ngOnDestroy runs,
     // and any later emit()/set() warns NG0953. Flip `destroyed` at that same
     // moment so everything that guards on it (queued frames, awaited layouts,
@@ -1295,10 +1390,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // AfterViewInit are visible right away.
       this.renderNow();
     }
+    this.emitReadyOnce();
   }
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    if (activeCanvas === this) activeCanvas = null;
+    this.hub.clear();
     this.presenceBinding?.dispose();
     this.presenceBinding = undefined;
     this.commentRepaintUnsub?.();
@@ -1518,6 +1616,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.lastSelectionKey = diagram ? this.selectionKey(diagram) : '';
 
     this.scheduleRender();
+    // An [engine] bound after the view: hand the instance over now.
+    if (this.viewReady) this.emitReadyOnce();
   }
 
   /** Drop every subscription/resource tied to the previously attached engine. */
@@ -1698,6 +1798,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** Stroke width that stays 1 CSS px in a world-space overlay. */
   get overlayStroke(): number {
     return 1 / Math.max(this.zoom(), 0.01);
+  }
+
+  /**
+   * A side resize band yields to a hovered port of its node (see the mouse ladder):
+   * its line stops catching the pointer so the port's own cursor shows.
+   */
+  sideHandleYields(handle: ToolHandle): boolean {
+    return sideHandleYieldsToPort(handle, this.interactionHandler.getState().hoveredPort);
   }
 
   /** Square side of a tool handle in world units (constant on screen). */
@@ -2053,7 +2161,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // Card 6: proximity connect — is a port of the dragged node close enough to a
     // compatible port to auto-link on drop? Highlight it so the user can see it
     // BEFORE releasing (React Flow's "drop near a node to connect" affordance).
-    if (this.enableProximityConnect() && primaryId) {
+    if (this.proximityConnectOn() && primaryId) {
       this.proximityCandidate = this.snapController.findProximityConnection(
         this.eng,
         primaryId
@@ -2120,7 +2228,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.clearGuides();
 
     const linkCommand =
-      candidate && this.enableProximityConnect()
+      candidate && this.proximityConnectOn()
         ? this.snapController.buildProximityLinkCommand(candidate)
         : null;
 
@@ -3091,9 +3199,33 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       'link:added',
       'link:removed',
       'link:changed',
+      // Groups paint too (frames, lanes, collapse proxies): without these an
+      // addGroup or a membership change stayed invisible until something else
+      // happened to paint — the JS canvas subscribes to the same four.
+      'group:added',
+      'group:removed',
+      'group:changed',
+      'groups:cleared',
     ] as const) {
       this.engineSubscriptions.push(diagram.on(event, onMutation));
     }
+
+    // The instance's events (`instance.on`), raised exactly where the JS canvas
+    // raises them: every node/link add or remove, `connect` on every added link.
+    const nodesChanged = () => this.hub.emit('nodes:change', { nodes: diagram.getNodes() });
+    const edgesChanged = () => this.hub.emit('edges:change', { edges: diagram.getLinks() });
+    for (const event of ['node:added', 'node:removed', 'nodes:cleared'] as const) {
+      this.engineSubscriptions.push(diagram.on(event, nodesChanged));
+    }
+    for (const event of ['link:removed', 'links:cleared'] as const) {
+      this.engineSubscriptions.push(diagram.on(event, edgesChanged));
+    }
+    this.engineSubscriptions.push(
+      diagram.on('link:added', ((link: LinkModel) => {
+        edgesChanged();
+        if (link) this.hub.emit('connect', { link });
+      }) as never)
+    );
 
     // (selectionChange): every event that can change WHAT is selected — the
     // model's selection API, a node/link state change (marquee, link click,
@@ -3151,10 +3283,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       return;
     }
     this.lastSelectionKey = key;
-    this.selectionChange.emit({
+    const change = {
       nodes: diagram.getSelectedNodes(),
       edges: diagram.getLinks().filter((link) => link.state === 'selected'),
-    });
+    };
+    this.selectionChange.emit(change);
+    this.hub.emit('selection:change', change);
   }
 
   /**
@@ -3541,7 +3675,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   private emitViewportChanged(): void {
     if (this.destroyed) return;
-    this.viewportChanged.emit(this.getViewBox());
+    const viewport = this.getViewBox();
+    this.viewportChanged.emit(viewport);
+    this.hub.emit('viewport:change', { viewport, zoom: this.zoom() });
   }
 
   // ==========================================================================
@@ -3765,6 +3901,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   @HostListener('pointerdown', ['$event'])
   onPointerDown(event: PointerEvent): void {
+    activeCanvas = this;
     this.sawPointerEvent = true;
     if (event.pointerType === 'touch') {
       // Claim the gesture: suppresses the compatibility mouse events a browser
@@ -3964,6 +4101,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * - Space + Left click: Pan
    */
   onMouseDown(event: MouseEvent): void {
+    activeCanvas = this;
     if (!this.eng) {
       return;
     }
@@ -4010,7 +4148,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // handle sitting over a port would start a connection instead of a resize.
       if (this.enableSelectionTools()) {
         const toolHit = this.selectionTools.hitTest(this.toolLayer, worldX, worldY);
-        if (toolHit) {
+        // The four SIDE resize handles own the whole border, where the side ports
+        // also sit. Same rule as the JS canvas (`sideHandleYieldsToPort`): a port of
+        // the SAME node under the pointer wins its grab radius and the press falls
+        // through to the connection rung below; the rest of the border resizes.
+        if (toolHit && !sideHandleYieldsToPort(toolHit, this.interactionHandler.getState().hoveredPort)) {
           event.preventDefault();
           this.onToolHandleDown(toolHit, worldX, worldY);
           this.cdr.markForCheck();
@@ -4057,6 +4199,30 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // Phase 3: Check for SVG port click
       if (interactionState.hoveredPort) {
         event.preventDefault();
+        // A selected link's endpoint handle is drawn ON the port it ends at: a
+        // press on it reconnects that end instead of starting a new wire from the
+        // port (the JS canvas's `reconnectableEndpointAt`). Without this a link
+        // selected through its spec — next to a selected node, so no link tool
+        // layer — could only be reconnected after a click on it.
+        const endpointHit = this.eng.getInteractionConfig().enableLinkReconnection
+          ? this.interactionHandler.getLinkHitAtPosition(worldX, worldY, this.eng)
+          : null;
+        if (
+          endpointHit &&
+          endpointHit.link.state === 'selected' &&
+          (endpointHit.part === 'source-endpoint' || endpointHit.part === 'target-endpoint')
+        ) {
+          this.interactionHandler.startLinkReconnection(
+            endpointHit.link,
+            endpointHit.part === 'source-endpoint' ? 'source' : 'target',
+            worldX,
+            worldY,
+            this.eng
+          );
+          this.renderDiagram();
+          this.cdr.markForCheck();
+          return;
+        }
         this.interactionHandler.startConnection(interactionState.hoveredPort, worldX, worldY, this.eng);
         this.scheduleRender();
         this.cdr.markForCheck();
@@ -4286,6 +4452,21 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         // With no modifier a bare click clears the selection (existing behavior);
         // with a modifier we keep it so Shift/Cmd/Alt-marquee can extend it.
         const hasModifier = event.shiftKey || event.ctrlKey || event.metaKey || event.altKey;
+
+        // A6: the empty part of a group frame (or a swimlane) drags the whole
+        // container and its members — the JS canvas's `enableGroupDrag` (on by
+        // default). Reached only when no node, link or port was under the pointer.
+        if (
+          !hasModifier &&
+          !diagram.isReadonly() &&
+          config.enableGroupDrag !== false &&
+          this.groupDrag.press(diagram, worldX, worldY, event.clientX, event.clientY)
+        ) {
+          event.preventDefault();
+          if (this.containerRef?.nativeElement) this.containerRef.nativeElement.style.cursor = 'move';
+          this.cdr.markForCheck();
+          return;
+        }
         if (!hasModifier) {
           diagram.clearSelection();
 
@@ -4335,6 +4516,18 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       );
       this.scheduleRender();
       this.cdr.markForCheck();
+      return;
+    }
+
+    // A6: an armed frame / lane drag owns every move until the release.
+    if (this.groupDrag.isActive()) {
+      const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+      const threshold = this.eng.getInteractionConfig().dragThreshold ?? 4;
+      if (this.groupDrag.move(diagram, worldX, worldY, event.clientX, event.clientY, threshold)) {
+        this.recalculateLinkPathsForNodes(diagram, diagram.getNodes().map((n) => n.id));
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
       return;
     }
 
@@ -4507,6 +4700,17 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         return;
       }
 
+      // A6: commit a frame / lane drag as ONE undo entry.
+      if (this.groupDrag.isActive() && this.eng) {
+        event.preventDefault();
+        const command = this.groupDrag.end(this.eng.getDiagram());
+        if (command) void this.executeCommand(command);
+        if (this.containerRef?.nativeElement) this.containerRef.nativeElement.style.cursor = 'default';
+        this.scheduleRender();
+        this.cdr.markForCheck();
+        return;
+      }
+
       // Phase 2.3b: End control point drag if in progress
       const interactionState = this.interactionHandler.getState();
       if (interactionState.isDraggingControlPoint) {
@@ -4520,7 +4724,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // Phase 2.3a: End waypoint drag if in progress
       if (interactionState.isDraggingWaypoint) {
         event.preventDefault();
-        this.interactionHandler.endWaypointDrag();
+        // With the engine: the gesture is committed as ONE undo step (a press that
+        // inserted a bend, or a drag of one) — without it nothing reached history.
+        this.interactionHandler.endWaypointDrag(this.eng);
         this.scheduleRender();
         this.cdr.markForCheck();
         return;
@@ -4594,9 +4800,22 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   onMouseLeave(): void {
     this.isPanning = false;
+    // A6: the pointer left mid frame-drag → commit what was moved (the JS canvas does the same).
+    if (this.groupDrag.isActive()) {
+      const command = this.groupDrag.end(this.eng?.getDiagram());
+      if (command) void this.executeCommand(command);
+    }
 
-    // wave4/interaction: abandon an in-flight tool gesture (restoring the model)
-    // so a resize/rotate can't "stick" when the pointer leaves the canvas.
+    // A RESIZE commits what is on screen when the pointer leaves (the JS canvas
+    // does the same): the node already looks resized, and abandoning the gesture
+    // snapped it back to its start size under the user — a resize past the max
+    // usually runs the pointer off the canvas before the release.
+    if (this.selectionTools.activeGesture() === 'resize') {
+      this.endToolGesture();
+    }
+
+    // wave4/interaction: abandon any other in-flight tool gesture (restoring the
+    // model) so a rotate/vertex drag can't "stick" when the pointer leaves the canvas.
     if (this.selectionTools.isActive()) {
       this.selectionTools.cancelGesture(this.eng);
       this.pendingVertexHandle = null;
@@ -4905,6 +5124,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * - Ctrl/⌘+X / +C / +V cut / copy / paste-at-cursor
    * - Ctrl/⌘ +'=' / '-' / '0' zoom in / out / reset; Shift+1 fit, Shift+2 fit selection
    */
+  /** Focus moving into this canvas makes it the one keys act on. */
+  @HostListener('focusin')
+  onFocusIn(): void {
+    activeCanvas = this;
+  }
+
   @HostListener('window:keydown', ['$event'])
   onKeyDown(event: KeyboardEvent): void {
     // Handle Space key for pan mode cursor
@@ -4914,6 +5139,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       if (this.containerRef?.nativeElement) {
         this.containerRef.nativeElement.style.cursor = 'grab';
       }
+    }
+
+    // Another canvas on the page is the one being worked in: its keys, not ours.
+    if (activeCanvas && activeCanvas !== this) {
+      return;
     }
 
     if (!this.eng) {
@@ -5392,14 +5622,19 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       return false;
     }
 
-    // Check port visibility (defaultVisibility or port-specific visibility)
-    const defaultVisibility = portsConfig?.defaultVisibility || 'on-hover';
-    const portVisibility = port.getMetadata('visibility') || defaultVisibility;
+    // Visibility: the port's own (metadata / rendering config), then the node
+    // template's default, then the node's metadata and the GLOBAL interaction
+    // config — the chain the SVG renderer resolves. The global config used to be
+    // ignored here, so "Port visibility: Hidden" left every custom node's
+    // handles on screen.
+    const own = port.getMetadata('visibility') || portsConfig?.defaultVisibility;
+    const global = String(this.eng?.getInteractionConfig().portVisibility ?? 'on-hover').toLowerCase();
+    const visibility = String(own || port.getEffectiveVisibility(node, global as never)).toLowerCase();
 
-    // For now, always show ports that are explicitly enabled
-    // TODO: Implement on-hover visibility when interaction system is enhanced
-    return portVisibility === 'always' || portVisibility === 'on-hover';
+    // 'on-hover' handles stay drawn: the HTML layer has no hover reveal yet.
+    return visibility === 'always' || visibility === 'on-hover';
   }
+
 
   /**
    * Get port position CSS value for top or left

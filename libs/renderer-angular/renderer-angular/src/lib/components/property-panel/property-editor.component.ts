@@ -81,7 +81,9 @@ import type { PropertyDefinition } from '@grafloria/renderer';
         (change)="onSelectChange($event)"
         class="property-select"
       >
-        <option *ngFor="let option of property.validation?.enum || []" [value]="option">
+        <!-- [selected] per option: the select's own [value] is applied before the
+             options exist, so on its own the browser kept the first option. -->
+        <option *ngFor="let option of property.validation?.enum || []" [value]="option" [selected]="option === value">
           {{ option }}
         </option>
       </select>
