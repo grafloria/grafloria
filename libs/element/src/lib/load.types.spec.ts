@@ -63,6 +63,21 @@ describe('render(fromDocument(json), host) type-checks', () => {
     expect(instance.getModel().getGroup('main')).toBeDefined();
   });
 
+  it('reopens what the model serializes, with no cast', () => {
+    const original = render(BOARD(), sizedHost());
+    // Both serialized forms the engine hands out are one type, and both load.
+    const fromModel = render(fromDocument(original.getModel().serialize()), sizedHost());
+    const fromSerializer = render(
+      fromDocument(new DiagramSerializer().serialize(original.getModel())),
+      sizedHost()
+    );
+    fromModel.renderNow();
+    fromSerializer.renderNow();
+    for (const api of [fromModel, fromSerializer]) {
+      expect(api.getModel().getNodes().map((n) => n.id).sort()).toEqual(['k1', 'k2']);
+    }
+  });
+
   it('keeps the renderOptions a fluid board was saved with', () => {
     const original = render(BOARD(), sizedHost());
     // The authoring path pins the zoom of a fluid board…

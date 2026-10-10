@@ -72,7 +72,7 @@ export interface GenerateWorkerRequest extends DSLWorkerRequest {
   type: 'generate';
   payload: {
     /** Serialized diagram */
-    diagram: SerializedDiagram;
+    diagram: WorkerSerializedDiagram;
     /** Generator options */
     options?: {
       format?: boolean;
@@ -110,7 +110,7 @@ export interface ParseResultWorkerResponse extends DSLWorkerResponse {
   type: 'result';
   payload: {
     /** Serialized diagram model */
-    diagram: SerializedDiagram;
+    diagram: WorkerSerializedDiagram;
     /** Parse statistics */
     stats: {
       nodeCount: number;
@@ -161,7 +161,7 @@ export interface ErrorWorkerResponse extends DSLWorkerResponse {
 /**
  * Serialized diagram for worker transfer
  */
-export interface SerializedDiagram {
+export interface WorkerSerializedDiagram {
   id: string;
   name: string;
   nodes: SerializedNode[];
@@ -268,7 +268,7 @@ export interface DSLWorkerOptions {
 /**
  * Serialize DiagramModel for transfer to worker
  */
-export function serializeDiagram(diagram: DiagramModel): SerializedDiagram {
+export function serializeDiagram(diagram: DiagramModel): WorkerSerializedDiagram {
   return {
     id: diagram.id,
     name: diagram.name,
@@ -298,7 +298,7 @@ export function serializeDiagram(diagram: DiagramModel): SerializedDiagram {
 /**
  * Deserialize diagram from worker result
  */
-export function deserializeDiagram(serialized: SerializedDiagram): DiagramModel {
+export function deserializeDiagram(serialized: WorkerSerializedDiagram): DiagramModel {
   const diagram = new DiagramModel(serialized.name);
   // Note: Can't set id as it's readonly - would need to modify constructor or use Object.defineProperty
 

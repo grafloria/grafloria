@@ -9,9 +9,9 @@ import { CommandManager } from '../commands/CommandManager';
 import { PluginManager } from '../plugins/PluginManager';
 import { TypeRegistry } from '../validation/TypeRegistry';
 import { ValidationEngine } from '../validation/ValidationEngine';
-import { DiagramSerializer, SerializedDiagram } from '../serialization/Serializer';
+import { DiagramSerializer, type SerializedDiagramData } from '../serialization/Serializer';
 import { PerformanceMonitor, PerformanceReport } from '../performance/PerformanceMonitor';
-import { DiagramModel } from '../models/DiagramModel';
+import { DiagramModel, type SerializedDiagram } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { PortModel } from '../models/PortModel';
@@ -1360,7 +1360,7 @@ export class DiagramEngine {
   /**
    * Serialize diagram (with mode)
    */
-  serialize(): SerializedDiagram | null {
+  serialize(): SerializedDiagramData | null {
     if (!this.diagram) {
       return null;
     }
@@ -1374,12 +1374,12 @@ export class DiagramEngine {
   /**
    * Deserialize diagram (with mode)
    */
-  deserialize(data: SerializedDiagram, options?: import('../models/DiagramModel').DiagramLoadOptions): DiagramModel {
+  deserialize(data: SerializedDiagramData | SerializedDiagram, options?: import('../models/DiagramModel').DiagramLoadOptions): DiagramModel {
     const diagram = this.serializer.deserialize(data, options);
     this.setDiagram(diagram);
 
     // Restore mode if present
-    this.modeManager.restore(data.mode);
+    this.modeManager.restore('mode' in data ? data.mode : undefined);
 
     return diagram;
   }
@@ -1388,7 +1388,7 @@ export class DiagramEngine {
    * Load diagram from JSON (with mode)
    */
   loadFromJSON(
-    json: string | SerializedDiagram,
+    json: string | SerializedDiagramData | SerializedDiagram,
     options?: import('../models/DiagramModel').DiagramLoadOptions
   ): DiagramModel {
     const data = typeof json === 'string' ? JSON.parse(json) : json;

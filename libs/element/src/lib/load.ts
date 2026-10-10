@@ -68,6 +68,7 @@ import type {
   GroupModel,
   LinkModel,
   NodeModel,
+  SerializedDiagram,
   SerializedDiagramData,
   StrokeModel,
 } from '@grafloria/engine';
@@ -89,8 +90,12 @@ import {
   type DashboardViewSpec,
   type DashboardWidgetSpec, attachTabsRuntime } from './dashboard-kit/dashboard';
 
-/** Anything `DiagramSerializer.deserialize()` accepts, or the JSON string of it. */
+/**
+ * Anything `DiagramSerializer.deserialize()` accepts, or the JSON string of it:
+ * `DiagramModel.serialize()`'s output, the serializer's flat form, or the envelope.
+ */
 export type SavedDiagram =
+  | SerializedDiagram
   | SerializedDiagramData
   | DiagramDocumentEnvelope
   | Record<string, unknown>
@@ -226,7 +231,7 @@ export function fromDocument(
   options: FromDocumentOptions = {}
 ): LoadedDiagramSpec {
   const parsed = typeof document === 'string' ? parseDocument(document) : document;
-  const model = new DiagramSerializer().deserialize(parsed as never);
+  const model = new DiagramSerializer().deserialize(parsed as SerializedDiagram | DiagramDocumentEnvelope);
   const nodes = model.getNodes();
   const groups = model.getGroups();
   const boards = new Map<string, DashboardGridHandle>();

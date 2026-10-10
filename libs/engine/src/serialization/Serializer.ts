@@ -14,8 +14,12 @@ import {
   type WrapOptions,
 } from './DocumentEnvelope';
 
-// Serializer's output type with string version for format version
-export interface SerializedDiagram extends Omit<DiagramSerializedData, 'version'> {
+/**
+ * The serializer's flat form: `DiagramModel.serialize()`'s `SerializedDiagram`
+ * with `version` replaced by the serializer's format version (a string) and the
+ * diagram's own counter moved to `diagramVersion`.
+ */
+export interface SerializedDiagramData extends Omit<DiagramSerializedData, 'version'> {
   version: string; // Serializer format version
   diagramVersion?: number; // Original diagram version
   mode?: DiagramMode; // Current diagram mode
@@ -27,7 +31,7 @@ export class DiagramSerializer {
   /**
    * Serialize diagram to plain object
    */
-  serialize(diagram: DiagramModel): SerializedDiagram {
+  serialize(diagram: DiagramModel): SerializedDiagramData {
     const serialized = diagram.serialize();
     // Override version with serializer format version
     return {
@@ -53,7 +57,7 @@ export class DiagramSerializer {
    * load silently).
    */
   deserialize(
-    data: SerializedDiagram | DiagramDocumentEnvelope,
+    data: SerializedDiagramData | DiagramSerializedData | DiagramDocumentEnvelope,
     options?: DiagramLoadOptions
   ): DiagramModel {
     if (isDiagramDocumentEnvelope(data)) {
@@ -63,7 +67,7 @@ export class DiagramSerializer {
     // Legacy flat form: convert back to diagram format
     const diagramData: DiagramSerializedData = {
       ...data,
-      version: data.diagramVersion || Number(data.version) || 1,
+      version: ('diagramVersion' in data ? data.diagramVersion : undefined) || Number(data.version) || 1,
     };
     // Use static fromJSON method (migrations + optional validation run there)
     return DiagramModel.fromJSON(diagramData, options);

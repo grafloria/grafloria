@@ -19,7 +19,7 @@ import {
   ErrorWorkerResponse,
   DSLWorkerOptions,
   ProgressCallback,
-  SerializedDiagram,
+  WorkerSerializedDiagram as SerializedDiagram,
   FormatInfo,
 } from './dsl-worker.interface';
 import { DiagramModel } from '../../models/DiagramModel';

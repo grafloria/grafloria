@@ -45,7 +45,7 @@ export * from './engine';
 
 // Serialization
 export { DiagramSerializer } from './serialization/Serializer';
-export type { SerializedDiagram as SerializedDiagramData } from './serialization/Serializer';
+export type { SerializedDiagramData } from './serialization/Serializer';
 export {
   DIAGRAM_SCHEMA_VERSION,
   registerDiagramMigration,
