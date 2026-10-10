@@ -4199,6 +4199,30 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // Phase 3: Check for SVG port click
       if (interactionState.hoveredPort) {
         event.preventDefault();
+        // A selected link's endpoint handle is drawn ON the port it ends at: a
+        // press on it reconnects that end instead of starting a new wire from the
+        // port (the JS canvas's `reconnectableEndpointAt`). Without this a link
+        // selected through its spec — next to a selected node, so no link tool
+        // layer — could only be reconnected after a click on it.
+        const endpointHit = this.eng.getInteractionConfig().enableLinkReconnection
+          ? this.interactionHandler.getLinkHitAtPosition(worldX, worldY, this.eng)
+          : null;
+        if (
+          endpointHit &&
+          endpointHit.link.state === 'selected' &&
+          (endpointHit.part === 'source-endpoint' || endpointHit.part === 'target-endpoint')
+        ) {
+          this.interactionHandler.startLinkReconnection(
+            endpointHit.link,
+            endpointHit.part === 'source-endpoint' ? 'source' : 'target',
+            worldX,
+            worldY,
+            this.eng
+          );
+          this.renderDiagram();
+          this.cdr.markForCheck();
+          return;
+        }
         this.interactionHandler.startConnection(interactionState.hoveredPort, worldX, worldY, this.eng);
         this.scheduleRender();
         this.cdr.markForCheck();
