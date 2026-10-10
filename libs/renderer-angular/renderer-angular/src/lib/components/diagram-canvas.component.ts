@@ -68,6 +68,7 @@ import {
   containingGroup,
   poolOfLane,
   laneAtPoint,
+  type HistoryOwner,
 } from '@grafloria/engine';
 
 /** The uniform collab contract every Grafloria wrapper shares. */
@@ -3854,6 +3855,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.touchCameraSyncIn();
     switch (phase) {
       case 'down':
+        this.holdPress();
         touch.onPointerDown(event);
         break;
       case 'move':
@@ -3861,9 +3863,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         break;
       case 'up':
         touch.onPointerUp(event);
+        if ((this.touchGestures?.activePointerCount ?? 0) === 0) this.releasePress();
         break;
       case 'cancel':
         touch.onPointerCancel(event);
+        if ((this.touchGestures?.activePointerCount ?? 0) === 0) this.releasePress();
         break;
     }
     this.touchCameraSyncOut();
@@ -4105,6 +4109,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     if (!this.eng) {
       return;
     }
+    this.holdPress();
 
     const diagram = this.eng.getDiagram();
     if (!diagram) {
@@ -4673,6 +4678,33 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * Handle mouse up to stop panning, node dragging, and connections (Phase 0.5 - Option B + Option 1 + Phase 3)
    */
   onMouseUp(event: MouseEvent): void {
+    try {
+      this.handleMouseUp(event);
+    } finally {
+      this.releasePress();
+    }
+  }
+
+  /**
+   * Under a history owner (a sync Replica — see `DiagramModel.setHistoryOwner`) a
+   * press is ONE undo step: a drag is a press, many moves and a release, and every
+   * op it makes must come back with one undo — the JS canvas follows the same rule.
+   */
+  private pressStepOwner: HistoryOwner | null = null;
+
+  private holdPress(): void {
+    if (this.pressStepOwner) return;
+    this.pressStepOwner = this.eng?.getDiagram()?.getHistoryOwner?.() ?? null;
+    this.pressStepOwner?.beginStep();
+  }
+
+  private releasePress(): void {
+    const owner = this.pressStepOwner;
+    this.pressStepOwner = null;
+    owner?.endStep();
+  }
+
+  private handleMouseUp(event: MouseEvent): void {
     if (event.button === 1 || event.button === 0) {
       // Hand the gesture's end to the registered tool that claimed it, then
       // release it — in a `finally`, so a throwing tool cannot wedge the canvas
@@ -4799,6 +4831,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * Handle mouse leave to stop panning and node dragging (Phase 0.5 - Option B + Option 1)
    */
   onMouseLeave(): void {
+    // The release may never reach a canvas the pointer has left.
+    queueMicrotask(() => this.releasePress());
     this.isPanning = false;
     // A6: the pointer left mid frame-drag → commit what was moved (the JS canvas does the same).
     if (this.groupDrag.isActive()) {
