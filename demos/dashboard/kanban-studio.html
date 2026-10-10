@@ -442,7 +442,10 @@ function focusDraft() {
     if (e.key === 'Enter') { e.preventDefault(); commitDraft(); }
     if (e.key === 'Escape') { e.stopPropagation(); cancelDraft(); }
   };
-  ta.onblur = () => setTimeout(() => { if (draft && document.activeElement !== ta) finishDraft(); }, 150);
+  // Only THIS textarea's draft: Enter replaces the textarea and opens a fresh draft,
+  // and the old one's blur timer used to finish (cancel) that new, empty composer.
+  const mine = draft.id;
+  ta.onblur = () => setTimeout(() => { if (draft?.id === mine && document.activeElement !== ta) finishDraft(); }, 150);
 }
 function draftText() { return document.querySelector(`.grafloria-node-host[data-node-id="${draft?.id}"] .ks-draft`)?.value.trim() ?? ''; }
 /** Enter / "Add card": the draft becomes a card, and a fresh draft opens under it. */
@@ -781,6 +784,10 @@ defineDemo({
     await frames();
     checkEqual(cardsIn('done').length, doneBefore + 1, 'Enter adds the card');
     check([...container.querySelectorAll('.ks-title')].some((e) => e.textContent === 'Ship the launch email'), 'with its title');
+    // Past the old textarea's 150 ms blur timer: on a slow machine (CI) that timer
+    // used to close the NEW composer, so judge it after the timer, not before.
+    await new Promise((r) => setTimeout(r, 300));
+    await frames();
     const ta2 = container.querySelector('.ks-draft');
     check(!!ta2, 'and the composer stays open for the next card');
     ta2.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
