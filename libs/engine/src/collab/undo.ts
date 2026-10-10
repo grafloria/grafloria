@@ -121,6 +121,8 @@ export class UndoStack {
 
   /** Open transaction: ops land here instead of becoming one entry each. */
   private txn: Record[] | null = null;
+  /** Open begin() calls; the step closes when this returns to 0. */
+  private openSteps = 0;
 
   /** True while we are applying an undo/redo, so the ops it emits are not recorded anew. */
   private replaying = false;
@@ -187,15 +189,31 @@ export class UndoStack {
    * is on the wire, and two peers may group differently without diverging.
    */
   transact<T>(fn: () => T): T {
-    if (this.txn) return fn(); // already in one — flatten, don't nest
-    const records: Record[] = [];
-    this.txn = records;
+    this.begin();
     try {
       return fn();
     } finally {
-      this.txn = null;
-      if (records.length > 0) this.undoable.push({ records });
+      this.end();
     }
+  }
+
+  /**
+   * Open a step that spans events — a canvas drag is a press, many moves and a release, so
+   * it cannot be one synchronous `transact`. Pairs with {@link end}; nested pairs flatten
+   * into the outermost, exactly as nested `transact` calls do.
+   */
+  begin(): void {
+    if (this.openSteps++ > 0) return;
+    this.txn = [];
+  }
+
+  /** Close the step {@link begin} opened. Unpaired calls are ignored. */
+  end(): void {
+    if (this.openSteps === 0) return;
+    if (--this.openSteps > 0) return;
+    const records = this.txn ?? [];
+    this.txn = null;
+    if (records.length > 0) this.undoable.push({ records });
   }
 
   /**

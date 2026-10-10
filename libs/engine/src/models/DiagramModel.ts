@@ -2,6 +2,7 @@ import { debugLog } from '../util/debug';
 // DiagramModel - Root container for all diagram entities
 
 import { DiagramEntity, bumpMutationEpoch } from './DiagramEntity';
+import type { HistoryOwner } from '../commands/history-owner';
 import { ReadonlyLock } from './readonly-lock'; // Wave 9 — Card 7
 import { NodeModel, SerializedNode, type DetachedParentAnchor } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
@@ -121,6 +122,7 @@ export interface DiagramLoadOptions {
 }
 
 export class DiagramModel extends DiagramEntity {
+  private historyOwner: HistoryOwner | null = null;
   name: string = 'Untitled Diagram';
   nodes: Map<string, NodeModel> = new Map();
   links: Map<string, LinkModel> = new Map();
@@ -443,6 +445,19 @@ export class DiagramModel extends DiagramEntity {
     if (this.readonlyLock.isReadonly() === value) return;
     this.readonlyLock.setReadonly(value);
     this.emitOrQueue('readonly:change', value);
+  }
+
+  /**
+   * Hand undo to an owner other than the engine's command stack — a collaborative Replica
+   * does this, so undo is per actor. Pass null to give it back. See commands/history-owner.ts.
+   */
+  setHistoryOwner(owner: HistoryOwner | null): void {
+    this.historyOwner = owner;
+  }
+
+  /** The owner of undo set by {@link setHistoryOwner}, or null for the engine's own stack. */
+  getHistoryOwner(): HistoryOwner | null {
+    return this.historyOwner;
   }
 
   /** True when a document mutation must be refused right now. */

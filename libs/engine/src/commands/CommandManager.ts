@@ -1,5 +1,6 @@
 // CommandManager - Manages command execution, undo, and redo
 
+import type { HistoryOwner } from './history-owner';
 import { Command, CommandContext } from './Command';
 import { BatchCommand } from './composite/BatchCommand';
 import { EventBus } from '../events/EventBus';
@@ -51,9 +52,31 @@ export class CommandManager {
   }
 
   /**
-   * Execute a command
+   * Who owns undo when it isn't this stack — a collaborative Replica (see
+   * history-owner.ts). `context.diagram` is typed `any`, hence the probe.
+   */
+  private historyOwner(): HistoryOwner | null {
+    return this.context?.diagram?.getHistoryOwner?.() ?? null;
+  }
+
+  /**
+   * Execute a command. Under a history owner the whole command — every op it
+   * makes, across its awaits — is ONE step on the owner's stack. The step opens
+   * synchronously, before the first await, so a caller's enclosing step (a canvas
+   * press) still contains it.
    */
   async execute(command: Command): Promise<void> {
+    const owner = this.historyOwner();
+    if (!owner) return this.executeUnframed(command);
+    owner.beginStep();
+    try {
+      await this.executeUnframed(command);
+    } finally {
+      owner.endStep();
+    }
+  }
+
+  private async executeUnframed(command: Command): Promise<void> {
     // Refused BEFORE canExecute so a command cannot mutate anything in its own
     // permission check, and before the merge path below — a merged command
     // re-executes, which would otherwise be a hole straight through the lock.
@@ -206,6 +229,13 @@ export class CommandManager {
       return;
     }
 
+    // Under a history owner, undo is ITS: per actor, never a peer's edit.
+    const owner = this.historyOwner();
+    if (owner) {
+      owner.undo();
+      return;
+    }
+
     if (!this.canUndo()) {
       return;
     }
@@ -247,6 +277,12 @@ export class CommandManager {
   async redo(): Promise<void> {
     if (this.isReadonly()) {
       this.eventBus.emit('command:refused', { reason: 'readonly', phase: 'redo' });
+      return;
+    }
+
+    const owner = this.historyOwner();
+    if (owner) {
+      owner.redo();
       return;
     }
 
@@ -345,6 +381,8 @@ export class CommandManager {
    * Can undo
    */
   canUndo(): boolean {
+    const owner = this.historyOwner();
+    if (owner) return owner.canUndo;
     return this.currentIndex >= 0;
   }
 
@@ -352,6 +390,8 @@ export class CommandManager {
    * Can redo
    */
   canRedo(): boolean {
+    const owner = this.historyOwner();
+    if (owner) return owner.canRedo;
     return this.currentIndex < this.history.length - 1;
   }
 

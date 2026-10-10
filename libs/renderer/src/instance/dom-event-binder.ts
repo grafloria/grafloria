@@ -4,7 +4,7 @@ import {
   MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService,
   memberConfinement, clampBoxInto, containingGroup, poolOfLane, laneAtPoint,
 } from '@grafloria/engine';
-import type { Command } from '@grafloria/engine';
+import type { Command, HistoryOwner } from '@grafloria/engine';
 import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
 import type { CanvasRect, ViewportController } from '../viewport/viewport-controller';
@@ -417,17 +417,29 @@ export class DomEventBinder {
     }
   }
 
-  /** A press opens a batch that lasts until its release (or the pointer leaves). */
+  /** The history owner (a sync Replica) whose step the held press opened, if any. */
+  private pressStepOwner: HistoryOwner | null = null;
+
+  /**
+   * A press opens a batch that lasts until its release (or the pointer leaves).
+   * Under a history owner it is also ONE undo step: a drag is a press, many moves
+   * and a release, and every op it makes must come back with one Ctrl+Z.
+   */
   private holdPress(): void {
     if (this.pressHeld) return;
     this.pressHeld = true;
     this.host.beginSelectionBatch?.();
+    this.pressStepOwner = this.engine()?.getDiagram()?.getHistoryOwner?.() ?? null;
+    this.pressStepOwner?.beginStep();
   }
 
   private releasePress(): void {
     if (!this.pressHeld) return;
     this.pressHeld = false;
     this.host.endSelectionBatch?.();
+    const owner = this.pressStepOwner;
+    this.pressStepOwner = null;
+    owner?.endStep();
   }
 
   constructor(
