@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/dashboard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "./src/index.js",
   "module": "./src/index.js",
@@ -12,7 +12,7 @@
   "repository": { "type": "git", "url": "git+https://github.com/grafloria/grafloria.git", "directory": "libs/dashboard" },
   "bugs": { "url": "https://github.com/grafloria/grafloria/issues" },
   "keywords": ["dashboard", "dashboard-layout", "grid-layout", "widgets", "draggable", "resizable", "drag-and-drop", "gridstack-alternative", "react-grid-layout", "undo", "splitter", "angular", "react", "vue"],
-  "peerDependencies": { "@grafloria/element": "^0.5.2", "@grafloria/engine": "^0.4.2", "@grafloria/renderer": "^0.5.5" },
+  "peerDependencies": { "@grafloria/element": "^0.6.0", "@grafloria/engine": "^0.5.0", "@grafloria/renderer": "^0.6.0" },
   "publishConfig": { "access": "public" },
   "files": ["src/**/*.js", "src/**/*.d.ts"],
   "sideEffects": false
