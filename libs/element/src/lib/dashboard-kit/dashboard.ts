@@ -397,8 +397,23 @@ export interface DashboardSpec {
  */
 export type DashboardSnapshot = Omit<
   DashboardOptions,
-  'renderWidget' | 'onLayoutChange' | 'views'
+  'renderWidget' | 'onLayoutChange' | 'views' | 'widgets'
 > & { views: DashboardViewSpec[] };
+
+/**
+ * Options minus every function and every undefined value, one level into plain
+ * objects (`binder`, `responsive`): what a snapshot may carry.
+ */
+function dataOnly<T extends object>(o: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (v === undefined || typeof v === 'function') continue;
+    if (v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype) {
+      out[k] = dataOnly(v as Record<string, unknown>);
+    } else out[k] = v;
+  }
+  return out as T;
+}
 
 /** The typed façade — the `erTable`/`umlClass` equivalent for dashboards. */
 export interface DashboardHandle {
@@ -2422,10 +2437,16 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // `sizing` and `float` are the two a user changes from the toolbar, and
       // reading them from the authored literal would restore the board they
       // started with rather than the one they are looking at.
+      // A snapshot is DATA: the authored `widgets` shorthand is stale next to
+      // the live `views` (and dashboard() prefers `views`), and callbacks —
+      // renderWidget, onLayoutChange, canDrop, onSelect… — are the caller's to
+      // pass again, not state to store. Leaving them in made a snapshot that
+      // could not be saved as JSON and carried a widget list that lied.
+      const { widgets: _authored, views: _views, ...rest } = ctx.optionsBase;
+      void _authored;
+      void _views;
       return {
-        ...ctx.optionsBase,
-        renderWidget: undefined,
-        onLayoutChange: undefined,
+        ...dataOnly(rest),
         columns: ctx.columns,
         gap: ctx.gap,
         rowHeight: ctx.rowHeight,

@@ -374,6 +374,41 @@ describe('the typed handles (the erTable/umlClass equivalent)', () => {
     expect(h2.widget('c')!.cell).toEqual(handle.widget('c')!.cell);
   });
 
+  it('toJSON() of a board declared with `widgets` is DATA: no stale `widgets`, no callbacks', () => {
+    // The `widgets` shorthand used to come back verbatim (the AUTHORED list,
+    // not the live one) next to the live `views`, with renderWidget/onLayoutChange
+    // as undefined keys and every other callback option (canDrop, onSelect…)
+    // copied in — a snapshot a reader could not store as JSON or trust.
+    const spec = dashboard({
+      widgets: [
+        { id: 'a', kind: 'kpi', span: 6, rows: 1 },
+        { id: 'b', kind: 'kpi', span: 6, rows: 1 },
+      ],
+      canDrop: () => true,
+      onSelect: () => undefined,
+      renderCaption: () => undefined,
+      onLayoutChange: () => undefined,
+      binder: { columns: 12, onCommit: () => undefined } as never,
+    });
+    const { handle } = mount(spec);
+    handle.addWidget({ id: 'c', kind: 'kpi', span: 6, rows: 1 });
+    const snap = handle.toJSON() as Record<string, unknown>;
+    expect('widgets' in snap).toBe(false);
+    const fnPaths: string[] = [];
+    const walk = (v: unknown, path: string): void => {
+      if (typeof v === 'function') fnPaths.push(path);
+      else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, `${path}.${k}`);
+    };
+    walk(snap, 'snap');
+    expect(fnPaths).toEqual([]);
+    expect(Object.entries(snap).filter(([, v]) => v === undefined).map(([k]) => k)).toEqual([]);
+    expect(JSON.parse(JSON.stringify(snap))).toEqual(snap);
+    expect(handle.toJSON().views.map((v) => `${v.id}:${v.widgets.map((w) => w.id).join(',')}`)).toEqual(['main:a,b,c']);
+    // …and it is still dashboard() input: the restored board holds all three.
+    const { handle: h2 } = mount(dashboard({ ...handle.toJSON() }));
+    expect(h2.widgetsOf().map((w) => w.id).sort()).toEqual(['a', 'b', 'c']);
+  });
+
   it('onLayoutChange is wired to committed gestures', () => {
     const calls: string[] = [];
     const spec = dashboard({
