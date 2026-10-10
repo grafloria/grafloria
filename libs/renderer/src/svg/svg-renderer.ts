@@ -7296,20 +7296,24 @@ export class SVGRenderer implements IRenderer {
     // (visible on the themes-and-tokens MUI palette). The literal stays as the
     // var() fallback; markers now paint via style, which can hold var().
     const arrowLiteral = linkLiterals.stroke || this.theme.colors.link.default;
-    const arrowHeadStyle = link.style.arrowHead || {
-      type: 'arrow',
-      size: 10,
-      filled: true,
-      // The line's OWN colour when it has one (its style, a classDef, a state,
-      // the selection's ink): the theme variable first meant a green line kept
-      // a grey head, because `var(--link-stroke, green)` always resolves the
-      // variable. The variable only when the colour IS the theme's.
-      color: this.config.useCSSMode && !linkLiterals.stroke
-        ? `var(${THEME_VARS['link.stroke'].cssVar}, ${arrowLiteral})`
-        : arrowLiteral,
-    };
+    // The line's OWN colour when it has one (its style, a classDef, a state,
+    // the selection's ink): the theme variable first meant a green line kept
+    // a grey head, because `var(--link-stroke, green)` always resolves the
+    // variable. The variable only when the colour IS the theme's.
+    const lineColour = this.config.useCSSMode && !linkLiterals.stroke
+      ? `var(${THEME_VARS['link.stroke'].cssVar}, ${arrowLiteral})`
+      : arrowLiteral;
+    // A marker the link brings itself (the ER and UML kits do, for their
+    // notations) without a colour of its own takes its LINE's colour too —
+    // ArrowRenderer's own default is black, which drew black crow's feet on
+    // the ER kit's #64748b lines.
+    const withLineColour = <T extends { color?: string }>(marker: T): T =>
+      marker.color ? marker : { ...marker, color: lineColour };
+    const arrowHeadStyle = link.style.arrowHead
+      ? withLineColour(link.style.arrowHead)
+      : { type: 'arrow', size: 10, filled: true, color: lineColour };
 
-    const arrowTailStyle = link.style.arrowTail;
+    const arrowTailStyle = link.style.arrowTail && withLineColour(link.style.arrowTail);
 
     // Calculate arrow position and angle using unified utility.
     // Each marker shape has its own tip offset (triangle tip at +size, circles
