@@ -1771,6 +1771,11 @@ export function createDiagram(
       emit('viewport:change', state);
     })
   );
+  // An interaction-config change (port visibility, handles, …) is painted on the
+  // next frame. The renderer drops its cache and invalidates the frame on this
+  // event, but nothing asked for a frame: `setInteractionConfig()` after the canvas
+  // had settled showed nothing until an unrelated repaint. Angular's canvas does this.
+  unsubs.push(engine.eventBus.on('config:interaction-changed', () => scheduler.schedule()));
 
   // -- resize -----------------------------------------------------------------
   /** An adopted server root and SVG layer go back to the live styles (fill the container). */
