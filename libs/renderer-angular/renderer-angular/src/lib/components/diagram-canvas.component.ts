@@ -3066,7 +3066,16 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     // Render SVG content to svgLayer div (Phase 1: changed from containerRef)
     if (this.svgLayerRef) {
-      this.vnodeRenderer.render(vnode, this.svgLayerRef.nativeElement);
+      const layer = this.svgLayerRef.nativeElement;
+      this.vnodeRenderer.render(vnode, layer);
+      // N4: the drawn SVG is the hit target, as on the JS canvas — a host's own
+      // listener (a context menu, a tooltip) finds the node through
+      // `event.target.closest('[data-node-id]')`. The layer is pointer-events:
+      // none; the stylesheet rule meant to re-enable its <svg> never matched (view
+      // encapsulation scopes it to template elements, and this <svg> is created
+      // imperatively), so every event used to target the container.
+      const svg = layer.firstElementChild as SVGElement | null;
+      if (svg && svg.style.pointerEvents !== 'all') svg.style.pointerEvents = 'all';
     }
 
     // Phase 1: Render HTML nodes to htmlLayer div
