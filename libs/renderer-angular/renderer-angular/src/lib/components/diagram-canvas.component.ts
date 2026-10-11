@@ -520,10 +520,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private createPluginsCamera(): ViewportController {
     const cam = new ViewportController({});
     const v = this.viewport();
-    if (v) cam.setViewport(v);
+    const { width, height } = this.canvasPixelSize();
+    if (v) cam.setViewport({ x: v.x, y: v.y, width, height });
     cam.setZoom(this.zoom());
-    const rect = this.containerRef.nativeElement.getBoundingClientRect();
-    cam.setCanvasSize(rect.width || 800, rect.height || 600);
+    cam.setCanvasSize(width, height);
     // plugin → canvas: minimap clicks and control buttons mutate the camera;
     // reflect into the two-way model signals so the SVG viewBox follows.
     cam.onChange((state) => {
@@ -793,6 +793,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** The canvas's instance (see `(ready)`). It follows an `[engine]` swap. */
   instance(): GrafloriaCanvasInstance {
     if (this.instanceHandle) return this.instanceHandle;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const canvas = this;
     const model = (): DiagramModel => {
       const diagram = this.eng?.getDiagram();
       if (!diagram) throw new Error('grafloria-diagram-canvas: there is no diagram yet.');
@@ -828,6 +830,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
           diagram.endBatch();
         }
         this.scheduleRender();
+      },
+      // N7: the SAME camera `viewportController()` returns (the one the canvas
+      // paints with), so `instance()` is a PresentationHost like the JS instance.
+      get viewport() {
+        return canvas.viewportController() as ViewportController;
       },
       on: (event, handler) => this.hub.on(event, handler),
       off: (event, handler) => this.hub.off(event, handler),
@@ -1402,7 +1409,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         if (!cam || this.syncingCamera) return;
         this.syncingCamera = true;
         try {
-          if (viewport) cam.setViewport(viewport);
+          // N7: the camera's rect is the canvas's PIXEL size — what the canvas
+          // paints with (getViewBox) — never the model's width/height (800×600
+          // unless the host sizes it). A size mismatch moved every centre the
+          // camera derives, so a presentation follower drifted.
+          if (viewport) {
+            const { width, height } = this.canvasPixelSize();
+            cam.setViewport({ x: viewport.x, y: viewport.y, width, height });
+          }
           cam.setZoom(zoom);
         } finally {
           this.syncingCamera = false;
