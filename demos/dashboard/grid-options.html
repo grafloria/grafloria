@@ -905,9 +905,17 @@ defineDemo({
       // A locked slab refuses the mover: nothing from board C can land on row 0.
       check(!(await binders.c.moveTo(trend.id, 0, 0)), 'a board-C tile dragged onto the section slab is refused');
       checkEqual(binders.c.cellOf(trend.id), { x: 0, y: 1, w: 8, h: 2 }, 'the refused mover kept its cells');
-      // maxRows: 1 — a second row simply cannot exist inside the section.
-      check(!(await binders.strip.resizeTo(s0.id, 1, 2)), 'the bounded section refuses a two-row tile (maxRows: 1)');
-      checkEqual(binders.strip.cellOf(s0.id).h, 1, 'the strip tile is still one row tall');
+      // maxRows: 1 — a two-row tile through the API grows the SECTION a row, as a hand pull
+      // does (below): the tile takes it, its neighbour keeps its cell, and it is ONE undo.
+      const slabBefore = { ...binders.c.cellOf('sec-strip') };
+      const s1Before = { ...binders.strip.cellOf(s1.id) };
+      check(await binders.strip.resizeTo(s0.id, 1, 2), 'resize() past the bounded section (maxRows: 1) is accepted');
+      checkEqual(binders.strip.cellOf(s0.id).h, 2, 'the strip tile is two rows tall');
+      checkEqual(binders.c.cellOf('sec-strip').h, slabBefore.h + 1, 'the section grew a row in board C for it');
+      checkEqual(binders.strip.cellOf(s1.id), s1Before, 'its neighbour kept its own cell');
+      await cm.undo(); refreshBoards(); await settle();
+      checkEqual(binders.c.cellOf('sec-strip'), slabBefore, 'ONE undo put the section back');
+      checkEqual(binders.strip.cellOf(s0.id).h, 1, 'and the strip tile is one row tall again');
       // Inside, it is an ordinary pack grid: tiles shift ALONG the row.
       const c1 = binders.strip.cellOf(s1.id);
       check(await binders.strip.moveTo(s0.id, c1.x, 0), 'inside the section, a tile dragged onto its neighbour swaps');
