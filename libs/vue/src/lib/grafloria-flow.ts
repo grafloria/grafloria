@@ -207,7 +207,11 @@ export const GrafloriaFlow = defineComponent({
     rendererConfig: { type: Object as PropType<Record<string, unknown>>, default: undefined },
     /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
     interaction: { type: Object as PropType<Record<string, unknown>>, default: undefined },
-    /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
+    /**
+     * Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables.
+     * Live: a new value (compared by value) re-points the variables without a
+     * remount, like `colorMode`; removing the prop removes the mapping.
+     */
     tokenBridge: { type: Object as PropType<TokenBridge>, default: undefined },
     /**
      * The outline layer Angular's canvas draws: outlines around the hovered node,
@@ -435,6 +439,16 @@ export const GrafloriaFlow = defineComponent({
       (next) => {
         const inst = instance.value;
         if (next && inst && inst.getColorMode() !== next) inst.setColorMode(next);
+      }
+    );
+    // The first bridge went in with createDiagram(); a CHANGE (by value, so an
+    // inline object is fine) re-points the variables live. Removing the prop
+    // removes the mapping.
+    watch(
+      () => (props.tokenBridge === undefined ? '' : JSON.stringify(props.tokenBridge)),
+      (key, prevKey) => {
+        if (key === prevKey) return;
+        instance.value?.setTokenBridge(props.tokenBridge ? toRaw(props.tokenBridge) : undefined);
       }
     );
     watch(

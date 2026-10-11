@@ -74,6 +74,45 @@ describe('GrafloriaFlow (Vue)', () => {
     expect(themeCss()).toContain('Theme: Dark');
   });
 
+  it('tokenBridge: a new value re-applies live, by value, without remounting', async () => {
+    const instances: any[] = [];
+    const bridge = ref<Record<string, string> | undefined>(undefined);
+    const tick = ref(0);
+    app = createApp(defineComponent({
+      setup: () => () =>
+        h(GrafloriaFlow, {
+          defaultNodes: TWO,
+          colorMode: 'system',
+          // A fresh object on every render: the same VALUE is not a change.
+          tokenBridge: bridge.value && { ...bridge.value },
+          'data-tick': tick.value,
+          onInit: (i: unknown) => instances.push(i),
+        }),
+    }));
+    app.mount(host);
+    await flush();
+    const overrides = () => {
+      const id = host.querySelector('svg')?.getAttribute('data-grafloria-instance');
+      return document.getElementById(`grafloria-renderer-overrides-${id}`)?.textContent ?? '';
+    };
+    expect(overrides()).not.toContain('--bridge-');
+    bridge.value = { 'node.fill': 'var(--bridge-a-fill)' };
+    await flush();
+    expect(overrides()).toContain('var(--bridge-a-fill)');
+    const spy = jest.spyOn(instances[0], 'setTokenBridge');
+    tick.value++;
+    await flush();
+    expect(spy).not.toHaveBeenCalled();
+    bridge.value = { 'node.fill': 'var(--bridge-b-fill)' };
+    await flush();
+    expect(overrides()).toContain('var(--bridge-b-fill)');
+    expect(overrides()).not.toContain('--bridge-a-fill');
+    bridge.value = undefined;
+    await flush();
+    expect(overrides()).not.toContain('--bridge-');
+    expect(instances).toHaveLength(1);
+  });
+
   it('highlightConnected: goes in at mount and follows the prop live', async () => {
     let instance: any = null;
     const hc = ref<unknown>(true);

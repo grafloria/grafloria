@@ -1,11 +1,13 @@
 import { component$, useSignal } from '@builder.io/qwik';
 import { GrafloriaFlow, type EdgeSpec, type GroupSpec, type NodeSpec } from '@grafloria/qwik';
+import type { TokenBridge } from '@grafloria/renderer';
 
 /**
- * Two props that follow their value live: `groups` (zones around some nodes —
- * a spec's `groups`, or the GroupModels of a loaded document) and
+ * Three props that follow their value live: `groups` (zones around some nodes —
+ * a spec's `groups`, or the GroupModels of a loaded document),
  * `highlightConnected` (select a node and its lines come forward while the
- * rest fade). Both buttons only change Qwik state; the canvas follows.
+ * rest fade) and `tokenBridge` (point the diagram's variables at the app's own
+ * design tokens). The buttons only change Qwik state; the canvas follows.
  */
 const nodes: NodeSpec[] = [
   { id: 'order', position: { x: 80, y: 90 }, size: { width: 170, height: 64 }, label: 'Order placed' },
@@ -20,11 +22,15 @@ const edges: EdgeSpec[] = [
   { id: 'e3', source: 'pack', target: 'ship', sourceHandle: 'right', targetHandle: 'left' },
 ];
 
+/** The app's own tokens, as a host design system would expose them. */
+const BRAND_BRIDGE: TokenBridge = { 'node.fill': 'var(--brand-card, #ede9fe)', 'node.stroke': 'var(--brand-accent, #7c3aed)' };
+
 const WAREHOUSE: GroupSpec = { id: 'warehouse', label: 'Warehouse', children: ['pick', 'pack'] };
 
 export default component$(() => {
   const highlight = useSignal(true);
   const zoned = useSignal(true);
+  const branded = useSignal(false);
   return (
     <>
       <div class="toolbar">
@@ -34,6 +40,9 @@ export default component$(() => {
         <button type="button" id="toggle-zone" onClick$={() => (zoned.value = !zoned.value)}>
           Warehouse zone: {zoned.value ? 'on' : 'off'}
         </button>
+        <button type="button" id="toggle-bridge" onClick$={() => (branded.value = !branded.value)}>
+          Brand tokens: {branded.value ? 'on' : 'off'}
+        </button>
         <span class="readout">Click a step to see its lines.</span>
       </div>
       <div class="canvas">
@@ -42,6 +51,7 @@ export default component$(() => {
           defaultEdges={edges}
           groups={zoned.value ? [WAREHOUSE] : []}
           highlightConnected={highlight.value}
+          tokenBridge={branded.value ? BRAND_BRIDGE : undefined}
           fitView
         />
       </div>

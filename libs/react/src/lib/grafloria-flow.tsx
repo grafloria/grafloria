@@ -154,7 +154,11 @@ export interface GrafloriaFlowProps {
   rendererConfig?: Record<string, unknown>;
   /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
   interaction?: Record<string, unknown>;
-  /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
+  /**
+   * Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables.
+   * Live: a new value (compared by value) re-points the variables without a
+   * remount, like `colorMode`; removing the prop removes the mapping.
+   */
   tokenBridge?: TokenBridge;
   /**
    * The outline layer Angular's canvas draws: outlines around the hovered node,
@@ -182,6 +186,11 @@ interface NodePortal {
   element: HTMLElement;
 }
 
+/** A bridge by VALUE: an inline object literal on every render is not a change. */
+function bridgeKey(bridge: TokenBridge | undefined): string {
+  return bridge === undefined ? '' : JSON.stringify(bridge);
+}
+
 export function GrafloriaFlow(props: GrafloriaFlowProps) {
   const {
     nodes,
@@ -204,6 +213,8 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
   // the instance down and rebuild it.
   const callbacks = useRef(props);
   callbacks.current = props;
+  // The bridge the live instance has (by value), so only a CHANGE re-applies it.
+  const appliedBridgeKey = useRef('');
 
   // Publish the instance to the nearest <GrafloriaProvider>, or make our own store so
   // `useGrafloria()` also works for our own children with no provider in sight.
@@ -259,6 +270,7 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     };
 
     const diagram = createDiagram(container, options);
+    appliedBridgeKey.current = bridgeKey(options.tokenBridge);
 
     // Collab: join the CRDT sync session over the supplied transport. Fixed
     // for the life of the instance — remounting is the way to change rooms.
@@ -344,6 +356,16 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     if (!instance || !props.colorMode || instance.getColorMode() === props.colorMode) return;
     instance.setColorMode(props.colorMode);
   }, [instance, props.colorMode]);
+
+  // The first bridge went in with createDiagram(); a CHANGE (by value, so an
+  // inline object is fine) re-points the variables live. Removing the prop
+  // removes the mapping.
+  const tokenBridgeKey = bridgeKey(props.tokenBridge);
+  useEffect(() => {
+    if (!instance || appliedBridgeKey.current === tokenBridgeKey) return;
+    appliedBridgeKey.current = tokenBridgeKey;
+    instance.setTokenBridge(props.tokenBridge);
+  }, [instance, tokenBridgeKey]);
 
   // -- canvas plugins (minimap / controls / background) -----------------------
   const pluginsKey = props.plugins === undefined ? undefined : JSON.stringify(props.plugins);

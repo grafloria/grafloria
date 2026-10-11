@@ -207,7 +207,11 @@ export interface GrafloriaFlowProps {
   rendererConfig?: Record<string, unknown>;
   /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
   interaction?: Record<string, unknown>;
-  /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
+  /**
+   * Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables.
+   * Live: a new value (compared by value) re-points the variables without a
+   * remount, like `colorMode`; removing the prop removes the mapping.
+   */
   tokenBridge?: TokenBridge;
   /**
    * The outline layer: outlines around the hovered node, the selected node,
@@ -227,6 +231,11 @@ export interface GrafloriaFlowProps {
   style?: Record<string, string | number>;
 }
 
+/** A bridge by VALUE: an inline object literal on every render is not a change. */
+function bridgeKey(bridge: TokenBridge | undefined): string {
+  return bridge === undefined ? '' : JSON.stringify(bridge);
+}
+
 export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
   const containerRef = useSignal<HTMLElement>();
   const instanceRef = useSignal<NoSerialize<DiagramInstance>>();
@@ -240,6 +249,11 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
   const layoutKey = props.layout === undefined ? undefined : JSON.stringify(props.layout);
   const pluginsKey = props.plugins === undefined ? undefined : JSON.stringify(props.plugins);
   const highlighterKey = JSON.stringify(props.highlighterConfig ?? false);
+  // The bridge the live instance has (by value), so only a CHANGE re-applies it.
+  // Read ONLY inside the task below: reading `props.tokenBridge` in this render
+  // body would subscribe the component to it, and a re-render empties the
+  // container the canvas lives in.
+  const appliedBridgeKey = useSignal('');
 
   // -- mount ------------------------------------------------------------------
   // Everything DOM lives here. `useVisibleTask$` is browser-only, which is what
@@ -314,6 +328,7 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
     };
 
     const diagram = createDiagram(container, options);
+    appliedBridgeKey.value = bridgeKey(props.tokenBridge);
     instanceRef.value = noSerialize(diagram);
     if (providedStore) providedStore.value = noSerialize(diagram);
 
@@ -404,6 +419,19 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
     const instance = track(() => instanceRef.value);
     if (!mode || !instance || instance.getColorMode() === mode) return;
     instance.setColorMode(mode);
+  }, MOUNT_EAGERLY);
+
+  // The first bridge went in with createDiagram(); a CHANGE (by value, so an
+  // inline object is fine) re-points the variables live. Removing the prop
+  // removes the mapping.
+  // eslint-disable-next-line qwik/no-use-visible-task
+  useVisibleTask$(({ track }) => {
+    const bridge = track(() => props.tokenBridge);
+    const instance = track(() => instanceRef.value);
+    const key = bridgeKey(bridge);
+    if (!instance || appliedBridgeKey.value === key) return;
+    appliedBridgeKey.value = key;
+    instance.setTokenBridge(bridge);
   }, MOUNT_EAGERLY);
 
   // -- the outline layer, live ------------------------------------------------

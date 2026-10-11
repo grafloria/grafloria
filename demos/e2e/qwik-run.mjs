@@ -13,6 +13,7 @@
 //   CUSTOM       Qwik components render as the custom nodes, wired to lines
 //   HOOKS        the toolbar drives the canvas through the provider and hooks
 //   ZONES/LINES  `groups` and `highlightConnected` go in at mount and follow live
+//   BRIDGE       a new `tokenBridge` re-points the diagram's variables live
 //   SPEC         <GrafloriaDiagram> replaces its diagram on a changed spec, not an equal one
 //   SSR          the server's HTML already contains the laid-out diagram, and
 //                the adopted <svg> leaves its size to the container (a fixed
@@ -138,6 +139,25 @@ try {
       check('zones-and-highlight', 'GROUPS-LIVE', (await frames()) === 0, 'groups={[]} removed the zone');
       await page.locator('#toggle-zone').click();
       await page.waitForTimeout(300);
+      // tokenBridge: the instance's override block and the painted node fill follow the prop.
+      const bridged = () => page.evaluate(() => {
+        const id = document.querySelector('.grafloria-flow svg').getAttribute('data-grafloria-instance');
+        const css = document.getElementById(`grafloria-renderer-overrides-${id}`)?.textContent || '';
+        // An unselected node's body (a selected one paints the selection fill):
+        // its first shape that actually paints a fill.
+        const fills = [...document.querySelectorAll('svg [data-node-id="ship"] rect, svg [data-node-id="ship"] path')]
+          .map((el) => getComputedStyle(el).fill).filter((f) => f && f !== 'none' && !f.endsWith(', 0)'));
+        return { mapped: css.includes('--brand-card'), fill: fills[0] || '' };
+      });
+      const off = await bridged();
+      await page.locator('#toggle-bridge').click();
+      await page.waitForTimeout(300);
+      const on = await bridged();
+      await page.locator('#toggle-bridge').click();
+      await page.waitForTimeout(300);
+      const back = await bridged();
+      check('zones-and-highlight', 'BRIDGE-LIVE', !off.mapped && on.mapped && on.fill === 'rgb(237, 233, 254)' && !back.mapped && back.fill === off.fill,
+        `fill ${off.fill} → ${on.fill} → ${back.fill}; mapped ${off.mapped} → ${on.mapped} → ${back.mapped}`);
     } },
     { slug: 'spec-swap', nodes: 3, links: 2, extra: async (page) => {
       const readies = async () => Number((/ready (\d+)/.exec(await page.locator('#ready-count').textContent()) || [])[1]);

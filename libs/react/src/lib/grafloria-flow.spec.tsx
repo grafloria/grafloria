@@ -381,6 +381,56 @@ describe('colorMode prop', () => {
   });
 });
 
+/** This instance's OVERRIDE block, where a token bridge lands. */
+function overrideCss(container: Element): string {
+  const id = container.querySelector('svg')?.getAttribute('data-grafloria-instance');
+  return (id && document.getElementById(`grafloria-renderer-overrides-${id}`)?.textContent) || '';
+}
+
+describe('tokenBridge prop', () => {
+  const BRIDGE_A = { 'node.fill': 'var(--bridge-a-fill)' };
+  const BRIDGE_B = { 'node.fill': 'var(--bridge-b-fill)' };
+
+  it.each([
+    ['plain', false],
+    ['StrictMode', true],
+  ])('a new value re-applies live, without remounting (%s)', async (_label, strict) => {
+    let instance: DiagramInstance | undefined;
+    const onInit = jest.fn((i: DiagramInstance) => (instance = i));
+    const ui = (bridge?: Record<string, string>) => {
+      const flow = <GrafloriaFlow defaultNodes={NODES} colorMode="system" tokenBridge={bridge} onInit={onInit} />;
+      return strict ? <StrictMode>{flow}</StrictMode> : flow;
+    };
+    const { container, rerender } = render(ui(undefined));
+    await waitFor(() => expect(instance).toBeDefined());
+    expect(overrideCss(container)).not.toContain('--bridge-');
+
+    rerender(ui(BRIDGE_A));
+    await waitFor(() => expect(overrideCss(container)).toContain('var(--bridge-a-fill)'));
+    rerender(ui(BRIDGE_B));
+    await waitFor(() => expect(overrideCss(container)).toContain('var(--bridge-b-fill)'));
+    expect(overrideCss(container)).not.toContain('--bridge-a-fill');
+    // Removing the prop removes the mapping (setTokenBridge(undefined)).
+    rerender(ui(undefined));
+    await waitFor(() => expect(overrideCss(container)).not.toContain('--bridge-'));
+    const inits = onInit.mock.calls.length;
+    expect(inits).toBeLessThanOrEqual(strict ? 2 : 1);
+  });
+
+  it('an equal value (a fresh object each render) does not re-inject the stylesheet', async () => {
+    let instance: DiagramInstance | undefined;
+    const { container, rerender } = render(
+      <GrafloriaFlow defaultNodes={NODES} tokenBridge={{ ...BRIDGE_A }} onInit={(i) => (instance = i)} />
+    );
+    await waitFor(() => expect(instance).toBeDefined());
+    const spy = jest.spyOn(instance!, 'setTokenBridge');
+    rerender(<GrafloriaFlow defaultNodes={NODES} tokenBridge={{ ...BRIDGE_A }} onInit={(i) => (instance = i)} />);
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(spy).not.toHaveBeenCalled();
+    expect(overrideCss(container)).toContain('var(--bridge-a-fill)');
+  });
+});
+
 describe('hooks', () => {
   it('a hook used outside any provider warns ONCE in development, naming the provider to add', () => {
     // It still returns null — no behaviour change — but it used to say nothing at all, so
