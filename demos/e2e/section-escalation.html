@@ -2,11 +2,12 @@
 <meta charset="utf-8">
 <title>Section escalation fixture</title>
 <style>body { margin: 0; font: 13px system-ui, sans-serif; } #b { width: 1000px; height: 620px; }</style>
+<button id="taller" type="button">Make Revenue 3 rows</button>
 <div id="b"></div>
 <script type="module">
 // The nest-dashboard-containers page's board: a KPI section (maxRows 2) above a
 // tab section and a donut. Pulling Revenue's corner past the section's rows must
-// grow the section and push the tab section down (S13).
+// grow the section and push the tab section down (S13) — by hand or through resize().
 import { render, dashboard } from '../shell/grafloria.js';
 const spec = dashboard({
   columns: 6, width: 1000, height: 620, dragHandle: true,
@@ -27,5 +28,7 @@ const spec = dashboard({
 });
 const instance = render(spec, document.getElementById('b'));
 window.__demoCtx = { handle: spec.handle, instance };
+// The API path the docs page uses (`widget(id).resize()`): past the section's rows it grows the section too.
+document.getElementById('taller').onclick = () => { void spec.handle.widget('revenue').resize(1, 3); };
 window.__demoReady = true;
 </script>

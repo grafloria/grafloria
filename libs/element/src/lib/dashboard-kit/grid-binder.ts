@@ -4236,7 +4236,9 @@ export function bindDashboardGrid(
   const programmatic = async (
     name: string,
     id: string,
-    op: () => boolean
+    op: () => boolean,
+    /** Commands of OTHER boards the op changed (a parent's slab), committed in the same step. */
+    extra?: () => Command[]
   ): Promise<boolean> => {
     if (disposed || gesture || !engine.getItem(id)) return false;
     engine.beginGesture();
@@ -4256,6 +4258,7 @@ export function bindDashboardGrid(
       writing = false;
     }
     const commands = tileCommands(deltasSince(snap.cells, snap.geoms)); // a section's cell-and-frame command rides with the nodes'
+    if (extra) commands.push(...extra());
     engine.endGesture();
     disarmGlideSoon();
     enforceBoardHeight();
@@ -4500,7 +4503,39 @@ export function bindDashboardGrid(
     },
     resizeTo(id, w, h) {
       const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h; // a section: never below its children
-      return programmatic('Resize widget', id, () => engine.resizeCheck(id, w, hh).changed);
+      // Past the section's rows, the SECTION grows — the ratchet a hand pull and
+      // content height (`fitRows`) use: one parent row at a time while the tile
+      // still needs it and the parent can give it, the parent's change committed
+      // in the same undo step. A 'fit' section (`escalate: false`) holds its frame.
+      let grown: { first: { cell: CellRect; frame: WorldRect }; last: { cell: CellRect; frame: WorldRect }; commands?: Command[] } | null = null;
+      return programmatic(
+        'Resize widget',
+        id,
+        () => {
+          let changed = engine.resizeCheck(id, w, hh).changed;
+          const parent = parentPeer();
+          let grownBy = 0;
+          while (
+            escalate && parent && designRows !== undefined &&
+            (engine.getItem(id)?.h ?? hh) < hh && grownBy < hh
+          ) {
+            const res = parent.resizeMemberBy(group.id, +1);
+            if (!res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter) break;
+            grownBy += 1;
+            grown = {
+              first: grown?.first ?? { cell: res.cellBefore, frame: res.frameBefore },
+              last: { cell: res.cellAfter, frame: res.frameAfter },
+              commands: res.commands ?? grown?.commands,
+            };
+            setLiveBound((maxRows ?? 0) + 1);
+            changed = engine.resizeCheck(id, w, hh).changed || changed;
+          }
+          // No parent.persistCells(): the parent's change rides in the undo step
+          // (below); persisting its pushed tiles outside it left them pushed on undo.
+          return changed || grownBy > 0;
+        },
+        () => (grown ? (grown.commands ?? [new SetGroupCellCommand(group.id, grown.first.cell, grown.last.cell, grown.first.frame, grown.last.frame)]) : [])
+      );
     },
     fitRows(id, h) {
       const it = engine.getItem(id);

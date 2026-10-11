@@ -1692,6 +1692,26 @@ try {
   await page.close();
 }
 
+{
+  begin('s38-resize-api-past-a-sections-rows-grows-it-as-one-undo-step');
+  // The API does what the hand does: widget(id).resize() past the section's maxRows grows the section and pushes
+  // the section below it — one undo step, so Ctrl+Z puts every cell back. It used to clamp at the section's rows.
+  const page = await freshPage('/e2e/section-escalation.html');
+  const cells = () => page.evaluate(() => Object.fromEntries(['revenue', 'kpis', 'details', 'mix'].map((id) => [id, window.__demoCtx.handle.widget(id).cell])));
+  const c0 = await cells();
+  await page.click('#taller'); await page.waitForTimeout(500);
+  const c1 = await cells();
+  await shot(page, 'api-grown');
+  await page.mouse.click(1300, 850); await page.keyboard.press('Control+z'); await page.waitForTimeout(500);
+  const c2 = await cells();
+  const st = await boardState(page);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  verdict(c1.revenue.h === 3 && c1.kpis.h === 3 && c1.details.y === c0.details.y + 1 && same(c2, c0) && st.overlaps === 0,
+    `resize(1, 3): revenue h ${c0.revenue.h}→${c1.revenue.h} · kpis h ${c0.kpis.h}→${c1.kpis.h} · details y ${c0.details.y}→${c1.details.y} · after Ctrl+Z all cells back: ${same(c2, c0)} · overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
   await browser.close();
   server.close();
 }
