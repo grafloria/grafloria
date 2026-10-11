@@ -784,7 +784,7 @@ export class KeyboardNavigationController {
     this.announce(
       `Connect from ${this.nodeName(node)}, port ${this.portName(
         ports[0]!
-      )}. Arrow keys change port, Enter to choose target.`
+      )}. Arrow keys change port, Tab or Enter to choose target.`
     );
     return true;
   }
@@ -828,11 +828,17 @@ export class KeyboardNavigationController {
     return true;
   }
 
-  /** Cycle the TARGET node (Tab during phase 2). */
+  /**
+   * Cycle the TARGET node (Tab during phase 2). Tab during phase 1 confirms the
+   * source and enters phase 2 on the first candidate — the same step Enter
+   * takes — so "C, Tab to a target, Enter" connects as well as "C, Enter, Tab,
+   * Enter" does.
+   */
   cycleTargetNode(engine: DiagramEngine, delta: number): boolean {
     const state = this.connectState;
     const diagram = engine?.getDiagram?.();
-    if (!state || !diagram || state.phase !== 'target') return false;
+    if (!state || !diagram) return false;
+    if (state.phase === 'source') return this.enterTargetPhase(engine);
 
     const candidates = this.getFocusOrder(engine)
       .filter((t) => t.type === 'node' && t.id !== state.sourceNodeId)
@@ -855,6 +861,32 @@ export class KeyboardNavigationController {
     return true;
   }
 
+  /** Phase 1 → 2: confirm the source and seed the first candidate target. False when there is none. */
+  private enterTargetPhase(engine: DiagramEngine): boolean {
+    const state = this.connectState;
+    const diagram = engine?.getDiagram?.();
+    if (!state || !diagram || state.phase !== 'source') return false;
+    state.phase = 'target';
+    const first = this.getFocusOrder(engine)
+      .filter((t) => t.type === 'node' && t.id !== state.sourceNodeId)
+      .map((t) => diagram.getNode(t.id))
+      .find((n): n is NodeModel => !!n && n.behavior?.connectable !== false);
+    if (!first) {
+      this.announce('No other node to connect to', 'assertive');
+      this.connectState = null;
+      return false;
+    }
+    state.targetNodeId = first.id;
+    state.targetPortId = this.connectablePorts(first)[0]?.id;
+    this.refreshConnectValidity(engine);
+    this.announce(
+      `Choose target. ${this.nodeName(first)}${
+        state.valid ? ', valid' : ', not a valid target'
+      }. Tab cycles nodes, Enter connects.`
+    );
+    return true;
+  }
+
   /**
    * Enter: phase 1 → confirm the source and enter phase 2 (seeding the first
    * candidate target); phase 2 → COMMIT, returning the undoable AddLinkCommand
@@ -866,24 +898,7 @@ export class KeyboardNavigationController {
     if (!state || !diagram) return null;
 
     if (state.phase === 'source') {
-      state.phase = 'target';
-      const first = this.getFocusOrder(engine)
-        .filter((t) => t.type === 'node' && t.id !== state.sourceNodeId)
-        .map((t) => diagram.getNode(t.id))
-        .find((n): n is NodeModel => !!n && n.behavior?.connectable !== false);
-      if (!first) {
-        this.announce('No other node to connect to', 'assertive');
-        this.connectState = null;
-        return null;
-      }
-      state.targetNodeId = first.id;
-      state.targetPortId = this.connectablePorts(first)[0]?.id;
-      this.refreshConnectValidity(engine);
-      this.announce(
-        `Choose target. ${this.nodeName(first)}${
-          state.valid ? ', valid' : ', not a valid target'
-        }. Tab cycles nodes, Enter connects.`
-      );
+      this.enterTargetPhase(engine);
       return null;
     }
 

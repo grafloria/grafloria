@@ -224,6 +224,27 @@ describe('Card 7 — KeyboardNavigationController', () => {
   // ==========================================================================
 
   describe('keyboard connect', () => {
+    test('N10: the documented flow too — focus → C → Tab (choose target) → Enter = one link', async () => {
+      const a = addNode(0, 0, 'A');
+      const b = addNode(300, 0, 'B');
+      const c = addNode(600, 0, 'C');
+
+      nav.setFocus({ type: 'node', id: a.id });
+      expect(nav.beginConnect(engine)).toBe(true);
+      // Tab in phase 1: confirms the source and lands on the first candidate.
+      expect(nav.cycleTargetNode(engine, 1)).toBe(true);
+      expect(nav.getConnectState()).toMatchObject({ phase: 'target', targetNodeId: b.id, valid: true });
+      // …a further Tab cycles on, as it always did in phase 2.
+      expect(nav.cycleTargetNode(engine, 1)).toBe(true);
+      expect(nav.getConnectState()).toMatchObject({ phase: 'target', targetNodeId: c.id });
+
+      const command = nav.confirmConnect(engine)!;
+      expect(command).toBeInstanceOf(AddLinkCommand);
+      await engine.commandManager.execute(command);
+      expect(diagram.getLinks()).toHaveLength(1);
+      expect(c.getPort(diagram.getLinks()[0]!.targetPortId)).toBeDefined();
+    });
+
     test('full flow: focus → C → Enter (pick target) → Enter (commit) = ONE undoable link', async () => {
       const a = addNode(0, 0, 'A');
       const b = addNode(300, 0, 'B');
