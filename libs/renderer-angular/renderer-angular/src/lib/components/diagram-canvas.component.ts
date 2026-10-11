@@ -671,6 +671,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     const parsed = DiagramModel.fromJSON(data);
     applyNodes(diagram, parsed.getNodes().map((n) => toNodeSpec(n)));
     applyEdges(diagram, parsed.getLinks().map((l) => toEdgeSpec(l)));
+    // S10: a load REPLACES the document — no undo step may point into the old
+    // one (Save → edit → load → ⌘Z ⌘Z used to walk back into it). A history
+    // owner (a collab Replica) owns the history itself: left alone.
+    if (!diagram.getHistoryOwner?.()) this.eng.commandManager.clear();
+    this.scheduleRender();
   }
 
   /** Mermaid-compatible text export (lossless sidecar by default). */
