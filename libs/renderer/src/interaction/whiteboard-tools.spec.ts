@@ -103,6 +103,31 @@ describe('DrawTool', () => {
 });
 
 describe('RectangleTool', () => {
+  // S11 (docs review v4): the rectangle tool wrote the node straight into the
+  // model, so ⌘Z could not take a dragged box back. With an engine it is ONE
+  // AddNodeCommand, like a drawn stroke (AddStrokeCommand) and an erased sweep.
+  it('with an engine host the new box is ONE undoable command', async () => {
+    const { host, model } = makeHost();
+    const engine = new DiagramEngine();
+    engine.setDiagram(model);
+    host.getEngine = () => engine;
+    const tool = createRectangleTool(host, { label: 'Box' });
+
+    tool.onPointerDown(pe('down', 20, 20), EMPTY_HIT);
+    tool.onPointerMove(pe('move', 80, 60), EMPTY_HIT);
+    tool.onPointerMove(pe('move', 140, 100), EMPTY_HIT);
+    tool.onPointerUp(pe('up', 140, 100), EMPTY_HIT);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(model.getNodes()).toHaveLength(1);
+    expect(engine.canUndo()).toBe(true);
+    await engine.undo();
+    expect(model.getNodes()).toHaveLength(0);
+    await engine.redo();
+    expect(model.getNodes()).toHaveLength(1);
+    expect(model.getNodes()[0].getLabel()).toBe('Box');
+  });
+
   it('a drag becomes a rectangle NODE sized to the drag', () => {
     const { host, model } = makeHost();
     const tool = createRectangleTool(host, { label: 'Box' });
