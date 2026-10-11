@@ -18,7 +18,7 @@
  * node — is demos/nodes/node-toolbar.html assert 3b.)
  */
 
-import { createPortal, createViewportPortal, createCounterScaledPortal } from './portal';
+import { createPortal, createViewportPortal, createCounterScaledPortal, ensureScreenLayer } from './portal';
 import { ViewportController } from '../viewport/viewport-controller';
 
 describe('createViewportPortal — host chrome survives setPosition', () => {
@@ -131,5 +131,18 @@ describe('createCounterScaledPortal — counter-scale transform survives reposit
 
     portal.dispose();
     layer.remove();
+  });
+});
+
+describe('the screen layer stacks above the canvas', () => {
+  it('carries an explicit z-index above every canvas layer (Angular gives its own layers 1–4)', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const layer = ensureScreenLayer(root);
+    // Without it the layer sat UNDER a canvas whose layers carry z-indexes, and the
+    // minimap and controls lost every click to the drawing above them.
+    expect(Number(layer.style.zIndex)).toBeGreaterThanOrEqual(5);
+    expect(layer.style.pointerEvents).toBe('none'); // still invisible to the pointer itself
+    root.remove();
   });
 });

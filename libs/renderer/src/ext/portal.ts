@@ -107,9 +107,14 @@ export function ensureScreenLayer(root: HTMLElement): HTMLElement {
   layer.className = SCREEN_LAYER_CLASS;
   // NOT transformed — this is what "screen space" means. pointer-events:none so
   // the layer itself is invisible to the pointer; portals re-enable per element.
+  // z-index 5: screen chrome (minimap, controls, HUD) sits ABOVE the canvas on
+  // every binding. Appended last, it already did on the JS canvas — but Angular's
+  // canvas gives its own layers z-indexes 1–4, so there the layer sat under the
+  // drawing, and once the drawing took pointer events the minimap and controls
+  // lost every click to it.
   layer.setAttribute(
     'style',
-    'position:absolute;inset:0;pointer-events:none;overflow:hidden'
+    'position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5'
   );
   root.appendChild(layer);
   return layer;
