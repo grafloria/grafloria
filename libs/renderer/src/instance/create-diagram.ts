@@ -179,19 +179,13 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * the selected node, nodes with a validation issue, and the valid targets while
    * a connection is drawn. `true` turns every kind on; an object turns kinds on or
    * off one by one, over the defaults ({@link HighlighterConfig}). Off when unset,
-   * so an existing app is unchanged. Validation outlines include the engine's
-   * warnings, an unregistered node type among them — but never for a type the
-   * canvas draws (a shape, `custom: true`, a template, a foreignObject node, a
-   * named `style.shape`, or {@link canDrawNode}); `{ showValidation: false }`
-   * keeps only hover and selection. Switch it live with `setHighlighterConfig()`.
+   * so an existing app is unchanged. Validation outlines show the engine's
+   * warnings — except "node type is not registered": the canvas draws every node
+   * (an unknown type as the fallback rectangle), so that one is left to
+   * `engine.validate()`. `{ showValidation: false }` keeps only hover and
+   * selection. Switch it live with `setHighlighterConfig()`.
    */
   highlighterConfig?: boolean | Partial<HighlighterConfig>;
-  /**
-   * The host's own "I draw this node" test, for the outline layer: a type it
-   * answers `true` for is never flagged as unregistered. Bindings pass their
-   * registered node components (`nodeTypes`, slots) here.
-   */
-  canDrawNode?: (node: NodeModel) => boolean;
 
   /**
    * Arrange the diagram on mount. `'architecture'` composes it the way AI tools
@@ -783,12 +777,9 @@ export function createDiagram(
   // The same controller Angular's canvas uses, so the outlines are the same ones;
   // drawn like the line overlay, in world units inside the HTML layer, which
   // carries the camera — a pan or zoom moves them with the picture for free.
-  // Shape-aware: built-in shapes (`rect`, `ellipse`, …) are not flagged as
-  // unregistered types — see ShapeAwareHighlighterController.
+  // No "not registered" outline: the canvas draws every node — see
+  // ShapeAwareHighlighterController.
   const highlighter = new ShapeAwareHighlighterController();
-  // Templates register no engine type either; the host adds what IT draws.
-  highlighter.canDraw = (node) =>
-    (typeof node.type === 'string' && !!nodeTemplates?.has(node.type)) || options.canDrawNode?.(node) === true;
   let highlighterOn = false;
   const highlighterPatcher = new VNodePatcher({ document: doc });
   let highlighterHost: HTMLElement | null = null;

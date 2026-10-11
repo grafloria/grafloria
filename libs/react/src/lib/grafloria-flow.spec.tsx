@@ -41,7 +41,9 @@ describe('<GrafloriaFlow>', () => {
     await waitFor(() => expect(outlines('selection')).toBe(1));
     rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlighterConfig={{ showSelection: false }} />);
     await waitFor(() => expect(outlines('selection')).toBe(0));
-    expect(outlines('validation')).toBeGreaterThan(0); // the other kinds stay on
+    // the other kinds stay on: a hovered node is still outlined
+    act(() => { instance!.getModel().getNode('b')!.setState({ hovered: true }); });
+    await waitFor(() => expect(outlines('hover')).toBe(1));
     rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlighterConfig={false} />);
     await waitFor(() => expect(container.querySelectorAll('.grafloria-highlighter').length).toBe(0));
   });
@@ -452,11 +454,16 @@ describe('custom nodes and the outline layer (v4 S7)', () => {
     expect(warnings).toEqual([]);
   });
 
-  it('a type nothing draws is still flagged', async () => {
+  it('even a type nothing registers is drawn (as a rectangle), so it is not outlined; validate() still reports it', async () => {
+    let instance: DiagramInstance | undefined;
     const { container } = render(
-      <GrafloriaFlow defaultNodes={[{ id: 'x', type: 'no-such-type', ...at }]} nodeTypes={{ job: Job }} highlighterConfig />
+      <GrafloriaFlow defaultNodes={[{ id: 'x', type: 'no-such-type', ...at }]} nodeTypes={{ job: Job }} highlighterConfig onInit={(i) => (instance = i)} />
     );
-    await waitFor(() => expect(container.querySelectorAll('.grafloria-highlighter-validation')).toHaveLength(1));
+    await waitFor(() => expect(container.querySelector('.grafloria-highlighter-overlay')).not.toBeNull());
+    await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+    expect(container.querySelectorAll('.grafloria-highlighter-validation')).toHaveLength(0);
+    const codes = instance!.getEngine().validate().warnings.map((w) => (w as { code?: string }).code);
+    expect(codes).toContain('UNREGISTERED_NODE_TYPE');
   });
 });
 

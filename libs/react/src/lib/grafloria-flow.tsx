@@ -251,9 +251,6 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       tokenBridge: callbacks.current.tokenBridge,
       highlighterConfig: callbacks.current.highlighterConfig,
       highlightConnected: callbacks.current.highlightConnected,
-      // A type with a `nodeTypes` component is one this canvas draws: never an
-      // "unregistered type" outline (custom: true nodes are exempt in the core).
-      canDrawNode: (node) => !!callbacks.current.nodeTypes?.[node.type],
 
       // Blocker #4, from React's side: the core hands us an element, we render a
       // PORTAL into it. Portals keep the node component inside this React tree —

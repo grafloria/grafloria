@@ -18,4 +18,3 @@ export type { AffordanceOptions, PortAddRequest, LinkAddRequest } from './workfl
 export * from './load-text';
 // "Does the canvas draw this node?" — the outline layer's unregistered-type rule,
 // for a host with its own highlighter (Angular's canvas) to share.
-export { canvasDrawsNode } from './highlighter-overlay';

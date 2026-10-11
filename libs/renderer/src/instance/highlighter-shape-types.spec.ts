@@ -4,9 +4,10 @@
  * The engine's ValidationEngine reports every node whose `type` is not in its
  * TypeRegistry as "Node type '…' is not registered" — including the shapes the
  * renderer draws: `rect` (every node spec's default), `ellipse`, `diamond`, …
- * So every plain node wore the amber warning outline. Angular's canvas dropped
- * exactly that warning when the renderer has a shape for the type (f2466582);
- * the shared canvas does the same. A type nobody can draw is still flagged.
+ * So every plain node wore the amber warning outline. The canvas draws EVERY
+ * node — an unknown type as the fallback rectangle — so it drops that warning
+ * altogether (v4 S7, every binding and Angular alike); `engine.validate()` still
+ * reports an unknown type.
  */
 import { createDiagram } from './create-diagram';
 import type { DiagramInstance } from './create-diagram';
@@ -45,7 +46,7 @@ describe('outline layer — built-in shapes are not "unregistered types"', () =>
     expect(warnings()).toHaveLength(0);
   });
 
-  it('a type no registry and no shape knows is still flagged', () => {
+  it('a type no registry and no shape knows is drawn as a rectangle: no outline, but validate() reports it', () => {
     diagram = createDiagram(container, {
       nodes: [
         { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
@@ -54,6 +55,8 @@ describe('outline layer — built-in shapes are not "unregistered types"', () =>
       highlighterConfig: true,
     } as never);
     tick();
-    expect(warnings()).toHaveLength(1);
+    expect(warnings()).toHaveLength(0);
+    const codes = diagram.getEngine().validate().warnings.map((w) => (w as { code?: string }).code);
+    expect(codes).toContain('UNREGISTERED_NODE_TYPE');
   });
 });

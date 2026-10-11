@@ -347,9 +347,6 @@ export const GrafloriaFlow = defineComponent({
         tokenBridge: props.tokenBridge,
         highlighterConfig: props.highlighterConfig,
         highlightConnected: props.highlightConnected,
-        // A type with an exact `#node-<type>` slot is one this canvas draws:
-        // never an "unregistered type" outline (custom nodes are exempt in the core).
-        canDrawNode: (node: NodeModel) => !!slots[`node-${node.type}`],
         renderCustomNode: (node: NodeModel, element: HTMLElement) => {
           const entry: MountedNode = { node, element };
           mounted.set(node.id, entry);

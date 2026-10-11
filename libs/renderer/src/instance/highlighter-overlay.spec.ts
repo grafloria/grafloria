@@ -23,26 +23,41 @@ function makeContainer(): HTMLElement {
 }
 const tick = () => jest.advanceTimersByTime(32);
 /**
- * A type nothing knows — no TypeRegistry entry and no renderer shape — so the
- * engine's "not registered" warning is real. (These specs used `rect`, the
- * default type, until built-in shapes stopped being flagged: a type the renderer
- * draws is not an unknown type.)
+ * A REGISTERED type whose own validator warns — a real validation issue, which
+ * the outline layer shows. (An unknown type no longer serves: the canvas draws
+ * every node, so it never outlines "node type is not registered" — v4 S7.)
  */
-const UNKNOWN_TYPE = 'no-such-node-type';
+const CHECKED_TYPE = 'checked-step';
+function registerCheckedType(d: DiagramInstance): void {
+  const types = d.getEngine().typeRegistry;
+  if (types.getNodeType(CHECKED_TYPE)) return;
+  types.registerNodeType({
+    type: CHECKED_TYPE,
+    validator: (node: { id: string }) => ({
+      valid: true,
+      errors: [],
+      warnings: [{ path: `node.${node.id}`, message: 'Needs an owner', code: 'NEEDS_OWNER', severity: 'warning' }],
+    }),
+  } as never);
+}
 
 describe('the outline layer (highlighterConfig) on createDiagram', () => {
   let container: HTMLElement;
   let diagram: DiagramInstance;
   const outlines = (kind?: string) => Array.from(container.querySelectorAll(kind ? `.grafloria-highlighter-${kind}` : '.grafloria-highlighter'));
   const mount = (extra: Record<string, unknown> = {}) => {
+    const { highlighterConfig, ...rest } = extra;
     diagram = createDiagram(container, {
       nodes: [
-        { id: 'a', type: UNKNOWN_TYPE, position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
-        { id: 'b', type: UNKNOWN_TYPE, position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
+        { id: 'a', type: CHECKED_TYPE, position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
+        { id: 'b', type: CHECKED_TYPE, position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
       ],
       edges: [{ source: 'a', target: 'b' }],
-      ...extra,
+      ...rest,
     } as never);
+    // The type is registered on the instance's own engine, then the layer turned on.
+    registerCheckedType(diagram);
+    if (highlighterConfig !== undefined) diagram.setHighlighterConfig(highlighterConfig as never);
     tick();
   };
   const selectAAndHoverB = () => {
@@ -79,7 +94,7 @@ describe('the outline layer (highlighterConfig) on createDiagram', () => {
     const hov = outlines('hover');
     expect(hov).toHaveLength(1);
     expect(Number(hov[0]!.getAttribute('x'))).toBe(398); // B, padded by 2
-    // nodes of an unregistered type carry the engine's warning, as on Angular's canvas
+    // nodes whose registered type warns carry that warning, as on Angular's canvas
     expect(outlines('validation').length).toBe(2);
     expect(outlines('validation').every((r) => r.classList.contains('grafloria-highlighter-warning'))).toBe(true);
   });
@@ -112,7 +127,7 @@ describe('the outline layer (highlighterConfig) on createDiagram', () => {
     diagram.setHighlighterConfig(true);
     tick();
     expect(outlines('validation')).toHaveLength(2);
-    diagram.getModel().addNode(new NodeModel({ id: 'c', type: UNKNOWN_TYPE, position: { x: 100, y: 300 }, size: { width: 120, height: 60, depth: 0 } }));
+    diagram.getModel().addNode(new NodeModel({ id: 'c', type: CHECKED_TYPE, position: { x: 100, y: 300 }, size: { width: 120, height: 60, depth: 0 } }));
     tick();
     expect(outlines('validation')).toHaveLength(3);
     diagram.getModel().removeNode('c');
@@ -127,7 +142,7 @@ describe('the outline layer (highlighterConfig) on createDiagram', () => {
  * class — every way the canvas draws a node exempts its type, in every binding
  * (React/Vue/Qwik/the element/plain JS all mount through createDiagram()).
  */
-describe('the unregistered-type warning skips every type the canvas draws', () => {
+describe('the canvas never outlines "node type is not registered" (v4 S7: it draws every node)', () => {
   let container: HTMLElement;
   let diagram: DiagramInstance;
   /** The warning text of every validation outline (its <title>). */
@@ -145,7 +160,7 @@ describe('the unregistered-type warning skips every type the canvas draws', () =
     jest.useRealTimers();
   });
 
-  it('custom nodes, templates, foreignObject nodes, named silhouettes and host-registered types are not flagged; an unknown type still is', () => {
+  it('no node the canvas draws is flagged as unregistered — custom, template, foreignObject, "basic", even a typo', () => {
     diagram = createDiagram(container, {
       nodes: [
         { id: 'shape', type: 'diamond', ...at(0) },
@@ -153,16 +168,18 @@ describe('the unregistered-type warning skips every type the canvas draws', () =
         { id: 'template', type: 'card', data: { title: 'T' }, ...at(2) },
         { id: 'fo', type: 'widget', metadata: { useForeignObject: true }, ...at(3) },
         { id: 'silhouette', type: 'basic', metadata: { shape: { type: 'ellipse' } }, ...at(4) },
-        { id: 'hosted', type: 'host-drawn', ...at(5) },
-        { id: 'typo', type: UNKNOWN_TYPE, ...at(6) },
+        { id: 'plain-basic', type: 'basic', ...at(5) },
+        { id: 'typo', type: 'no-such-node-type', ...at(6) },
       ],
       nodeTemplates: { card: (data: Record<string, unknown>) => ({ html: `<b>${String(data['title'])}</b>` }) },
       renderCustomNode: (_node: unknown, el: HTMLElement) => { el.textContent = 'job'; },
-      canDrawNode: (node: { type: string }) => node.type === 'host-drawn',
       highlighterConfig: true,
     } as never);
     tick();
-    expect(flagged()).toEqual([`Node type '${UNKNOWN_TYPE}' is not registered`]);
+    expect(flagged()).toEqual([]);
+    // …the engine still reports the unknown types: validate() is where a typo shows.
+    const codes = diagram.getEngine().validate().warnings.map((w) => (w as { code?: string }).code);
+    expect(codes).toContain('UNREGISTERED_NODE_TYPE');
   });
 
   it('a whiteboard-style node (type "basic", style.shape) is drawn, so it is not flagged', () => {

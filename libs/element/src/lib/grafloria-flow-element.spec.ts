@@ -265,7 +265,7 @@ describe('Grafloria.render — the Mermaid-shaped API', () => {
     diagram.dispose();
   });
 
-  it('a registered node type gets no "not registered" outline; an unknown one still does (v4 S7)', async () => {
+  it('no node gets a "not registered" outline — registered, custom, even a typo (v4 S7)', async () => {
     registerNodeType('s7-card', (_node, element) => { element.textContent = 'card'; });
     const target = document.createElement('div');
     document.body.appendChild(target);
@@ -282,7 +282,9 @@ describe('Grafloria.render — the Mermaid-shaped API', () => {
     );
     await new Promise((r) => setTimeout(r, 50));
     const warnings = Array.from(target.querySelectorAll('.grafloria-highlighter-validation')).map((r) => r.textContent);
-    expect(warnings).toEqual(["Node type 'no-such-type' is not registered"]);
+    expect(warnings).toEqual([]); // the canvas draws every node…
+    const codes = diagram.getEngine().validate().warnings.map((w) => (w as { code?: string }).code);
+    expect(codes).toContain('UNREGISTERED_NODE_TYPE'); // …and validate() still reports the typo
     diagram.dispose();
     unregisterNodeType('s7-card');
   });

@@ -113,7 +113,7 @@ describe('GrafloriaFlow (Vue)', () => {
     expect(instances).toHaveLength(1);
   });
 
-  it('custom nodes (a #node-<type> slot, or custom: true) get no "not registered" outline (v4 S7)', async () => {
+  it('no node gets a "not registered" outline — a #node-<type> slot, custom: true, even a typo (v4 S7)', async () => {
     app = createApp(defineComponent({
       setup: () => () =>
         h(GrafloriaFlow, {
@@ -131,7 +131,7 @@ describe('GrafloriaFlow (Vue)', () => {
     app.mount(host);
     await flush();
     const warnings = Array.from(host.querySelectorAll('.grafloria-highlighter-validation')).map((r) => r.textContent);
-    expect(warnings).toEqual(["Node type 'no-such-type' is not registered"]);
+    expect(warnings).toEqual([]); // the canvas draws every node; validate() reports the typo
   });
 
   it('highlightConnected: goes in at mount and follows the prop live', async () => {
@@ -190,8 +190,6 @@ describe('GrafloriaFlow (Vue)', () => {
         setup() {
           return () =>
             h(GrafloriaFlow, {
-              // A type with no shape: the validation outline flags it (built-in
-              // shapes such as `rect` are never flagged as unregistered).
               defaultNodes: [
                 { id: 'a', type: 'no-such-node-type', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
                 { id: 'b', type: 'no-such-node-type', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
@@ -216,7 +214,10 @@ describe('GrafloriaFlow (Vue)', () => {
     await nextTick();
     await flush();
     expect(outlines('selection')).toBe(0);
-    expect(outlines('validation')).toBeGreaterThan(0); // the other kinds stay on
+    // the other kinds stay on: a hovered node is still outlined
+    instance.getModel().getNode('b').setState({ hovered: true });
+    await flush();
+    expect(outlines('hover')).toBe(1);
     cfg.value = false;
     await nextTick();
     await flush();
