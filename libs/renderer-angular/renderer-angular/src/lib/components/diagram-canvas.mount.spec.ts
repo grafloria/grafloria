@@ -89,4 +89,27 @@ describe('DiagramCanvasComponent — always mounted on a diagram', () => {
     expect(fixture.componentInstance.ready).toHaveLength(1);
     fixture.destroy();
   });
+
+  test('N3: a canvas with no inputs owns an engine + diagram + camera by the host\'s ngAfterViewInit, and fires (ready)', () => {
+    const fixture = TestBed.createComponent(NoInputsHost);
+    const host = fixture.componentInstance;
+    fixture.detectChanges();
+    expect(host.atViewInit).toEqual({ engine: true, diagram: true, viewport: true });
+    expect(host.ready).toHaveLength(1);
+    expect(host.ready[0]!.getEngine()).toBe(host.canvas().activeEngine());
+    fixture.destroy();
+  });
+
+  test('N3: binding an [engine] later replaces the canvas\'s own one', () => {
+    const fixture = TestBed.createComponent(DiagramCanvasComponent);
+    fixture.detectChanges();
+    const own = fixture.componentInstance.activeEngine();
+    expect(own).toBeTruthy();
+    const engine = new DiagramEngine();
+    engine.createDiagram('late');
+    fixture.componentRef.setInput('engine', engine);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.activeEngine()).toBe(engine);
+    fixture.destroy();
+  });
 });

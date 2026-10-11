@@ -1392,6 +1392,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     this.viewReady = true;
 
+    // N3: a canvas with neither [engine] nor [(nodes)] owns an engine too — as
+    // the JS `createDiagram(el)` does — so by the host's ngAfterViewInit there is
+    // an engine, a diagram and a camera to build tools on. A later [engine]
+    // binding still wins (activeEngine prefers it).
+    if (!untracked(() => this.activeEngine())) {
+      this.ensureEngine();
+    }
+
     // The engine may already be attached by the constructor effect; attachEngine
     // is idempotent, so this only matters when effects have not flushed yet.
     this.attachEngine(untracked(() => this.activeEngine()));
