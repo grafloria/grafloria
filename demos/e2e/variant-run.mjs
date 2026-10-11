@@ -93,6 +93,30 @@ const KIND = () => {
   return w > 0 ? 'kit' : html === 0 && txt > 0 ? 'svg-diagram' : 'other';
 };
 const REF_FLOOR = 0.45; // a faithful variant paints at least this fraction of the JS original
+/**
+ * Screen chrome (minimap, controls, HUD buttons — the portals in .grafloria-screen-layer)
+ * must be what the pointer hits at its own centre. Angular's 0.16.0 canvas stacked the
+ * drawing ABOVE its screen layer, so the minimap and controls lost every click to it, and
+ * this gate, which only counted what was painted, passed. Returns the covered pieces.
+ */
+const SCREEN_CHROME_COVERED = () => {
+  const out = [];
+  for (const layer of document.querySelectorAll('.grafloria-screen-layer')) {
+    for (const el of layer.querySelectorAll(':scope > *, button')) {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      if (r.width < 16 || r.height < 16 || cs.pointerEvents === 'none' || cs.visibility === 'hidden' || cs.display === 'none') continue;
+      const x = r.x + r.width / 2, y = r.y + r.height / 2;
+      if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || !el.contains(hit)) {
+        const name = (el.getAttribute('class') || el.tagName).split(' ').filter(Boolean).slice(0, 2).join('.');
+        out.push(`${name} under ${hit ? hit.tagName.toLowerCase() + '.' + (hit.getAttribute('class') || '').split(' ')[0] : 'nothing'}`);
+      }
+    }
+  }
+  return out;
+};
 
 for (const route of ROUTES) {
   const errs = [];
@@ -110,13 +134,14 @@ for (const route of ROUTES) {
 
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   page.on('pageerror', (e) => errs.push(String(e).slice(0, 140)));
-  let painted = 0, kind = 'other';
+  let painted = 0, kind = 'other', covered = [];
   try {
     await page.goto(`${APP_BASE}#/${route}`, { waitUntil: 'networkidle' });
     await page.waitForFunction((flag) => window[flag] === true, READY, { timeout: 15000 });
     await page.waitForTimeout(400);
     painted = await page.evaluate(COUNT);
     kind = await page.evaluate(KIND);
+    covered = await page.evaluate(SCREEN_CHROME_COVERED);
   } catch (e) {
     errs.push(String(e).slice(0, 140));
   }
@@ -128,8 +153,9 @@ for (const route of ROUTES) {
   // Same kind as the reference: a kit dashboard where the JS page is one, and
   // never a kit dashboard where the JS page is an SVG diagram.
   const wrongKind = ref > 0 && ((refKind === 'kit' && kind !== 'kit') || (refKind === 'svg-diagram' && kind === 'kit'));
-  const ok = painted > 2 && !under && !wrongKind && errs.length === 0;
-  const note = wrongKind ? `  WRONG KIND (reference ${refKind}, variant ${kind})`
+  const ok = painted > 2 && !under && !wrongKind && errs.length === 0 && covered.length === 0;
+  const note = covered.length ? `  SCREEN CHROME COVERED: ${covered.slice(0, 3).join('; ')}`
+    : wrongKind ? `  WRONG KIND (reference ${refKind}, variant ${kind})`
     : under && errs.length === 0 ? `  UNDER-RENDERING (ref=${ref}, floor=${floor})` : errs.length ? '  ' + errs[0] : '';
   console.log(`${ok ? '✓' : '✗'} ${route}  painted=${painted}${ref ? ` ref=${ref}` : ''}${note}`);
   if (!ok) failed++;
