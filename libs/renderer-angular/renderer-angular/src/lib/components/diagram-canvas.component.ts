@@ -1197,6 +1197,30 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** Watches the live diagram; drained into a `modelChange` patch per emit. */
   private capture: IncrementalCapture | null = null;
 
+  /** N6: does this node delegate its dragging to a designated handle child? */
+  private hasDragHandlerChild(node: NodeModel, diagram: DiagramModel): boolean {
+    for (const childId of node.children ?? []) {
+      if (diagram.getNode(childId)?.behavior?.dragHandler?.isDragHandler === true) return true;
+    }
+    return false;
+  }
+
+  /**
+   * N6: is the easy-connect gate satisfied for this press? `'none'` (the default
+   * when the feature is on) connects on any body press; a modifier keeps plain
+   * body-drag-to-move and reserves connect for, say, Shift.
+   */
+  private easyConnectModifierHeld(event: MouseEvent, config: ReturnType<DiagramEngine['getInteractionConfig']>): boolean {
+    switch (config.easyConnectModifier) {
+      case 'shift': return event.shiftKey;
+      case 'alt': return event.altKey;
+      case 'ctrl': return event.ctrlKey;
+      case 'meta': return event.metaKey;
+      case 'none':
+      default: return true;
+    }
+  }
+
   /** The engine `attachEngine()` last wired up (renderer, tools, subscriptions). */
   private attachedEngine: DiagramEngine | null = null;
 
@@ -2079,6 +2103,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       this.snapController.highlightProximityTarget(this.eng, null);
       this.proximityCandidate = null;
     }
+    if (this.eng?.getProximityPreview?.()) this.eng.setProximityPreview(null);
   }
 
   /** Map the engine's InteractionMode enum value onto the ToolManager's mode. */
@@ -2197,12 +2222,29 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // Card 6: proximity connect — is a port of the dragged node close enough to a
     // compatible port to auto-link on drop? Highlight it so the user can see it
     // BEFORE releasing (React Flow's "drop near a node to connect" affordance).
-    if (this.proximityConnectOn() && primaryId) {
-      this.proximityCandidate = this.snapController.findProximityConnection(
-        this.eng,
-        primaryId
+    // N6: the closest candidate across EVERY dragged node, within the engine's
+    // `proximityConnectRadius`, drawn as the renderer's live dashed wire
+    // (`setProximityPreview`) — port glyphs alone read as "nothing is happening".
+    // Same recipe as the JS canvas (DomEventBinder.updateProximityPreview).
+    if (this.proximityConnectOn() && draggedIds.length > 0) {
+      const radius = this.eng.getInteractionConfig().proximityConnectRadius;
+      let best: ProximityCandidate | null = null;
+      for (const id of draggedIds) {
+        const candidate = this.snapController.findProximityConnection(this.eng, id, radius > 0 ? radius : undefined);
+        if (candidate && (!best || candidate.distance < best.distance)) best = candidate;
+      }
+      this.proximityCandidate = best;
+      this.snapController.highlightProximityTarget(this.eng, best);
+      this.eng.setProximityPreview(
+        best
+          ? {
+              sourceNodeId: best.sourceNodeId,
+              sourcePortId: best.sourcePort.id,
+              targetNodeId: best.targetNodeId,
+              targetPortId: best.targetPort.id,
+            }
+          : null
       );
-      this.snapController.highlightProximityTarget(this.eng, this.proximityCandidate);
     }
 
     this.recalculateLinkPathsForNodes(diagram, draggedIds);
@@ -2261,6 +2303,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     const candidate = this.proximityCandidate;
     this.proximityCandidate = null;
     this.snapController.highlightProximityTarget(this.eng, null);
+    this.eng?.setProximityPreview(null);
     this.clearGuides();
 
     const linkCommand =
@@ -4415,6 +4458,18 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
           parentId: clickedNode.parentId
         });
 
+        // N6: Easy Connect — the whole node BODY is a handle. With the feature on
+        // (and its modifier, if any, held) a body press starts a wire from the
+        // node's nearest port instead of a move — the JS canvas's step 8a. A press
+        // ON a port already started a connection above.
+        if (!diagram.isReadonly() && config.enableEasyConnect && this.easyConnectModifierHeld(event, config)) {
+          if (this.interactionHandler.startNodeBodyConnection(clickedNode, worldX, worldY, this.eng)) {
+            this.scheduleRender();
+            this.cdr.markForCheck();
+            return;
+          }
+        }
+
         // DRAG HANDLER SUPPORT: If clicked node is a drag handler, use its parent for dragging
         const isDragHandler = originallyClickedNode.behavior?.dragHandler?.isDragHandler === true;
         if (isDragHandler && originallyClickedNode.parentId) {
@@ -4490,7 +4545,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         // Allow dragging if clicked node is draggable (even if other selected nodes are locked)
         // Note: Drag handler logic is already handled above - if user clicked a drag handler,
         // clickedNode was already replaced with its parent
-        const canDrag = clickedNode.isDraggable() && clickedNode.isSelected();
+        //
+        // N6: declaring a drag handle MEANS "drag me by the handle" (React Flow's
+        // dragHandle; the JS canvas's pressNode): once a node has one, a body
+        // press selects but does not arm a drag. A press ON the handle still drags.
+        const canDrag =
+          clickedNode.isDraggable() &&
+          clickedNode.isSelected() &&
+          (isDragHandler || !this.hasDragHandlerChild(clickedNode, diagram));
 
         if (canDrag) {
           // Wave-2 Interaction: hand the gesture to the ToolManager. It arms
