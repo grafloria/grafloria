@@ -1782,6 +1782,11 @@ export function createDiagram(
   );
 
   // -- resize -----------------------------------------------------------------
+  /** An adopted server root and SVG layer go back to the live styles (fill the container). */
+  const releaseServerLayer = (): void => {
+    if (layers.svg.getAttribute('style') !== SVG_LAYER_STYLE) layers.svg.setAttribute('style', SVG_LAYER_STYLE);
+    if (layers.root.getAttribute('style') !== ROOT_STYLE) layers.root.setAttribute('style', ROOT_STYLE);
+  };
   let resizeObserver: ResizeObserver | undefined;
   if (typeof ResizeObserver !== 'undefined') {
     // An adopted server svg is drawn into the real container with the default
@@ -1793,6 +1798,13 @@ export function createDiagram(
       const r = getRect();
       if (!(r.width > 0 && r.height > 0)) return;
       viewport.syncCanvasSize(r, keepCentre ? { anchor: 'center' } : {});
+      if (keepCentre) {
+        // The server layer held its canvas at 1:1, centred (serverSvgLayerStyle).
+        // Let it fill the container and paint the synced camera in THIS callback
+        // (before the browser paints): same scale, same centre, no frame between.
+        releaseServerLayer();
+        scheduler.flush();
+      }
       keepCentre = false;
     });
     resizeObserver.observe(container);
@@ -1803,6 +1815,8 @@ export function createDiagram(
 
   if (hydration) {
     hydratePaint();
+    // No observer will ever report a size: release the server layer now.
+    if (!resizeObserver) releaseServerLayer();
   } else {
     if (options.fitView) fitView(40);
     // Synchronous first paint: a host that measures right after createDiagram()

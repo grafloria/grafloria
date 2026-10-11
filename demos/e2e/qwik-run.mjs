@@ -19,7 +19,8 @@
 //   SSR          the server's HTML already contains the laid-out diagram, and
 //                the adopted <svg> leaves its size to the container (a fixed
 //                server size made every drag run at half speed — the bug the
-//                first Qwik PR uncovered)
+//                first Qwik PR uncovered); the server paint and the resumed
+//                canvas draw the picture at the same place and size
 //
 //     node demos/e2e/qwik-run.mjs
 
@@ -190,6 +191,20 @@ try {
       });
       check('ssr-resumable', 'SSR-SIZE', svg.width === null && svg.height === null && svg.fills,
         `adopted svg width=${svg.width} height=${svg.height}, fills its container: ${svg.fills}`);
+      // The server paint (no JavaScript at all) and the resumed canvas draw a node
+      // in the same place at the same size: nothing stretches, then snaps.
+      const nodeBox = (pg) => pg.evaluate(() => {
+        const r = document.querySelector('svg [data-node-id="ssr"]').getBoundingClientRect();
+        return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+      });
+      const noJs = await browser.newContext({ viewport: { width: 1280, height: 800 }, javaScriptEnabled: false });
+      const still = await noJs.newPage();
+      await still.goto(`${origin}/?demo=ssr-resumable`, { waitUntil: 'load' });
+      const before = await nodeBox(still);
+      await noJs.close();
+      const after = await nodeBox(page);
+      const same = Math.abs(before.x - after.x) <= 1 && Math.abs(before.y - after.y) <= 1 && Math.abs(before.w - after.w) <= 1 && Math.abs(before.h - after.h) <= 1;
+      check('ssr-resumable', 'SSR-STABLE', same, `server paint ${JSON.stringify(before)} → resumed ${JSON.stringify(after)}`);
     } },
   ];
 

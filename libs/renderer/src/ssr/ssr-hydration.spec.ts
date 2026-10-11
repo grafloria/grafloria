@@ -356,3 +356,102 @@ describe('hydration — the server canvas is not the browser container', () => {
     g.ResizeObserver = saved;
   });
 });
+
+// v4 review S9. Before resume the browser drew the server svg (no width/height,
+// filling its layer) into the real container with preserveAspectRatio "meet":
+// a 900×420 canvas in a 1280×800 box painted ~1.4–1.6× too big, then SNAPPED to
+// 1:1 when the camera synced on resume. The server layer now holds the canvas at
+// its own size, centred — exactly where the first (keep-centre) sync puts it —
+// and the client lets the layer fill the container in the SAME callback that
+// syncs the camera, so the picture never moves or scales.
+describe('hydration — the server picture is drawn at 1:1 and adoption changes nothing visible', () => {
+  const sized = (w: number, h: number): HTMLElement => {
+    const el = document.createElement('div');
+    el.getBoundingClientRect = () => ({ left: 0, top: 0, width: w, height: h, right: w, bottom: h }) as DOMRect;
+    document.body.appendChild(el);
+    return el;
+  };
+  const layerStyle = (host: Element) =>
+    (host.querySelector('.grafloria-svg-layer') as HTMLElement).style;
+
+  it('the server layer is the canvas at its own size, centred on the container by a transform (no scale-to-fit)', () => {
+    const server = renderToStaticSVG({ nodes: NODES, edges: EDGES, width: 900, height: 420, fitView: true, instanceId: 'grafloria-s9a' });
+    const host = document.createElement('div');
+    host.innerHTML = server.html;
+    const s = layerStyle(host);
+    // Anchored top-left (so releasing it is no layout shift), centred by a transform
+    // in the root's container-query units.
+    expect({ left: s.left, top: s.top, width: s.width, height: s.height })
+      .toEqual({ left: '0px', top: '0px', width: '900px', height: '420px' });
+    expect(host.querySelector('.grafloria-svg-layer')!.getAttribute('style')).toContain(
+      'transform:translate(calc(50cqw - 450px),calc(50cqh - 210px))'
+    );
+    expect(host.querySelector('.grafloria-diagram-root')!.getAttribute('style')).toContain('container-type:size');
+    // The adoptable svg itself still carries no size (the Qwik SSR-SIZE rule).
+    const svg = host.querySelector('svg')!;
+    expect(svg.hasAttribute('width') || svg.hasAttribute('height')).toBe(false);
+  });
+
+  it('the first size sync releases the layer to fill the container AND repaints the camera in the same callback', () => {
+    const server = renderToStaticSVG({ nodes: NODES, edges: EDGES, width: 900, height: 420, fitView: true, instanceId: 'grafloria-s9b' });
+    const serverHost = document.createElement('div');
+    serverHost.innerHTML = server.html;
+    const serverVb = serverHost.querySelector('svg')!.getAttribute('viewBox')!;
+    const observers: Array<() => void> = [];
+    const g = globalThis as { ResizeObserver?: unknown };
+    const saved = g.ResizeObserver;
+    g.ResizeObserver = class {
+      constructor(private cb: () => void) { observers.push(() => this.cb()); }
+      observe() { /* fired by hand below */ }
+      disconnect() { /* nothing */ }
+    };
+    try {
+      const container = sized(1280, 800);
+      container.innerHTML = server.html;
+      const diagram = createDiagram(container, { nodes: NODES, edges: EDGES, hydrate: server.snapshot });
+      // Adopted, not yet laid out: the server's picture is untouched.
+      expect(layerStyle(container).width).toBe('900px');
+      expect(container.querySelector('svg')!.getAttribute('viewBox')).toBe(serverVb);
+      observers.forEach((fire) => fire());
+      // No renderNow(): the callback itself must leave a consistent frame.
+      expect(container.querySelector('.grafloria-svg-layer')!.getAttribute('style')).toBe(
+        'position:absolute;top:0;left:0;width:100%;height:100%'
+      );
+      expect(container.querySelector('.grafloria-diagram-root')!.getAttribute('style')).toBe(
+        'position:relative;width:100%;height:100%;overflow:hidden'
+      );
+      const [x, y, vw, vh] = container.querySelector('svg')!.getAttribute('viewBox')!.split(/\s+/).map(Number);
+      const zoom = diagram.viewport.getZoom();
+      expect(zoom).toBeCloseTo(server.snapshot.zoom, 6); // same scale as the server picture
+      expect(vw! * zoom).toBeCloseTo(1280, 3);
+      expect(vh! * zoom).toBeCloseTo(800, 3);
+      // Same world centre as the server canvas, which sat centred in the container.
+      const [sx, sy, sw, sh] = serverVb.split(/\s+/).map(Number);
+      expect(x! + vw! / 2).toBeCloseTo(sx! + sw! / 2, 3);
+      expect(y! + vh! / 2).toBeCloseTo(sy! + sh! / 2, 3);
+      diagram.dispose();
+      container.remove();
+    } finally {
+      g.ResizeObserver = saved;
+    }
+  });
+
+  it('with no ResizeObserver the layer is released at mount', () => {
+    const server = renderToStaticSVG({ nodes: NODES, width: 900, height: 420, instanceId: 'grafloria-s9c' });
+    const g = globalThis as { ResizeObserver?: unknown };
+    const saved = g.ResizeObserver;
+    g.ResizeObserver = undefined;
+    try {
+      const container = sized(1280, 800);
+      container.innerHTML = server.html;
+      const diagram = createDiagram(container, { nodes: NODES, hydrate: server.snapshot });
+      expect(container.querySelector('.grafloria-svg-layer')!.getAttribute('style')).toBe(
+        'position:absolute;top:0;left:0;width:100%;height:100%'
+      );
+      diagram.dispose();
+      container.remove();
+    } finally {
+      g.ResizeObserver = saved;
+    }
+  });
+});
