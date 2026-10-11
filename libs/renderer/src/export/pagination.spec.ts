@@ -252,6 +252,35 @@ describe('printDocument', () => {
     expect(printed).toHaveBeenCalled();
     jest.restoreAllMocks();
   }, 10000);
+
+  // S4 (docs review v4): Chromium fires a SYNCHRONOUS load for the frame's initial
+  // about:blank the moment it is inserted, then another once the written document
+  // closes. The handler printed on both — two print dialogs, the first one blank.
+  it('prints ONCE, and only the written document — not the initial about:blank', async () => {
+    const printedBodies: string[] = [];
+    const realAppend = document.body.appendChild.bind(document.body);
+    jest.spyOn(document.body, 'appendChild').mockImplementation(<T extends Node>(child: T): T => {
+      const appended = realAppend(child);
+      if (child instanceof HTMLIFrameElement) {
+        const frame = child;
+        const view = frame.contentWindow as Window;
+        view.print = () => printedBodies.push(frame.contentDocument?.body?.innerHTML ?? '');
+        view.focus = () => undefined;
+        // Chromium: the initial about:blank "loads" synchronously on insertion.
+        frame.onload?.(new Event('load'));
+      }
+      return appended;
+    });
+
+    const promise = printDocument('<!doctype html><html><head><title>x</title></head><body><p>hello</p></body></html>');
+    const frame = document.querySelector('iframe[aria-hidden="true"]') as HTMLIFrameElement;
+    // …and the written document's own load after close().
+    frame.onload?.(new Event('load'));
+    await promise;
+
+    expect(printedBodies).toEqual(['<p>hello</p>']);
+    jest.restoreAllMocks();
+  }, 10000);
 });
 
 describe('SVGRenderer paginated export', () => {
