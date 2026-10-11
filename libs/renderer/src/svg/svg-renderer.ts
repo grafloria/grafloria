@@ -7698,6 +7698,15 @@ export class SVGRenderer implements IRenderer {
           ? (() => {
               const labelVNodes: VNode[] = [];
 
+              // END chips (`slot: 'start' | 'end'` — UML multiplicities, ER
+              // cardinality text) sit at the line's ends and never replace its
+              // NAME. The display label used to be drawn only while `labels` was
+              // empty, so the first chip hid it (S8, docs review v4). A label ON
+              // the line (a placed label, how `labelPlacement` edges carry their
+              // text) still supersedes it.
+              const chipsOnly =
+                !!link.labels && link.labels.length > 0 && link.labels.every((l) => l.slot === 'start' || l.slot === 'end');
+
               // Render labels from link.labels array
               if (link.labels && link.labels.length > 0) {
                 link.labels.forEach(label => {
@@ -7721,7 +7730,7 @@ export class SVGRenderer implements IRenderer {
                 });
               }
               // Backward compatibility: support old metadata label
-              else if (label) {
+              if (label && (chipsOnly || !link.labels || link.labels.length === 0)) {
                 // Convert old label format to new LinkLabel format
                 const legacyLabel = {
                   id: 'legacy-label',
