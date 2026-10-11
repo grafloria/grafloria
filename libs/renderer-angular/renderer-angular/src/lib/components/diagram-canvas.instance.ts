@@ -33,6 +33,7 @@ export type GrafloriaCanvasInstance = Pick<
   | 'render'
   | 'renderNow'
   | 'batchUpdate'
+  | 'viewport'
 > & {
   on<K extends GrafloriaCanvasEventName>(event: K, handler: (payload: GrafloriaCanvasEventMap[K]) => void): () => void;
   off<K extends GrafloriaCanvasEventName>(event: K, handler: (payload: GrafloriaCanvasEventMap[K]) => void): void;

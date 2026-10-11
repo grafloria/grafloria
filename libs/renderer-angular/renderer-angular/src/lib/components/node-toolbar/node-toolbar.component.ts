@@ -199,6 +199,8 @@ export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'
     styles: [`
     .grafloria-node-toolbar {
       position: absolute;
+      left: 0;
+      top: 0;
       background: var(--toolbar-bg, var(--grafloria-toolbar-bg, white));
       border: 1px solid var(--toolbar-border, var(--grafloria-toolbar-border, #e2e8f0));
       border-radius: var(--toolbar-radius, var(--grafloria-toolbar-radius, 8px));
@@ -753,8 +755,12 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
       // Store last known position
       this.lastKnownPosition = { x, y };
 
-      // Update transform
-      this.transform = `translate(${x}px, ${y}px)`;
+      // Update transform. x/y are CLIENT coordinates; the toolbar is absolutely
+      // positioned at its containing block's origin, so translate by the
+      // difference — wherever the toolbar is mounted (a toolbar the service
+      // inserts after the canvas host used to land below the whole canvas).
+      const origin = this.containingBlockOrigin(toolbarEl);
+      this.transform = `translate(${x - origin.x}px, ${y - origin.y}px)`;
       this.cdr.detectChanges();
 
       // Emit position update
@@ -768,6 +774,21 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
       this.transform = `translate(${fallbackX}px, ${fallbackY}px)`;
       this.cdr.detectChanges();
     }
+  }
+
+  /** Client coordinates of the box `left: 0; top: 0` resolves against. */
+  private containingBlockOrigin(el: HTMLElement): { x: number; y: number } {
+    const parent = el.offsetParent as HTMLElement | null;
+    const view = el.ownerDocument?.defaultView;
+    if (!parent || (parent === el.ownerDocument.body && view?.getComputedStyle(parent).position === 'static')) {
+      // The initial containing block: the document origin.
+      return { x: -(view?.scrollX ?? 0), y: -(view?.scrollY ?? 0) };
+    }
+    const rect = parent.getBoundingClientRect();
+    return {
+      x: rect.left + parent.clientLeft - parent.scrollLeft,
+      y: rect.top + parent.clientTop - parent.scrollTop,
+    };
   }
 
   /**

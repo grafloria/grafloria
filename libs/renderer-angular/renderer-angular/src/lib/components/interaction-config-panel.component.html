@@ -9,6 +9,9 @@
 
   <!-- Panel Content -->
   <div class="panel-content" [class.collapsed]="isCollapsed">
+    <!-- Every select: [selected] per option. The select's own [value] is applied
+         before its *ngFor options exist, so on its own the browser kept the first
+         option (N9; the property panel's A2, 77efa2ec). -->
     <!-- Interaction Mode -->
     <div class="config-section">
       <label class="section-label">Interaction Mode</label>
@@ -16,7 +19,7 @@
         class="config-select"
         [value]="config.mode"
         (change)="onModeChange($any($event.target).value)">
-        <option *ngFor="let mode of interactionModes" [value]="mode.value">
+        <option *ngFor="let mode of interactionModes" [value]="mode.value" [selected]="mode.value === config.mode">
           {{ mode.label }}
         </option>
       </select>
@@ -30,7 +33,7 @@
         class="config-select"
         [value]="config.portVisibility"
         (change)="onPortVisibilityChange($any($event.target).value)">
-        <option *ngFor="let visibility of portVisibilityOptions" [value]="visibility.value">
+        <option *ngFor="let visibility of portVisibilityOptions" [value]="visibility.value" [selected]="visibility.value === config.portVisibility">
           {{ visibility.label }}
         </option>
       </select>
@@ -44,7 +47,7 @@
         class="config-select"
         [value]="config.connectionLineStyle"
         (change)="onConnectionLineStyleChange($any($event.target).value)">
-        <option *ngFor="let style of connectionLineStyles" [value]="style.value">
+        <option *ngFor="let style of connectionLineStyles" [value]="style.value" [selected]="style.value === config.connectionLineStyle">
           {{ style.label }}
         </option>
       </select>

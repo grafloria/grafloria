@@ -225,6 +225,11 @@ import {
  */
 let activeCanvas: DiagramCanvasComponent | null = null;
 
+/** The engine's diagram, created when it has none (the JS `createDiagram()` rule). */
+function ensureDiagram(engine: DiagramEngine): DiagramModel {
+  return engine.getDiagram() ?? engine.createDiagram('grafloria');
+}
+
 /**
  * DiagramCanvasComponent
  *
@@ -515,10 +520,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private createPluginsCamera(): ViewportController {
     const cam = new ViewportController({});
     const v = this.viewport();
-    if (v) cam.setViewport(v);
+    const { width, height } = this.canvasPixelSize();
+    if (v) cam.setViewport({ x: v.x, y: v.y, width, height });
     cam.setZoom(this.zoom());
-    const rect = this.containerRef.nativeElement.getBoundingClientRect();
-    cam.setCanvasSize(rect.width || 800, rect.height || 600);
+    cam.setCanvasSize(width, height);
     // plugin → canvas: minimap clicks and control buttons mutate the camera;
     // reflect into the two-way model signals so the SVG viewBox follows.
     cam.onChange((state) => {
@@ -666,6 +671,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     const parsed = DiagramModel.fromJSON(data);
     applyNodes(diagram, parsed.getNodes().map((n) => toNodeSpec(n)));
     applyEdges(diagram, parsed.getLinks().map((l) => toEdgeSpec(l)));
+    // S10: a load REPLACES the document — no undo step may point into the old
+    // one (Save → edit → load → ⌘Z ⌘Z used to walk back into it). A history
+    // owner (a collab Replica) owns the history itself: left alone.
+    if (!diagram.getHistoryOwner?.()) this.eng.commandManager.clear();
+    this.scheduleRender();
   }
 
   /** Mermaid-compatible text export (lossless sidecar by default). */
@@ -788,6 +798,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** The canvas's instance (see `(ready)`). It follows an `[engine]` swap. */
   instance(): GrafloriaCanvasInstance {
     if (this.instanceHandle) return this.instanceHandle;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const canvas = this;
     const model = (): DiagramModel => {
       const diagram = this.eng?.getDiagram();
       if (!diagram) throw new Error('grafloria-diagram-canvas: there is no diagram yet.');
@@ -823,6 +835,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
           diagram.endBatch();
         }
         this.scheduleRender();
+      },
+      // N7: the SAME camera `viewportController()` returns (the one the canvas
+      // paints with), so `instance()` is a PresentationHost like the JS instance.
+      get viewport() {
+        return canvas.viewportController() as ViewportController;
       },
       on: (event, handler) => this.hub.on(event, handler),
       off: (event, handler) => this.hub.off(event, handler),
@@ -914,14 +931,24 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
+    // Only links still IN the diagram: the hover state can outlive a link that
+    // was just removed (N5 — the toolbar's own Delete).
+    const live = (link: LinkModel | null | undefined): LinkModel | null =>
+      link && diagram.getLink(link.id) === link ? link : null;
     const selected = diagram.getLinks().find((l: LinkModel) => l.state === 'selected') ?? null;
-    const hovered = this.interactionHandler.getState().hoveredLink ?? null;
+    const hovered = live(this.interactionHandler.getState().hoveredLink);
     const next = selected ?? hovered;
 
     // Keep the current toolbar alive while the pointer is on it (otherwise it
-    // vanishes the instant you move off the line to click a button).
-    if (!next && this.linkToolbarHovered && this.linkToolbarTarget()) {
+    // vanishes the instant you move off the line to click a button) — but never
+    // for a link that is gone.
+    if (!next && this.linkToolbarHovered && live(this.linkToolbarTarget())) {
       return;
+    }
+    if (next !== this.linkToolbarTarget()) {
+      // A toolbar that is removed from under the pointer never reports the
+      // pointer leaving it.
+      this.linkToolbarHovered = false;
     }
     this.linkToolbarTarget.set(next);
   }
@@ -1182,6 +1209,30 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** Watches the live diagram; drained into a `modelChange` patch per emit. */
   private capture: IncrementalCapture | null = null;
 
+  /** N6: does this node delegate its dragging to a designated handle child? */
+  private hasDragHandlerChild(node: NodeModel, diagram: DiagramModel): boolean {
+    for (const childId of node.children ?? []) {
+      if (diagram.getNode(childId)?.behavior?.dragHandler?.isDragHandler === true) return true;
+    }
+    return false;
+  }
+
+  /**
+   * N6: is the easy-connect gate satisfied for this press? `'none'` (the default
+   * when the feature is on) connects on any body press; a modifier keeps plain
+   * body-drag-to-move and reserves connect for, say, Shift.
+   */
+  private easyConnectModifierHeld(event: MouseEvent, config: ReturnType<DiagramEngine['getInteractionConfig']>): boolean {
+    switch (config.easyConnectModifier) {
+      case 'shift': return event.shiftKey;
+      case 'alt': return event.altKey;
+      case 'ctrl': return event.ctrlKey;
+      case 'meta': return event.metaKey;
+      case 'none':
+      default: return true;
+    }
+  }
+
   /** The engine `attachEngine()` last wired up (renderer, tools, subscriptions). */
   private attachedEngine: DiagramEngine | null = null;
 
@@ -1212,23 +1263,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private readonly interactionHandler = inject(InteractionHandlerService);
   private readonly componentRenderer = inject(ComponentRendererService);
 
-  /**
-   * A1: what the canvas draws besides the built-in shapes — a template
-   * (`<ng-template grafloriaNode>`), a registered component, or a `custom: true`
-   * node on the HTML layer. Those types are not "unregistered".
-   */
-  private canDrawNode(node: NodeModel): boolean {
-    return (
-      node.getMetadata('useHTMLLayer') === true ||
-      untracked(() => this.nodeDefMap()).has(node.type) ||
-      this.componentRenderer.hasComponent(node.type)
-    );
-  }
   private readonly environmentInjector = inject(EnvironmentInjector);
   private readonly handleRegistry = inject(HandleRegistryService);
 
   constructor() {
-    this.highlighterController.canDraw = (node) => this.canDrawNode(node);
     // Outputs and model() signals are marked destroyed BEFORE ngOnDestroy runs,
     // and any later emit()/set() warns NG0953. Flip `destroyed` at that same
     // moment so everything that guards on it (queued frames, awaited layouts,
@@ -1363,7 +1401,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         if (!cam || this.syncingCamera) return;
         this.syncingCamera = true;
         try {
-          if (viewport) cam.setViewport(viewport);
+          // N7: the camera's rect is the canvas's PIXEL size — what the canvas
+          // paints with (getViewBox) — never the model's width/height (800×600
+          // unless the host sizes it). A size mismatch moved every centre the
+          // camera derives, so a presentation follower drifted.
+          if (viewport) {
+            const { width, height } = this.canvasPixelSize();
+            cam.setViewport({ x: viewport.x, y: viewport.y, width, height });
+          }
           cam.setZoom(zoom);
         } finally {
           this.syncingCamera = false;
@@ -1386,6 +1431,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.viewReady = true;
+
+    // N3: a canvas with neither [engine] nor [(nodes)] owns an engine too — as
+    // the JS `createDiagram(el)` does — so by the host's ngAfterViewInit there is
+    // an engine, a diagram and a camera to build tools on. A later [engine]
+    // binding still wins (activeEngine prefers it).
+    if (!untracked(() => this.activeEngine())) {
+      this.ensureEngine();
+    }
 
     // The engine may already be attached by the constructor effect; attachEngine
     // is idempotent, so this only matters when effects have not flushed yet.
@@ -1441,6 +1494,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private ensureEngine(): DiagramEngine | undefined {
     const provided = untracked(() => this.engine());
     if (provided) {
+      ensureDiagram(provided);
       return provided;
     }
     const owned = untracked(() => this.internalEngine());
@@ -1600,6 +1654,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     if (!engine) {
       return;
     }
+    // N2: an engine handed over without a diagram gets one, as the JS
+    // `createDiagram(el, { engine })` does — otherwise nothing renders, `(ready)`
+    // never fires and the host's `engine.getDiagram()` stays null.
+    ensureDiagram(engine);
 
     this.initializeRenderer();
     this.initializeToolManager();
@@ -2051,6 +2109,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       this.snapController.highlightProximityTarget(this.eng, null);
       this.proximityCandidate = null;
     }
+    if (this.eng?.getProximityPreview?.()) this.eng.setProximityPreview(null);
   }
 
   /** Map the engine's InteractionMode enum value onto the ToolManager's mode. */
@@ -2169,12 +2228,29 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // Card 6: proximity connect — is a port of the dragged node close enough to a
     // compatible port to auto-link on drop? Highlight it so the user can see it
     // BEFORE releasing (React Flow's "drop near a node to connect" affordance).
-    if (this.proximityConnectOn() && primaryId) {
-      this.proximityCandidate = this.snapController.findProximityConnection(
-        this.eng,
-        primaryId
+    // N6: the closest candidate across EVERY dragged node, within the engine's
+    // `proximityConnectRadius`, drawn as the renderer's live dashed wire
+    // (`setProximityPreview`) — port glyphs alone read as "nothing is happening".
+    // Same recipe as the JS canvas (DomEventBinder.updateProximityPreview).
+    if (this.proximityConnectOn() && draggedIds.length > 0) {
+      const radius = this.eng.getInteractionConfig().proximityConnectRadius;
+      let best: ProximityCandidate | null = null;
+      for (const id of draggedIds) {
+        const candidate = this.snapController.findProximityConnection(this.eng, id, radius > 0 ? radius : undefined);
+        if (candidate && (!best || candidate.distance < best.distance)) best = candidate;
+      }
+      this.proximityCandidate = best;
+      this.snapController.highlightProximityTarget(this.eng, best);
+      this.eng.setProximityPreview(
+        best
+          ? {
+              sourceNodeId: best.sourceNodeId,
+              sourcePortId: best.sourcePort.id,
+              targetNodeId: best.targetNodeId,
+              targetPortId: best.targetPort.id,
+            }
+          : null
       );
-      this.snapController.highlightProximityTarget(this.eng, this.proximityCandidate);
     }
 
     this.recalculateLinkPathsForNodes(diagram, draggedIds);
@@ -2233,6 +2309,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     const candidate = this.proximityCandidate;
     this.proximityCandidate = null;
     this.snapController.highlightProximityTarget(this.eng, null);
+    this.eng?.setProximityPreview(null);
     this.clearGuides();
 
     const linkCommand =
@@ -3048,7 +3125,16 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     // Render SVG content to svgLayer div (Phase 1: changed from containerRef)
     if (this.svgLayerRef) {
-      this.vnodeRenderer.render(vnode, this.svgLayerRef.nativeElement);
+      const layer = this.svgLayerRef.nativeElement;
+      this.vnodeRenderer.render(vnode, layer);
+      // N4: the drawn SVG is the hit target, as on the JS canvas — a host's own
+      // listener (a context menu, a tooltip) finds the node through
+      // `event.target.closest('[data-node-id]')`. The layer is pointer-events:
+      // none; the stylesheet rule meant to re-enable its <svg> never matched (view
+      // encapsulation scopes it to template elements, and this <svg> is created
+      // imperatively), so every event used to target the container.
+      const svg = layer.firstElementChild as SVGElement | null;
+      if (svg && svg.style.pointerEvents !== 'all') svg.style.pointerEvents = 'all';
     }
 
     // Phase 1: Render HTML nodes to htmlLayer div
@@ -4378,6 +4464,18 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
           parentId: clickedNode.parentId
         });
 
+        // N6: Easy Connect — the whole node BODY is a handle. With the feature on
+        // (and its modifier, if any, held) a body press starts a wire from the
+        // node's nearest port instead of a move — the JS canvas's step 8a. A press
+        // ON a port already started a connection above.
+        if (!diagram.isReadonly() && config.enableEasyConnect && this.easyConnectModifierHeld(event, config)) {
+          if (this.interactionHandler.startNodeBodyConnection(clickedNode, worldX, worldY, this.eng)) {
+            this.scheduleRender();
+            this.cdr.markForCheck();
+            return;
+          }
+        }
+
         // DRAG HANDLER SUPPORT: If clicked node is a drag handler, use its parent for dragging
         const isDragHandler = originallyClickedNode.behavior?.dragHandler?.isDragHandler === true;
         if (isDragHandler && originallyClickedNode.parentId) {
@@ -4453,7 +4551,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         // Allow dragging if clicked node is draggable (even if other selected nodes are locked)
         // Note: Drag handler logic is already handled above - if user clicked a drag handler,
         // clickedNode was already replaced with its parent
-        const canDrag = clickedNode.isDraggable() && clickedNode.isSelected();
+        //
+        // N6: declaring a drag handle MEANS "drag me by the handle" (React Flow's
+        // dragHandle; the JS canvas's pressNode): once a node has one, a body
+        // press selects but does not arm a drag. A press ON the handle still drags.
+        const canDrag =
+          clickedNode.isDraggable() &&
+          clickedNode.isSelected() &&
+          (isDragHandler || !this.hasDragHandlerChild(clickedNode, diagram));
 
         if (canDrag) {
           // Wave-2 Interaction: hand the gesture to the ToolManager. It arms
