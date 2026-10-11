@@ -1669,6 +1669,29 @@ try {
     `rest: ${JSON.stringify(c0)} · Operations selected: ${JSON.stringify(c1)} · Split inside: layout ${lOps}, orders ${ops0.orders.w}→${ops1.orders.w} px, the pair covers the ${Math.round(slab.width)} px section ${covers} · Grid back: ${lOps2}, orders at ${ops2.orders.x} w ${ops2.orders.w} (was ${ops0.orders.x} w ${ops0.orders.w}) · Alerts tab: ${JSON.stringify(c3)} · Split inside: ${lAlerts}, ${alertsIds.length} widgets cover the page ${alertsCover} · Filters tab: ${JSON.stringify(c5)} layout ${lFilters} · a widget inside Filters: ${c6.name} · a view widget: ${JSON.stringify(c7)} · ${JSON.stringify(sane)}`);
 }
 
+{
+  begin('s37-a-section-grows-past-its-rows-and-pushes-the-section-below');
+  // S13 (docs review v4): pulling a widget's corner past its section's maxRows grows the section (the ratchet,
+  // sizing 'grow' by default) — and a SECTION below it is pushed like any widget. Sections are solid in the
+  // grid engine; the growth asked without intent and clamped at the tab section, so the pull capped at 2 rows.
+  const page = await freshPage('/e2e/section-escalation.html');
+  const cell = (id) => page.evaluate((id) => window.__demoCtx.handle.widget(id).cell, id);
+  const box = await page.evaluate(() => document.querySelector('.grafloria-node-host[data-node-id="revenue"]').getBoundingClientRect().toJSON());
+  const k0 = await cell('kpis'), d0 = await cell('details'), r0 = await cell('revenue');
+  const from = { x: box.x + box.width - 3, y: box.y + box.height - 3 };
+  await page.mouse.move(from.x - 30, from.y - 30); await page.mouse.move(from.x, from.y, { steps: 4 }); await page.waitForTimeout(150);
+  await page.mouse.down();
+  for (let dy = 50; dy <= 300; dy += 50) { await page.mouse.move(from.x, from.y + dy); await page.waitForTimeout(30); }
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const k1 = await cell('kpis'), d1 = await cell('details'), r1 = await cell('revenue');
+  await shot(page, 'grown-and-pushed');
+  const st = await boardState(page);
+  verdict(r1.h > k0.h && k1.h >= r1.h && k1.h > k0.h && d1.y >= d0.y + (k1.h - k0.h) && st.overlaps === 0,
+    `revenue h ${r0.h}→${r1.h} · section kpis h ${k0.h}→${k1.h} · tab section details y ${d0.y}→${d1.y} · overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
   await browser.close();
   server.close();
 }

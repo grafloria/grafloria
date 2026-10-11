@@ -3746,7 +3746,12 @@ export function bindDashboardGrid(
       const fb = grp
         ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height }
         : undefined;
-      const r = engine.resizeCheck(id, item.w, item.h + dRows);
+      // A member grows because something INSIDE it needs the row (a child pulled
+      // past the section's rows, content, an adoption) — that is intent, so the
+      // growth pushes SOLID neighbours (another section, a tab container) as it
+      // pushes plain tiles. Without it the section clamped at the first section
+      // below it and the pull capped at its rows (S13).
+      const r = engine.resizeCheck(id, item.w, item.h + dRows, { pushSolid: dRows > 0 });
       if (!r.changed) return { changed: false };
       project();
       const after = engine.getItem(id)!;

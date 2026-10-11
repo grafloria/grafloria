@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Section escalation fixture</title>
+<style>body { margin: 0; font: 13px system-ui, sans-serif; } #b { width: 1000px; height: 620px; }</style>
+<div id="b"></div>
+<script type="module">
+// The nest-dashboard-containers page's board: a KPI section (maxRows 2) above a
+// tab section and a donut. Pulling Revenue's corner past the section's rows must
+// grow the section and push the tab section down (S13).
+import { render, dashboard } from '../shell/grafloria.js';
+const spec = dashboard({
+  columns: 6, width: 1000, height: 620, dragHandle: true,
+  views: [{ id: 'main', widgets: [
+    { id: 'kpis', title: 'Sales KPIs', span: 6, rows: 2, columns: 4, maxRows: 2, caption: { subtitle: 'Drag a widget into or out of this section' },
+      widgets: [
+        { id: 'revenue', kind: 'kpi', title: 'Revenue', span: 1, data: { label: 'Revenue', value: '$6.8M', delta: 12.4 } },
+        { id: 'customers', kind: 'kpi', title: 'Customers', span: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      ] },
+    { id: 'details', title: 'Details', span: 4, rows: 2, layout: 'tabs', active: 'pipeline', tabs: { stretch: true, height: 36 },
+      widgets: [
+        { id: 'pipeline', title: 'Pipeline', columns: 2, widgets: [{ id: 'deals', kind: 'kpi', span: 2, data: { label: 'Open deals', value: '47' } }] },
+        { id: 'service', title: 'Service', columns: 2, widgets: [{ id: 'nps', kind: 'kpi', span: 2, data: { label: 'NPS', value: '61', delta: 4 } }] },
+      ] },
+    { id: 'mix', kind: 'donut', title: 'By region', span: 2, rows: 2,
+      data: { slices: [{ label: 'EMEA', value: 2.9 }, { label: 'APAC', value: 1.8 }, { label: 'NA', value: 2.1 }] } },
+  ] }],
+});
+const instance = render(spec, document.getElementById('b'));
+window.__demoCtx = { handle: spec.handle, instance };
+window.__demoReady = true;
+</script>
