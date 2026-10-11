@@ -1,6 +1,8 @@
 import {
   DSL,
+  adoptComments,
   adoptTextGrammarMetadata,
+  type CommentRegisterTree,
   importDiagramText,
   stripGrafloriaSidecar,
   type DiagramModel,
@@ -18,6 +20,12 @@ export interface LoadTextHooks {
   afterNodes?: (before: unknown) => void;
   /** Receives every edge the reconcile drops or re-attaches. */
   warnEdge?: (warning: EdgeWarning) => void;
+  /**
+   * Puts the loaded document's comment threads on the model (replacing its own).
+   * A canvas with a comment store passes `store.adopt` so old @mentions stay
+   * history; the default writes the model directly.
+   */
+  adoptComments?: (tree: CommentRegisterTree, options: { replace: true }) => void;
 }
 
 /**
@@ -138,5 +146,12 @@ function reconcileLoaded(model: DiagramModel, result: ImportTextResult, hooks: L
   // diagram-level keys of their own), so an erDiagram, stateDiagram,
   // block-beta or architecture-beta loaded here exported as a flowchart,
   // and a classDiagram lost its members.
+  // …and comment threads, which the lossless sidecar carries in `comments` like
+  // any saved document (S5, docs review v4). Replaced like the ink: plain text
+  // carries none, so it clears them.
+  const tree = result.diagram.comments ?? {};
+  if (hooks.adoptComments) hooks.adoptComments(tree, { replace: true });
+  else adoptComments(model, tree, { replace: true });
+
   adoptTextGrammarMetadata(model, result.diagram);
 }

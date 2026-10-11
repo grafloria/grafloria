@@ -61,8 +61,9 @@
  * "widget" got dashboard chrome painted over it; requiring the stamp the kit
  * itself wrote keeps the registry the general seam it is meant to be.
  */
-import { DiagramSerializer } from '@grafloria/engine';
+import { DiagramSerializer, adoptComments } from '@grafloria/engine';
 import type {
+  CommentStore,
   DiagramDocumentEnvelope,
   DiagramModel,
   GroupModel,
@@ -405,6 +406,15 @@ export function fromDocument(
       for (const stroke of model.getStrokes()) {
         if (!live.getStroke?.(stroke.id)) live.addStroke?.(stroke);
       }
+      // -- comments -------------------------------------------------------------
+      // The document's `comments` (threads, replies, anchors, status) ride outside
+      // nodes/edges as well, and were simply dropped (S5, docs review v4). Through
+      // the canvas's comment store when it has one — so pins paint and old
+      // @mentions stay history — and into the model either way, so a re-save keeps
+      // the discussion. Merged: a thread the canvas already has keeps its state.
+      const store = a.getCommentStore?.();
+      if (store) store.adopt(model.comments);
+      else adoptComments(live as unknown as DiagramModel, model.comments);
     }
 
     if (options.interactive === false) return;
@@ -505,6 +515,7 @@ export function fromDocument(
 
 interface FinalizeApi {
   container?: HTMLElement;
+  getCommentStore?: () => CommentStore | null;
   getModel?: () => {
     getGroup?: (id: string) => GroupModel | undefined;
     addGroup?: (g: GroupModel) => void;

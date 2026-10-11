@@ -23,11 +23,57 @@ import {
   type CommentAnchor,
   type CommentMessage,
   type CommentThreadStatus,
+  type CommentRegisterTree,
   type CommentThreadView,
   type ResolvedAnchor,
   type StoredThread,
   type WorldPoint,
 } from './types';
+
+export interface AdoptCommentsOptions {
+  /**
+   * true: the loaded threads REPLACE the diagram's (a whole-document load such as
+   * `loadText`). Default false: they are MERGED in — a thread the diagram already
+   * has (the same id) keeps its live state, so a second `finalize` never resets a
+   * reply made after the load.
+   */
+  replace?: boolean;
+}
+
+/**
+ * Put a loaded document's comment threads (its `comments` field: threads, replies,
+ * anchors, status) back on a live diagram. Loads used to drop them: the document
+ * saved them, `render(fromDocument(saved))` never restored them, and the next save
+ * lost the discussion (S5, docs review v4).
+ *
+ * One whole-tree write through the `comments` setter — the model's documented
+ * landing pad for a load — so the store, the pins and op capture all see it.
+ * Returns whether anything changed.
+ */
+export function adoptComments(
+  diagram: DiagramModel,
+  tree: CommentRegisterTree | undefined,
+  options: AdoptCommentsOptions = {}
+): boolean {
+  const loaded = tree ?? {};
+  const current = diagram.comments ?? {};
+  let next: CommentRegisterTree;
+  if (options.replace) {
+    if (Object.keys(loaded).length === 0 && Object.keys(current).length === 0) return false;
+    next = deepCloneTree(loaded);
+  } else {
+    const missing = Object.keys(loaded).filter((tid) => !(tid in current));
+    if (missing.length === 0) return false;
+    next = { ...current };
+    for (const tid of missing) next[tid] = deepCloneTree({ [tid]: loaded[tid] })[tid];
+  }
+  diagram.comments = next;
+  return true;
+}
+
+function deepCloneTree(tree: CommentRegisterTree): CommentRegisterTree {
+  return JSON.parse(JSON.stringify(tree)) as CommentRegisterTree;
+}
 
 /** What a caller asks for. The store fills in the obituary (fallback point + label). */
 export type AnchorSpec =
@@ -571,6 +617,18 @@ export class CommentStore {
   }
 
   // ==========================================================================
+
+  /**
+   * Bring a LOADED document's threads into this store's diagram — see
+   * {@link adoptComments}. Everything adopted is history, not news: its @mentions
+   * are marked notified first, so reopening a file never notifies anyone.
+   */
+  adopt(tree: CommentRegisterTree | undefined, options: AdoptCommentsOptions = {}): boolean {
+    for (const [tid, t] of Object.entries(tree ?? {})) {
+      for (const mid of Object.keys(t?.messages ?? {})) this.notified.add(mentionKey(tid, mid));
+    }
+    return adoptComments(this.diagram, tree, options);
+  }
 
   /** Fired whenever the comment DATA or this viewer's READ STATE changes. */
   onChange(cb: () => void): Unsub {
