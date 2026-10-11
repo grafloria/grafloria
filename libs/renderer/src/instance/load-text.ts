@@ -82,6 +82,22 @@ export function loadTextInto(
   // class cards + markers), when a kit registered one — see text-kits.ts.
   textKitFor(result.diagram.getMetadata('diagramType'))?.decorate(result.diagram);
 
+  // ONE undo step under a history owner (a sync Replica): the load is a shared
+  // edit, and Ctrl+Z takes it back in one press, not one op at a time.
+  const owner = model.getHistoryOwner?.() ?? null;
+  owner?.beginStep();
+  try {
+    reconcileLoaded(model, result, hooks);
+  } finally {
+    owner?.endStep();
+  }
+  // The engine's own undo history described the document that was just
+  // replaced; it clears on this signal (S10, docs review v4).
+  model.markDocumentReplaced?.();
+  return result;
+}
+
+function reconcileLoaded(model: DiagramModel, result: ImportTextResult, hooks: LoadTextHooks): void {
   const before = hooks.beforeNodes?.();
   applyNodes(model, result.diagram.getNodes());
   hooks.afterNodes?.(before);
@@ -123,5 +139,4 @@ export function loadTextInto(
   // block-beta or architecture-beta loaded here exported as a flowchart,
   // and a classDiagram lost its members.
   adoptTextGrammarMetadata(model, result.diagram);
-  return result;
 }
