@@ -225,6 +225,11 @@ import {
  */
 let activeCanvas: DiagramCanvasComponent | null = null;
 
+/** The engine's diagram, created when it has none (the JS `createDiagram()` rule). */
+function ensureDiagram(engine: DiagramEngine): DiagramModel {
+  return engine.getDiagram() ?? engine.createDiagram('grafloria');
+}
+
 /**
  * DiagramCanvasComponent
  *
@@ -1441,6 +1446,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private ensureEngine(): DiagramEngine | undefined {
     const provided = untracked(() => this.engine());
     if (provided) {
+      ensureDiagram(provided);
       return provided;
     }
     const owned = untracked(() => this.internalEngine());
@@ -1600,6 +1606,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     if (!engine) {
       return;
     }
+    // N2: an engine handed over without a diagram gets one, as the JS
+    // `createDiagram(el, { engine })` does — otherwise nothing renders, `(ready)`
+    // never fires and the host's `engine.getDiagram()` stays null.
+    ensureDiagram(engine);
 
     this.initializeRenderer();
     this.initializeToolManager();
