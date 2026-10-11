@@ -919,14 +919,24 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
+    // Only links still IN the diagram: the hover state can outlive a link that
+    // was just removed (N5 — the toolbar's own Delete).
+    const live = (link: LinkModel | null | undefined): LinkModel | null =>
+      link && diagram.getLink(link.id) === link ? link : null;
     const selected = diagram.getLinks().find((l: LinkModel) => l.state === 'selected') ?? null;
-    const hovered = this.interactionHandler.getState().hoveredLink ?? null;
+    const hovered = live(this.interactionHandler.getState().hoveredLink);
     const next = selected ?? hovered;
 
     // Keep the current toolbar alive while the pointer is on it (otherwise it
-    // vanishes the instant you move off the line to click a button).
-    if (!next && this.linkToolbarHovered && this.linkToolbarTarget()) {
+    // vanishes the instant you move off the line to click a button) — but never
+    // for a link that is gone.
+    if (!next && this.linkToolbarHovered && live(this.linkToolbarTarget())) {
       return;
+    }
+    if (next !== this.linkToolbarTarget()) {
+      // A toolbar that is removed from under the pointer never reports the
+      // pointer leaving it.
+      this.linkToolbarHovered = false;
     }
     this.linkToolbarTarget.set(next);
   }
