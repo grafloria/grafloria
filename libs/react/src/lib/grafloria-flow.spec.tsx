@@ -431,6 +431,35 @@ describe('tokenBridge prop', () => {
   });
 });
 
+describe('custom nodes and the outline layer (v4 S7)', () => {
+  function Job({ data }: NodeProps) {
+    return <div className="job">{String(data['title'])}</div>;
+  }
+  const at = { position: { x: 80, y: 80 }, size: { width: 200, height: 100 } };
+
+  it.each([
+    ['custom: true', { id: 'build', type: 'job', custom: true, ...at, data: { title: 'Build' } }],
+    ['a nodeTypes type without custom', { id: 'build', type: 'job', ...at, data: { title: 'Build' } }],
+  ])('%s: no "Node type is not registered" outline, under StrictMode', async (_label, node) => {
+    const { container } = render(
+      <StrictMode>
+        <GrafloriaFlow defaultNodes={[node as NodeSpec]} nodeTypes={{ job: Job }} highlighterConfig />
+      </StrictMode>
+    );
+    await waitFor(() => expect(container.querySelector('.grafloria-highlighter-overlay')).not.toBeNull());
+    await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+    const warnings = Array.from(container.querySelectorAll('.grafloria-highlighter-validation')).map((r) => r.textContent);
+    expect(warnings).toEqual([]);
+  });
+
+  it('a type nothing draws is still flagged', async () => {
+    const { container } = render(
+      <GrafloriaFlow defaultNodes={[{ id: 'x', type: 'no-such-type', ...at }]} nodeTypes={{ job: Job }} highlighterConfig />
+    );
+    await waitFor(() => expect(container.querySelectorAll('.grafloria-highlighter-validation')).toHaveLength(1));
+  });
+});
+
 describe('hooks', () => {
   it('a hook used outside any provider warns ONCE in development, naming the provider to add', () => {
     // It still returns null — no behaviour change — but it used to say nothing at all, so

@@ -265,6 +265,28 @@ describe('Grafloria.render — the Mermaid-shaped API', () => {
     diagram.dispose();
   });
 
+  it('a registered node type gets no "not registered" outline; an unknown one still does (v4 S7)', async () => {
+    registerNodeType('s7-card', (_node, element) => { element.textContent = 'card'; });
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const diagram = render(
+      {
+        nodes: [
+          { id: 'reg', type: 's7-card', position: { x: 40, y: 40 }, size: { width: 120, height: 60 } },
+          { id: 'flag', type: 's7-card', custom: true, position: { x: 240, y: 40 }, size: { width: 120, height: 60 } },
+          { id: 'typo', type: 'no-such-type', position: { x: 440, y: 40 }, size: { width: 120, height: 60 } },
+        ],
+      } as never,
+      target,
+      { highlighterConfig: true }
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    const warnings = Array.from(target.querySelectorAll('.grafloria-highlighter-validation')).map((r) => r.textContent);
+    expect(warnings).toEqual(["Node type 'no-such-type' is not registered"]);
+    diagram.dispose();
+    unregisterNodeType('s7-card');
+  });
+
   it('accepts a CSS selector and a JSON string', () => {
     const target = document.createElement('div');
     target.id = 'chart';

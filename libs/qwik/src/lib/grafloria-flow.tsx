@@ -291,6 +291,9 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
       tokenBridge: props.tokenBridge,
       highlighterConfig: props.highlighterConfig,
       highlightConnected: props.highlightConnected,
+      // A type with a `nodeTypes` component is one this canvas draws: never an
+      // "unregistered type" outline (custom: true nodes are exempt in the core).
+      canDrawNode: (node: NodeModel) => !!nodeTypes?.[node.type],
 
       // Qwik has no portal primitive, so a custom node is mounted with Qwik's
       // own `render()` into the host element the core hands us.

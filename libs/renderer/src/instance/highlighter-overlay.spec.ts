@@ -120,3 +120,57 @@ describe('the outline layer (highlighterConfig) on createDiagram', () => {
     expect(outlines('validation')).toHaveLength(2);
   });
 });
+
+/**
+ * v4 review S7: the "Node type 'X' is not registered" warning is about a type
+ * NOTHING can draw. Built-in shapes were exempted first; this is the whole
+ * class — every way the canvas draws a node exempts its type, in every binding
+ * (React/Vue/Qwik/the element/plain JS all mount through createDiagram()).
+ */
+describe('the unregistered-type warning skips every type the canvas draws', () => {
+  let container: HTMLElement;
+  let diagram: DiagramInstance;
+  /** The warning text of every validation outline (its <title>). */
+  const flagged = () =>
+    Array.from(container.querySelectorAll('.grafloria-highlighter-validation')).map((r) => r.textContent ?? '');
+  const at = (i: number) => ({ position: { x: 40 + 160 * (i % 4), y: 40 + 120 * Math.floor(i / 4) }, size: { width: 120, height: 60 } });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    container = makeContainer();
+  });
+  afterEach(() => {
+    diagram?.dispose();
+    container.remove();
+    jest.useRealTimers();
+  });
+
+  it('custom nodes, templates, foreignObject nodes, named silhouettes and host-registered types are not flagged; an unknown type still is', () => {
+    diagram = createDiagram(container, {
+      nodes: [
+        { id: 'shape', type: 'diamond', ...at(0) },
+        { id: 'custom', type: 'job', custom: true, ...at(1) },
+        { id: 'template', type: 'card', data: { title: 'T' }, ...at(2) },
+        { id: 'fo', type: 'widget', metadata: { useForeignObject: true }, ...at(3) },
+        { id: 'silhouette', type: 'basic', metadata: { shape: { type: 'ellipse' } }, ...at(4) },
+        { id: 'hosted', type: 'host-drawn', ...at(5) },
+        { id: 'typo', type: UNKNOWN_TYPE, ...at(6) },
+      ],
+      nodeTemplates: { card: (data: Record<string, unknown>) => ({ html: `<b>${String(data['title'])}</b>` }) },
+      renderCustomNode: (_node: unknown, el: HTMLElement) => { el.textContent = 'job'; },
+      canDrawNode: (node: { type: string }) => node.type === 'host-drawn',
+      highlighterConfig: true,
+    } as never);
+    tick();
+    expect(flagged()).toEqual([`Node type '${UNKNOWN_TYPE}' is not registered`]);
+  });
+
+  it('a whiteboard-style node (type "basic", style.shape) is drawn, so it is not flagged', () => {
+    diagram = createDiagram(container, { nodes: [], highlighterConfig: true } as never);
+    const node = new NodeModel({ id: 'wb', type: 'basic', position: { x: 50, y: 50 }, size: { width: 100, height: 60, depth: 0 } });
+    node.setStyle({ shape: 'rectangle' } as never);
+    diagram.getModel().addNode(node);
+    tick();
+    expect(flagged()).toEqual([]);
+  });
+});

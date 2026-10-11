@@ -10,7 +10,8 @@
 //   PAINT        the canvas draws the nodes and lines the page declares
 //   NO-ERRORS    no page error, no console error
 //   DRAG-1:1     a node follows the pointer at full speed
-//   CUSTOM       Qwik components render as the custom nodes, wired to lines
+//   CUSTOM       Qwik components render as the custom nodes, wired to lines,
+//                with no "Node type '…' is not registered" outline
 //   HOOKS        the toolbar drives the canvas through the provider and hooks
 //   ZONES/LINES  `groups` and `highlightConnected` go in at mount and follow live
 //   BRIDGE       a new `tokenBridge` re-points the diagram's variables live
@@ -106,6 +107,12 @@ try {
       const cards = await page.evaluate(() => [...document.querySelectorAll('.grafloria-html-layer [data-node-id]')]
         .map((el) => el.textContent.trim()).filter(Boolean));
       check('custom-nodes', 'CUSTOM', cards.length >= 3, `${cards.length} Qwik custom nodes with content`);
+      const outline = await page.evaluate(() => ({
+        layer: !!document.querySelector('.grafloria-highlighter-overlay'),
+        warnings: [...document.querySelectorAll('.grafloria-highlighter-validation')].map((r) => r.textContent),
+      }));
+      check('custom-nodes', 'NO-UNREG-OUTLINE', outline.layer && outline.warnings.length === 0,
+        `validation layer ${outline.layer}; outlines: ${outline.warnings.join(' · ') || 'none'}`);
     } },
     { slug: 'toolbar-and-hooks', nodes: 4, links: 3, extra: async (page) => {
       const readout = () => page.evaluate(() => [...document.querySelectorAll('.readout')].map((r) => r.textContent.trim()).join(' | '));

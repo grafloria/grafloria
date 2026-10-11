@@ -16,3 +16,6 @@ export type { FlowPlaceOptions, PlaceNodesOptions } from './workflow/flow-place'
 export type { NodeTemplate, NodeTemplateDef, NodeTemplateFn, NodeTemplateContext, NodeTemplateOutput } from './workflow/node-templates';
 export type { AffordanceOptions, PortAddRequest, LinkAddRequest } from './workflow/affordances';
 export * from './load-text';
+// "Does the canvas draw this node?" — the outline layer's unregistered-type rule,
+// for a host with its own highlighter (Angular's canvas) to share.
+export { canvasDrawsNode } from './highlighter-overlay';

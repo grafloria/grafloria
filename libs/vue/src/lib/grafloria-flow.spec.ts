@@ -113,6 +113,27 @@ describe('GrafloriaFlow (Vue)', () => {
     expect(instances).toHaveLength(1);
   });
 
+  it('custom nodes (a #node-<type> slot, or custom: true) get no "not registered" outline (v4 S7)', async () => {
+    app = createApp(defineComponent({
+      setup: () => () =>
+        h(GrafloriaFlow, {
+          defaultNodes: [
+            { id: 'slot', type: 'job', position: { x: 60, y: 60 }, size: { width: 120, height: 60 }, data: {} },
+            { id: 'flag', type: 'card', custom: true, position: { x: 260, y: 60 }, size: { width: 120, height: 60 }, data: {} },
+            { id: 'typo', type: 'no-such-type', position: { x: 460, y: 60 }, size: { width: 120, height: 60 } },
+          ],
+          highlighterConfig: true,
+        }, {
+          'node-job': () => h('div', 'job'),
+          node: () => h('div', 'any'),
+        }),
+    }));
+    app.mount(host);
+    await flush();
+    const warnings = Array.from(host.querySelectorAll('.grafloria-highlighter-validation')).map((r) => r.textContent);
+    expect(warnings).toEqual(["Node type 'no-such-type' is not registered"]);
+  });
+
   it('highlightConnected: goes in at mount and follows the prop live', async () => {
     let instance: any = null;
     const hc = ref<unknown>(true);
