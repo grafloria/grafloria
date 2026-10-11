@@ -180,10 +180,18 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * a connection is drawn. `true` turns every kind on; an object turns kinds on or
    * off one by one, over the defaults ({@link HighlighterConfig}). Off when unset,
    * so an existing app is unchanged. Validation outlines include the engine's
-   * warnings, an unregistered node type among them; `{ showValidation: false }`
+   * warnings, an unregistered node type among them — but never for a type the
+   * canvas draws (a shape, `custom: true`, a template, a foreignObject node, a
+   * named `style.shape`, or {@link canDrawNode}); `{ showValidation: false }`
    * keeps only hover and selection. Switch it live with `setHighlighterConfig()`.
    */
   highlighterConfig?: boolean | Partial<HighlighterConfig>;
+  /**
+   * The host's own "I draw this node" test, for the outline layer: a type it
+   * answers `true` for is never flagged as unregistered. Bindings pass their
+   * registered node components (`nodeTypes`, slots) here.
+   */
+  canDrawNode?: (node: NodeModel) => boolean;
 
   /**
    * Arrange the diagram on mount. `'architecture'` composes it the way AI tools
@@ -777,7 +785,10 @@ export function createDiagram(
   // carries the camera — a pan or zoom moves them with the picture for free.
   // Shape-aware: built-in shapes (`rect`, `ellipse`, …) are not flagged as
   // unregistered types — see ShapeAwareHighlighterController.
-  const highlighter: HighlighterController = new ShapeAwareHighlighterController();
+  const highlighter = new ShapeAwareHighlighterController();
+  // Templates register no engine type either; the host adds what IT draws.
+  highlighter.canDraw = (node) =>
+    (typeof node.type === 'string' && !!nodeTemplates?.has(node.type)) || options.canDrawNode?.(node) === true;
   let highlighterOn = false;
   const highlighterPatcher = new VNodePatcher({ document: doc });
   let highlighterHost: HTMLElement | null = null;
@@ -1771,6 +1782,11 @@ export function createDiagram(
   );
 
   // -- resize -----------------------------------------------------------------
+  /** An adopted server root and SVG layer go back to the live styles (fill the container). */
+  const releaseServerLayer = (): void => {
+    if (layers.svg.getAttribute('style') !== SVG_LAYER_STYLE) layers.svg.setAttribute('style', SVG_LAYER_STYLE);
+    if (layers.root.getAttribute('style') !== ROOT_STYLE) layers.root.setAttribute('style', ROOT_STYLE);
+  };
   let resizeObserver: ResizeObserver | undefined;
   if (typeof ResizeObserver !== 'undefined') {
     // An adopted server svg is drawn into the real container with the default
@@ -1782,6 +1798,13 @@ export function createDiagram(
       const r = getRect();
       if (!(r.width > 0 && r.height > 0)) return;
       viewport.syncCanvasSize(r, keepCentre ? { anchor: 'center' } : {});
+      if (keepCentre) {
+        // The server layer held its canvas at 1:1, centred (serverSvgLayerStyle).
+        // Let it fill the container and paint the synced camera in THIS callback
+        // (before the browser paints): same scale, same centre, no frame between.
+        releaseServerLayer();
+        scheduler.flush();
+      }
       keepCentre = false;
     });
     resizeObserver.observe(container);
@@ -1792,6 +1815,8 @@ export function createDiagram(
 
   if (hydration) {
     hydratePaint();
+    // No observer will ever report a size: release the server layer now.
+    if (!resizeObserver) releaseServerLayer();
   } else {
     if (options.fitView) fitView(40);
     // Synchronous first paint: a host that measures right after createDiagram()

@@ -9,7 +9,7 @@ import type {
 import { defineGrafloriaFlow } from './grafloria-flow-element';
 import type { DashboardSpec } from './dashboard-kit';
 import type { LoadedDiagramSpec } from './load';
-import { registerNodeType, registeredNodeTypes, getNodeType } from './node-type-registry';
+import { registerNodeType, registeredNodeTypes, getNodeType, hasNodeType } from './node-type-registry';
 import type { NodeTypeRenderer } from './node-type-registry';
 
 /**
@@ -121,6 +121,9 @@ export function render(
       options.renderCustomNode ??
       (parsed as { renderCustomNode?: RenderOptions['renderCustomNode'] }).renderCustomNode ??
       ((node, host) => getNodeType(node.type)?.(node, host)),
+    // A `registerNodeType` type is one this canvas draws: never an
+    // "unregistered type" outline. The caller's own test, when given, adds to it.
+    canDrawNode: (node) => hasNodeType(node.type) || options.canDrawNode?.(node) === true,
   });
 
   // Diagram-kit specs (erDiagram/umlDiagram) carry a `finalize(api)` for the

@@ -88,6 +88,10 @@ const edges: EdgeSpec[] = [
   { id: 'e4', source: 'billing', target: 'db', sourceHandle: 'right', targetHandle: 'left' },
 ];
 
+// The validation outline layer only: a Qwik component node is a type this canvas
+// draws, so it must never wear the "Node type '…' is not registered" outline.
+const VALIDATION_ONLY = { showHover: false, showSelection: false, showConnectTargets: false };
+
 export default component$(() => (
-  <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} nodeTypes={nodeTypes} fitView />
+  <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} nodeTypes={nodeTypes} highlighterConfig={VALIDATION_ONLY} fitView />
 ));

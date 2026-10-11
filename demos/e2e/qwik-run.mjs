@@ -10,14 +10,17 @@
 //   PAINT        the canvas draws the nodes and lines the page declares
 //   NO-ERRORS    no page error, no console error
 //   DRAG-1:1     a node follows the pointer at full speed
-//   CUSTOM       Qwik components render as the custom nodes, wired to lines
+//   CUSTOM       Qwik components render as the custom nodes, wired to lines,
+//                with no "Node type '…' is not registered" outline
 //   HOOKS        the toolbar drives the canvas through the provider and hooks
 //   ZONES/LINES  `groups` and `highlightConnected` go in at mount and follow live
+//   BRIDGE       a new `tokenBridge` re-points the diagram's variables live
 //   SPEC         <GrafloriaDiagram> replaces its diagram on a changed spec, not an equal one
 //   SSR          the server's HTML already contains the laid-out diagram, and
 //                the adopted <svg> leaves its size to the container (a fixed
 //                server size made every drag run at half speed — the bug the
-//                first Qwik PR uncovered)
+//                first Qwik PR uncovered); the server paint and the resumed
+//                canvas draw the picture at the same place and size
 //
 //     node demos/e2e/qwik-run.mjs
 
@@ -105,6 +108,12 @@ try {
       const cards = await page.evaluate(() => [...document.querySelectorAll('.grafloria-html-layer [data-node-id]')]
         .map((el) => el.textContent.trim()).filter(Boolean));
       check('custom-nodes', 'CUSTOM', cards.length >= 3, `${cards.length} Qwik custom nodes with content`);
+      const outline = await page.evaluate(() => ({
+        layer: !!document.querySelector('.grafloria-highlighter-overlay'),
+        warnings: [...document.querySelectorAll('.grafloria-highlighter-validation')].map((r) => r.textContent),
+      }));
+      check('custom-nodes', 'NO-UNREG-OUTLINE', outline.layer && outline.warnings.length === 0,
+        `validation layer ${outline.layer}; outlines: ${outline.warnings.join(' · ') || 'none'}`);
     } },
     { slug: 'toolbar-and-hooks', nodes: 4, links: 3, extra: async (page) => {
       const readout = () => page.evaluate(() => [...document.querySelectorAll('.readout')].map((r) => r.textContent.trim()).join(' | '));
@@ -138,6 +147,25 @@ try {
       check('zones-and-highlight', 'GROUPS-LIVE', (await frames()) === 0, 'groups={[]} removed the zone');
       await page.locator('#toggle-zone').click();
       await page.waitForTimeout(300);
+      // tokenBridge: the instance's override block and the painted node fill follow the prop.
+      const bridged = () => page.evaluate(() => {
+        const id = document.querySelector('.grafloria-flow svg').getAttribute('data-grafloria-instance');
+        const css = document.getElementById(`grafloria-renderer-overrides-${id}`)?.textContent || '';
+        // An unselected node's body (a selected one paints the selection fill):
+        // its first shape that actually paints a fill.
+        const fills = [...document.querySelectorAll('svg [data-node-id="ship"] rect, svg [data-node-id="ship"] path')]
+          .map((el) => getComputedStyle(el).fill).filter((f) => f && f !== 'none' && !f.endsWith(', 0)'));
+        return { mapped: css.includes('--brand-card'), fill: fills[0] || '' };
+      });
+      const off = await bridged();
+      await page.locator('#toggle-bridge').click();
+      await page.waitForTimeout(300);
+      const on = await bridged();
+      await page.locator('#toggle-bridge').click();
+      await page.waitForTimeout(300);
+      const back = await bridged();
+      check('zones-and-highlight', 'BRIDGE-LIVE', !off.mapped && on.mapped && on.fill === 'rgb(237, 233, 254)' && !back.mapped && back.fill === off.fill,
+        `fill ${off.fill} → ${on.fill} → ${back.fill}; mapped ${off.mapped} → ${on.mapped} → ${back.mapped}`);
     } },
     { slug: 'spec-swap', nodes: 3, links: 2, extra: async (page) => {
       const readies = async () => Number((/ready (\d+)/.exec(await page.locator('#ready-count').textContent()) || [])[1]);
@@ -163,6 +191,20 @@ try {
       });
       check('ssr-resumable', 'SSR-SIZE', svg.width === null && svg.height === null && svg.fills,
         `adopted svg width=${svg.width} height=${svg.height}, fills its container: ${svg.fills}`);
+      // The server paint (no JavaScript at all) and the resumed canvas draw a node
+      // in the same place at the same size: nothing stretches, then snaps.
+      const nodeBox = (pg) => pg.evaluate(() => {
+        const r = document.querySelector('svg [data-node-id="ssr"]').getBoundingClientRect();
+        return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+      });
+      const noJs = await browser.newContext({ viewport: { width: 1280, height: 800 }, javaScriptEnabled: false });
+      const still = await noJs.newPage();
+      await still.goto(`${origin}/?demo=ssr-resumable`, { waitUntil: 'load' });
+      const before = await nodeBox(still);
+      await noJs.close();
+      const after = await nodeBox(page);
+      const same = Math.abs(before.x - after.x) <= 1 && Math.abs(before.y - after.y) <= 1 && Math.abs(before.w - after.w) <= 1 && Math.abs(before.h - after.h) <= 1;
+      check('ssr-resumable', 'SSR-STABLE', same, `server paint ${JSON.stringify(before)} → resumed ${JSON.stringify(after)}`);
     } },
   ];
 

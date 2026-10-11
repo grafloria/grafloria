@@ -6,7 +6,7 @@ import type {
   NodeSpec,
   Theme,
 } from '@grafloria/renderer';
-import { getNodeType, renderFromTemplate } from './node-type-registry';
+import { getNodeType, hasNodeType, renderFromTemplate } from './node-type-registry';
 
 /**
  * `<grafloria-flow>` — the universal embed.
@@ -211,6 +211,11 @@ export class GrafloriaFlowElement extends HTMLElementBase {
         : undefined,
       highlightConnected: this.highlightConnected(),
       renderCustomNode: (node, element) => this.renderCustomNode(node, element),
+      // A registered or slotted node type is one this element draws: never an
+      // "unregistered type" outline.
+      canDrawNode: (node) =>
+        hasNodeType(node.type) ||
+        !!this.querySelector(`template[data-node-type="${cssEscape(node.type)}"]`),
     };
   }
 

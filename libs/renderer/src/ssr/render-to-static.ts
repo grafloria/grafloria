@@ -8,10 +8,10 @@ import { contentBounds } from '../instance/content-bounds';
 import {
   HTML_LAYER_CLASS,
   ROOT_CLASS,
-  ROOT_STYLE,
+  SERVER_ROOT_STYLE,
   SVG_LAYER_CLASS,
-  SVG_LAYER_STYLE,
   htmlLayerStyle,
+  serverSvgLayerStyle,
 } from '../instance/layers';
 import { serializeVNode } from '../export/vnode-serializer';
 
@@ -88,7 +88,13 @@ export interface HydrationSnapshot {
 }
 
 export interface StaticRenderResult {
-  /** The full layer skeleton — drop this straight into your container. */
+  /**
+   * The full layer skeleton — drop this straight into your container. Until a
+   * client adopts it (`createDiagram(el, { hydrate: snapshot })`) it draws the
+   * canvas at its own `width`×`height`, 1:1, centred on the container — where
+   * the live camera will put it, so resuming moves and scales nothing. For a
+   * picture that stays static and sizes itself, use `svg`.
+   */
   html: string;
   /** Only the `<svg>` element. */
   svg: string;
@@ -177,14 +183,19 @@ function renderStaticNow(options: StaticRenderOptions): StaticRenderResult {
     viewport: { x: viewport.getViewport().x, y: viewport.getViewport().y },
   };
 
-  return { html: wrapInLayers(live, instanceId), svg, css, snapshot };
+  return { html: wrapInLayers(live, instanceId, width, height), svg, css, snapshot };
 }
 
-/** The markup `createDiagram()`'s `ensureLayers()` builds — as a string. */
-function wrapInLayers(svg: string, instanceId: string): string {
+/**
+ * The markup `createDiagram()`'s `ensureLayers()` builds — as a string — except
+ * that the SVG layer holds the server canvas at 1:1, centred, until the client
+ * adopts it (see `serverSvgLayerStyle`): no scale-to-fit before resume, so
+ * nothing snaps on resume (v4 S9).
+ */
+function wrapInLayers(svg: string, instanceId: string, width: number, height: number): string {
   return (
-    `<div class="${ROOT_CLASS}" style="${ROOT_STYLE}" data-grafloria-instance="${instanceId}">` +
-    `<div class="${SVG_LAYER_CLASS}" style="${SVG_LAYER_STYLE}">${svg}</div>` +
+    `<div class="${ROOT_CLASS}" style="${SERVER_ROOT_STYLE}" data-grafloria-instance="${instanceId}">` +
+    `<div class="${SVG_LAYER_CLASS}" style="${serverSvgLayerStyle(width, height)}">${svg}</div>` +
     `<div class="${HTML_LAYER_CLASS}" style="${htmlLayerStyle(
       'translate(0px, 0px) scale(1)'
     )}"></div>` +
