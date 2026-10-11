@@ -101,10 +101,13 @@ describe('wave4/interaction commands', () => {
       expect(node.getMetadata('label')).toBe('Before');
     });
 
-    test('an unlabelled node undoes back to empty, not undefined', async () => {
+    test('an unlabelled node undoes back to unlabelled', async () => {
       await engine.commandManager.execute(new SetNodeLabelCommand(node.id, 'New'));
       await engine.undo();
-      expect(node.getMetadata('label')).toBe('');
+      // S3: undo restores the label slots exactly as found — here, absent — so
+      // nothing paints a stale or 'undefined' label.
+      expect(node.getLabel()).toBeUndefined();
+      expect(node.getMetadata('label')).toBeUndefined();
     });
 
     test('never merges: one editor session = one undo step', () => {
