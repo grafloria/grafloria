@@ -25,6 +25,15 @@ function box(width: number, height: number): NodeModel {
   });
 }
 
+// S2: a layout fills the frame's CONTENT box (inside padding, below the title
+// band). These pixel specs were written for a container with no chrome, so they
+// say so instead of inheriting the default padding and header.
+function chromeless(g: GroupModel): GroupModel {
+  g.padding = 0;
+  g.headerHeight = 0;
+  return g;
+}
+
 describe('GroupModel — live item configs (B)', () => {
   let diagram: DiagramModel;
 
@@ -34,6 +43,7 @@ describe('GroupModel — live item configs (B)', () => {
 
   function container(width: number, height: number): GroupModel {
     const g = new GroupModel({ name: 'C' });
+    chromeless(g);
     g.size = { width, height, depth: 0 };
     diagram.addGroup(g);
     // Opt out of push so each test drives ONE explicit applyLayout and reads a
