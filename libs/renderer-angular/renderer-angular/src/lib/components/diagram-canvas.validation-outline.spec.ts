@@ -1,6 +1,8 @@
 /**
  * The validation outline (highlighter layer, ON by default in Angular) must not
- * flag a node just because its type is one of the built-in shapes.
+ * flag a node just because its type is not in the engine's TypeRegistry: the
+ * canvas draws every type (built-in shapes, templates, components, and a rect
+ * for anything else).
  *
  * The docs review found the orange "Node type 'rect' is not registered" outline
  * on 14 of 21 Angular samples: `{ type: 'rect' }` — the DEFAULT type of every
@@ -85,8 +87,8 @@ describe('DiagramCanvasComponent — validation outline on built-in shapes', () 
     fixture.detectChanges();
     const canvas = fixture.debugElement.query(By.directive(DiagramCanvasComponent)).componentInstance as DiagramCanvasComponent;
     paint(fixture, canvas);
-    // Only the plain node with a type nothing can draw keeps its warning.
-    expect(validationOutlines(canvas).map((h) => h.entityId)).toEqual(['unknown']);
+    // S7: the plain node with an unknown type is drawn too (a rect) — no warning.
+    expect(validationOutlines(canvas).map((h) => h.entityId)).toEqual([]);
     fixture.destroy();
   });
 
@@ -121,12 +123,13 @@ describe('DiagramCanvasComponent — validation outline on built-in shapes', () 
       expect(validationOutlines(canvas).map((h) => h.message)).toEqual([]);
     });
 
-    test('control: a type that is neither registered nor a shape is still outlined', () => {
-      mount(['rect', 'mystery-type']);
-      const outlines = validationOutlines(canvas);
-      expect(outlines).toHaveLength(1);
-      expect(outlines[0]).toMatchObject({ entityId: 'n1', severity: 'warning' });
-      expect(outlines[0]!.message).toBe("Node type 'mystery-type' is not registered");
+    // S7 (docs review v4): the commands-and-history Angular tab still outlined its
+    // `type: 'basic'` nodes. The canvas DRAWS every type — the shape registry
+    // falls back to a rect for one it does not know — so "not registered" never
+    // names a type the canvas cannot draw: no node type gets that outline.
+    test('S7: a type that is neither registered nor a shape is drawn, so it is not outlined', () => {
+      mount(['rect', 'basic', 'mystery-type']);
+      expect(validationOutlines(canvas).map((h) => h.message)).toEqual([]);
     });
 
     test('control: a REGISTERED rule a shape-typed node breaks is still outlined', () => {
