@@ -10,6 +10,15 @@ import { NodeModel } from '../models/NodeModel';
 import { GroupModel } from '../models/GroupModel';
 import type { FlexboxLayoutConfig } from '../types/layout.types';
 
+// S2: a layout fills the frame's CONTENT box (inside padding, below the title
+// band). These pixel specs were written for a container with no chrome, so they
+// say so instead of inheriting the default padding and header.
+function chromeless(g: GroupModel): GroupModel {
+  g.padding = 0;
+  g.headerHeight = 0;
+  return g;
+}
+
 describe('Column-Based Layout - Dashboard Builder', () => {
   let engine: DiagramEngine;
   let diagram: DiagramModel;
@@ -26,6 +35,7 @@ describe('Column-Based Layout - Dashboard Builder', () => {
   describe('12-Column Grid Layout', () => {
     it('should position widgets in 12-column grid', () => {
       const dashboard = new GroupModel({ name: 'Dashboard' });
+      chromeless(dashboard);
       dashboard.size = { width: 1200, height: 800, depth: 0 };
       diagram.addGroup(dashboard);
 
@@ -80,6 +90,7 @@ describe('Column-Based Layout - Dashboard Builder', () => {
 
     it('should wrap widgets to next row when exceeding 12 columns', () => {
       const dashboard = new GroupModel({ name: 'Dashboard' });
+      chromeless(dashboard);
       dashboard.size = { width: 1200, height: 800, depth: 0 };
       diagram.addGroup(dashboard);
 
@@ -137,6 +148,7 @@ describe('Column-Based Layout - Dashboard Builder', () => {
 
     it('should handle mixed column spans', () => {
       const dashboard = new GroupModel({ name: 'Dashboard' });
+      chromeless(dashboard);
       dashboard.size = { width: 1200, height: 600, depth: 0 };
       diagram.addGroup(dashboard);
 
@@ -199,6 +211,7 @@ describe('Column-Based Layout - Dashboard Builder', () => {
 
     it('should default to columnSpan=1 if not specified', () => {
       const dashboard = new GroupModel({ name: 'Dashboard' });
+      chromeless(dashboard);
       dashboard.size = { width: 600, height: 400, depth: 0 };
       diagram.addGroup(dashboard);
 
@@ -232,6 +245,7 @@ describe('Column-Based Layout - Dashboard Builder', () => {
   describe('Responsive Dashboard Layouts', () => {
     it('should create typical dashboard with header, sidebar, and main content', () => {
       const dashboard = new GroupModel({ name: 'Dashboard' });
+      chromeless(dashboard);
       dashboard.size = { width: 1440, height: 900, depth: 0 };
       diagram.addGroup(dashboard);
 
@@ -308,6 +322,7 @@ describe('Column-Based Layout - Dashboard Builder', () => {
   describe('Live dashboard editing', () => {
     function makeDashboard(width = 1200, height = 800, gap = 0, padding = 0) {
       const dashboard = new GroupModel({ name: 'Dashboard' });
+      chromeless(dashboard);
       dashboard.size = { width, height, depth: 0 };
       diagram.addGroup(dashboard);
       dashboard.setLayout('flexbox', {
@@ -425,6 +440,7 @@ describe('Column-Based Layout - Dashboard Builder', () => {
 
     it('places a widget in an EXPLICIT grid cell rather than by insertion order', () => {
       const board = new GroupModel({ name: 'Grid Dashboard' });
+      chromeless(board);
       board.size = { width: 620, height: 620, depth: 0 };
       diagram.addGroup(board);
       board.setLayout('grid', {

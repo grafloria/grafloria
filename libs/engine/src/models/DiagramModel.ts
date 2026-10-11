@@ -455,6 +455,19 @@ export class DiagramModel extends DiagramEntity {
     this.historyOwner = owner;
   }
 
+  /**
+   * Say that this diagram's content was just REPLACED by a loaded document (a
+   * text import, a saved document reconciled into the live diagram). Commands
+   * recorded before refer to a document that no longer exists, so the engine
+   * attached to this diagram clears its own undo history on this signal
+   * (`document:replaced`). A history owner (a sync Replica) keeps its stack: a load
+   * into a shared diagram is an edit every peer received, and its undo is
+   * supersession-aware.
+   */
+  markDocumentReplaced(): void {
+    this.emitter.emit('document:replaced', { diagram: this });
+  }
+
   /** The owner of undo set by {@link setHistoryOwner}, or null for the engine's own stack. */
   getHistoryOwner(): HistoryOwner | null {
     return this.historyOwner;

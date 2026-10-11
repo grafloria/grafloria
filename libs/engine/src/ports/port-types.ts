@@ -201,7 +201,13 @@ export interface PortLayoutArgs {
 }
 
 export interface PortLayoutSpec {
-  strategy: PortLayoutStrategyName;
+  /**
+   * A built-in strategy, or any name installed with the renderer's
+   * `registerPortLayout(name, strategy)`. The built-ins still autocomplete; a
+   * custom name used to need a cast because this was a closed union (S12, docs
+   * review v4). An unknown name falls back to `shape`.
+   */
+  strategy: PortLayoutStrategyName | (string & {});
   args?: PortLayoutArgs;
 }
 

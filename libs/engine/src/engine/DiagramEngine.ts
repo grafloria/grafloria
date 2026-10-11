@@ -516,6 +516,12 @@ export class DiagramEngine {
 
     this.diagram = diagram;
 
+    // A DIFFERENT diagram is a different document: every recorded command points
+    // at the old one's nodes and links, and undoing them threw on the first one
+    // that was not there (S10, docs review v4). Re-attaching the same diagram
+    // keeps its history.
+    if (diagram !== oldDiagram) this.commandManager.clear();
+
     if (diagram) {
       this.attachDiagram(diagram);
       // Wave 9 — Card 7: a diagram attached to an engine that is ALREADY in
@@ -1894,6 +1900,12 @@ export class DiagramEngine {
     // Subscribe to diagram events. Every subscription returns a disposer which
     // we store so detachDiagram can unsubscribe the engine's own listeners
     // without accumulating duplicates across attach/detach cycles.
+
+    // A document loaded INTO this diagram (loadText, a saved document's models
+    // reconciled in): the history is about the document that was replaced.
+    this.diagramDisposers.push(
+      diagram.on('document:replaced', () => this.commandManager.clear())
+    );
     this.diagramDisposers.push(
       diagram.on('node:added', (node: NodeModel) => {
         this.eventBus.emit('node:added', node);

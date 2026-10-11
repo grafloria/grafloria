@@ -1,6 +1,7 @@
 // SetNodeLabelCommand - Edits a node's label (wave4/interaction: in-place text editing)
 
 import { Command, CommandContext, SerializedCommand } from '../Command';
+import { captureLabelSlots, restoreLabelSlots, type LabelSlots } from './label-slots';
 
 /**
  * Set a node's label text, undoable.
@@ -13,6 +14,8 @@ import { Command, CommandContext, SerializedCommand } from '../Command';
  */
 export class SetNodeLabelCommand extends Command {
   private oldLabel?: string;
+  /** Both label slots as execute() found them — what undo restores. */
+  private oldSlots?: LabelSlots;
   private readonly newLabel: string;
 
   constructor(
@@ -39,7 +42,8 @@ export class SetNodeLabelCommand extends Command {
     }
 
     if (this.oldLabel === undefined) {
-      this.oldLabel = node.getMetadata('label') ?? '';
+      this.oldSlots = captureLabelSlots(node);
+      this.oldLabel = node.getLabel() ?? '';
     }
 
     node.setLabel(this.newLabel);
@@ -57,7 +61,8 @@ export class SetNodeLabelCommand extends Command {
       throw new Error(`Node ${this.nodeId} not found`);
     }
 
-    node.setLabel(this.oldLabel);
+    if (this.oldSlots) restoreLabelSlots(node, this.oldSlots);
+    else node.setLabel(this.oldLabel);
     node.markDirty('label-edited');
   }
 

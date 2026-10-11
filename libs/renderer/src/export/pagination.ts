@@ -343,7 +343,16 @@ export function printDocument(html: string): Promise<void> {
     frame.style.height = '0';
     frame.style.border = '0';
 
+    // ONE print, of the WRITTEN document (S4, docs review v4). Chromium fires a
+    // synchronous load for the frame's initial about:blank the moment it is
+    // inserted, and another when the written document closes: printing on every
+    // load opened two dialogs, the first one blank. So a load counts only once
+    // the document is written, and only the first such load prints.
+    let written = false;
+    let printed = false;
     frame.onload = () => {
+      if (!written || printed) return;
+      printed = true;
       const view = frame.contentWindow;
       if (view) {
         view.focus();
@@ -365,6 +374,7 @@ export function printDocument(html: string): Promise<void> {
       resolve();
       return;
     }
+    written = true;
     frameDoc.open();
     frameDoc.write(html);
     frameDoc.close();

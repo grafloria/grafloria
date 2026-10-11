@@ -1333,17 +1333,18 @@ export class GroupModel extends DiagramEntity {
     const ordered = this.orderFlexEntities(entities);
     const directed = isReverse ? ordered.slice().reverse() : ordered;
 
-    const startX = this.position.x + padding.left;
-    const startY = this.position.y + padding.top;
+    const box = this.layoutContentBox(padding);
+    const startX = box.x;
+    const startY = box.y;
 
     // Bootstrap 12-column path (rows only), unchanged.
     if (!isColumn && config.columns !== undefined && config.columns > 0 && this.size) {
-      this.applyColumnBasedLayout(directed, config, padding, startX, startY);
+      this.applyColumnBasedLayout(directed, config, box.width ?? 0, startX, startY);
       return;
     }
 
-    const contentWidth = this.size ? this.size.width - padding.left - padding.right : undefined;
-    const contentHeight = this.size ? this.size.height - padding.top - padding.bottom : undefined;
+    const contentWidth = box.width;
+    const contentHeight = box.height;
     const mainAvail = isColumn ? contentHeight : contentWidth;
     const crossAvail = isColumn ? contentWidth : contentHeight;
 
@@ -1522,7 +1523,7 @@ export class GroupModel extends DiagramEntity {
   private applyColumnBasedLayout(
     entities: Array<NodeModel | GroupModel>,
     config: FlexboxLayoutConfig,
-    padding: { top: number; right: number; bottom: number; left: number },
+    availableWidth: number,
     startX: number,
     startY: number
   ): void {
@@ -1530,9 +1531,6 @@ export class GroupModel extends DiagramEntity {
 
     const totalColumns = config.columns;
     const gap = typeof config.gap === 'number' ? config.gap : config.gap.column || 0;
-
-    // Available width for content (excluding padding)
-    const availableWidth = this.size.width - padding.left - padding.right;
 
     // Calculate column width (including gaps)
     const totalGaps = (totalColumns - 1) * gap;
@@ -1600,8 +1598,9 @@ export class GroupModel extends DiagramEntity {
     const rowGap = config.rowGap || 0;
     const padding = this.normalizePadding(config.padding);
 
-    const startX = this.position.x + padding.left;
-    const startY = this.position.y + padding.top;
+    const box = this.layoutContentBox(padding);
+    const startX = box.x;
+    const startY = box.y;
 
     // `templateRows` bounds a column-flow grid's row axis (CSS: column flow grows
     // COLUMNS, so the rows have to be finite). With none declared, fall back to
@@ -1613,23 +1612,43 @@ export class GroupModel extends DiagramEntity {
 
     // Track sizes.
     const rowCount = placements.reduce((m, p) => Math.max(m, p.row + p.rowSpan), 1);
-    const contentWidth = this.size ? this.size.width - padding.left - padding.right : undefined;
-    const contentHeight = this.size ? this.size.height - padding.top - padding.bottom : undefined;
+    const contentWidth = box.width;
+    const contentHeight = box.height;
 
     const rowTracks = Math.max(rowCount, templateRowCount || 0, 1);
 
-    const columnWidth =
-      contentWidth !== undefined
-        ? (contentWidth - columnGap * (columns - 1)) / columns
-        : entities.reduce((m, e) => Math.max(m, e.size?.width ?? 0), 0) || 100;
-    const rowHeight =
-      contentHeight !== undefined
-        ? (contentHeight - rowGap * (rowTracks - 1)) / rowTracks
-        : entities.reduce((m, e) => Math.max(m, e.size?.height ?? 0), 0) || 100;
+    // Track sizes. A fixed track (`120px`) is that wide; `fr`/`auto` tracks share
+    // what the content box has left — or, in an unsized container, take the
+    // largest member. Stretching declared `120px` columns over the frame's width
+    // made layout + fit converge forever instead of settling (S2, docs review v4).
+    const columnSizes = this.resolveGridTracks(
+      config.templateColumns,
+      columns,
+      columnGap,
+      contentWidth,
+      entities.reduce((m, e) => Math.max(m, e.size?.width ?? 0), 0) || 100
+    );
+    const rowSizes = this.resolveGridTracks(
+      config.templateRows ?? '',
+      rowTracks,
+      rowGap,
+      contentHeight,
+      entities.reduce((m, e) => Math.max(m, e.size?.height ?? 0), 0) || 100
+    );
+    const offsetOf = (sizes: number[], gap: number, index: number): number => {
+      let at = 0;
+      for (let i = 0; i < index; i++) at += sizes[i]! + gap;
+      return at;
+    };
+    const spanOf = (sizes: number[], gap: number, index: number, span: number): number => {
+      let total = 0;
+      for (let i = index; i < index + span; i++) total += sizes[i] ?? sizes[sizes.length - 1]!;
+      return total + gap * (span - 1);
+    };
 
     for (const { entity, row, column, rowSpan, columnSpan } of placements) {
-      const x = startX + column * (columnWidth + columnGap);
-      const y = startY + row * (rowHeight + rowGap);
+      const x = startX + offsetOf(columnSizes, columnGap, column);
+      const y = startY + offsetOf(rowSizes, rowGap, row);
 
       // Cell-filling is OPT-IN. CSS defaults `justify-items`/`align-items` to
       // stretch, but this engine's grid never resized anything, and silently
@@ -1642,8 +1661,8 @@ export class GroupModel extends DiagramEntity {
       if (stretchW || stretchH) {
         this.resizeEntity(
           entity,
-          stretchW ? columnWidth * columnSpan + columnGap * (columnSpan - 1) : undefined,
-          stretchH ? rowHeight * rowSpan + rowGap * (rowSpan - 1) : undefined
+          stretchW ? spanOf(columnSizes, columnGap, column, columnSpan) : undefined,
+          stretchH ? spanOf(rowSizes, rowGap, row, rowSpan) : undefined
         );
       }
 
@@ -1818,6 +1837,70 @@ export class GroupModel extends DiagramEntity {
   /**
    * Parse grid template columns to get column count
    */
+  /**
+   * The box a layout places members in: the frame's CONTENT box — inside its
+   * padding and below its title band ({@link getInnerBounds}) — inset by the
+   * layout's own padding. Width/height only when the frame has a size.
+   *
+   * Layouts used to start at the frame's OUTER corner, so members slid over the
+   * title band, and every fitToContents (which adds padding + header around the
+   * members) moved the frame up by that much and the layout followed it — the
+   * group climbed on each fit (S2, docs review v4).
+   */
+  private layoutContentBox(pad: { top: number; right: number; bottom: number; left: number }): {
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+  } {
+    const inner = this.getInnerBounds();
+    return {
+      x: inner.x + pad.left,
+      y: inner.y + pad.top,
+      width: this.size ? Math.max(0, inner.width - pad.left - pad.right) : undefined,
+      height: this.size ? Math.max(0, inner.height - pad.top - pad.bottom) : undefined,
+    };
+  }
+
+  /**
+   * Resolve `count` track sizes from a template (`"120px 1fr auto"`,
+   * `"repeat(3, 1fr)"`). Fixed `px` tracks keep their size; `fr` (and `auto`,
+   * as 1fr) share the rest of `available`, or take `fallback` each when there is
+   * no available extent. Tracks past the template's end are flexible.
+   */
+  private resolveGridTracks(
+    template: string,
+    count: number,
+    gap: number,
+    available: number | undefined,
+    fallback: number
+  ): number[] {
+    const tokens: string[] = [];
+    const text = (template ?? '').trim();
+    const repeat = text.match(/^repeat\(\s*(\d+)\s*,\s*(.+)\)$/);
+    if (repeat) {
+      const inner = repeat[2]!.trim().split(/\s+/);
+      for (let i = 0; i < parseInt(repeat[1]!, 10); i++) tokens.push(...inner);
+    } else if (text) {
+      tokens.push(...text.split(/\s+/));
+    }
+    const tracks = Array.from({ length: count }, (_, i) => {
+      const t = tokens[i] ?? '1fr';
+      const px = t.match(/^(\d+(?:\.\d+)?)px$/);
+      if (px) return { fixed: parseFloat(px[1]!), fr: 0 };
+      const fr = t.match(/^(\d+(?:\.\d+)?)fr$/);
+      return { fixed: 0, fr: fr ? parseFloat(fr[1]!) : 1 };
+    });
+    const totalFr = tracks.reduce((m, t) => m + t.fr, 0);
+    const fixedSum = tracks.reduce((m, t) => m + t.fixed, 0);
+    const free = available !== undefined ? available - fixedSum - gap * (count - 1) : undefined;
+    return tracks.map((t) => {
+      if (t.fr === 0) return t.fixed;
+      if (free === undefined) return fallback * t.fr;
+      return totalFr > 0 ? (Math.max(0, free) * t.fr) / totalFr : 0;
+    });
+  }
+
   private parseGridColumns(templateColumns: string): number {
     // Simple parser - count space-separated values
     // Example: "1fr 1fr 1fr" = 3 columns, "repeat(3, 1fr)" = 3 columns

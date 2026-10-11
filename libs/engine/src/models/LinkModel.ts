@@ -1010,6 +1010,29 @@ export class LinkModel extends DiagramEntity {
     return true;
   }
 
+  /** The point of the `points` polyline nearest `query`, with its arc-length `t`. */
+  private closestOnPolyline(query: Point): { point: Point; distance: number; t: number } {
+    const pts = this.points;
+    let total = 0;
+    for (let i = 0; i < pts.length - 1; i++) total += Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y);
+    let best = { point: { ...pts[0]! }, distance: Infinity, t: 0 };
+    let along = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lenSq = dx * dx + dy * dy;
+      const len = Math.sqrt(lenSq);
+      const s = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((query.x - a.x) * dx + (query.y - a.y) * dy) / lenSq));
+      const c = { x: a.x + s * dx, y: a.y + s * dy };
+      const distance = Math.hypot(query.x - c.x, query.y - c.y);
+      if (distance < best.distance) best = { point: c, distance, t: total > 0 ? (along + s * len) / total : 0 };
+      along += len;
+    }
+    return best;
+  }
+
   /**
    * The point `t` of the way along the `points` polyline (by arc length), and
    * the direction of the run it lands on. `points` is the painted geometry the
@@ -1201,6 +1224,17 @@ export class LinkModel extends DiagramEntity {
    * Returns the closest point, distance, and normalized position (t)
    */
   getClosestPoint(point: Point): { point: Point; distance: number; t: number } | null {
+    // The SAME parametrization getPointAtPosition uses, or the two disagree and
+    // `getPointAtPosition(getClosestPoint(p).t)` lands somewhere else. A 'direct'
+    // line, and any line whose segments no longer trace its points (the renderer
+    // syncs painted points and leaves segments as they were — after an undone
+    // reconnect, the old route), answer from the points. Walking stale segments
+    // gave a dragged label the old route's fraction plus an offset that made up
+    // the difference, and the next node drag carried it off its wire (S1, docs
+    // review v4).
+    if (this.points.length >= 2 && (this.pathType === 'direct' || !this.segmentsTracePoints())) {
+      return this.closestOnPolyline(point);
+    }
     if (this.segments.length === 0) {
       return null;
     }

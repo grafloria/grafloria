@@ -1,5 +1,6 @@
 // SetLinkDisplayLabelCommand - Edits a link's DISPLAY label (visio-depth: edge label editing)
 
+import { captureLabelSlots, restoreLabelSlots, type LabelSlots } from './label-slots';
 import { Command, CommandContext, SerializedCommand } from '../Command';
 
 /**
@@ -18,6 +19,9 @@ export class SetLinkDisplayLabelCommand extends Command {
   private oldLabel?: string;
   private readonly newLabel: string;
 
+  /** Both label slots as execute() found them — what undo restores. */
+  private oldSlots?: LabelSlots;
+
   constructor(
     private linkId: string,
     newLabel: string,
@@ -33,6 +37,7 @@ export class SetLinkDisplayLabelCommand extends Command {
   override execute(context: CommandContext): void {
     const link = this.resolve(context);
     if (this.oldLabel === undefined) {
+      this.oldSlots = captureLabelSlots(link);
       this.oldLabel = String(link.getLabel() ?? '');
     }
     link.setLabel(this.newLabel);
@@ -44,7 +49,8 @@ export class SetLinkDisplayLabelCommand extends Command {
       throw new Error('Cannot undo: missing old label text');
     }
     const link = this.resolve(context);
-    link.setLabel(this.oldLabel);
+    if (this.oldSlots) restoreLabelSlots(link, this.oldSlots);
+    else link.setLabel(this.oldLabel);
     link.markDirty('label-edited');
   }
 

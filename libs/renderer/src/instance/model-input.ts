@@ -524,6 +524,7 @@ export function applyEdgeSpec(link: LinkModel, spec: EdgeSpec): void {
 export function applyNodes(diagram: DiagramModel, specs: Array<NodeSpec | NodeModel>): boolean {
   const seen = new Set<string>();
   let changed = false;
+  let swapped = false;
 
   specs.forEach((spec, index) => {
     if (isNodeModel(spec)) {
@@ -537,6 +538,7 @@ export function applyNodes(diagram: DiagramModel, specs: Array<NodeSpec | NodeMo
       if (current && current !== spec) {
         diagram.replaceNode(spec);
         changed = true;
+        swapped = true;
       } else if (!current) {
         diagram.addNode(spec);
         changed = true;
@@ -564,6 +566,7 @@ export function applyNodes(diagram: DiagramModel, specs: Array<NodeSpec | NodeMo
     }
   }
 
+  if (swapped) markLoaded(diagram);
   return changed;
 }
 
@@ -689,6 +692,7 @@ export function applyEdges(
 ): boolean {
   const seen = new Set<string>();
   let changed = false;
+  let swapped = false;
 
   specs.forEach((spec, index) => {
     if (isLinkModel(spec)) {
@@ -699,6 +703,7 @@ export function applyEdges(
         diagram.removeLink(current.id);
         diagram.addLink(spec);
         changed = true;
+        swapped = true;
       } else if (!current) {
         diagram.addLink(spec);
         changed = true;
@@ -729,7 +734,21 @@ export function applyEdges(
     }
   }
 
+  if (swapped) markLoaded(diagram);
   return changed;
+}
+
+/**
+ * A DIFFERENT live model under an id already on the canvas is a LOADED DOCUMENT
+ * coming in (`setNodes(fromDocument(saved).nodes)`, a deserialized model's
+ * nodes, a text import): the models are the new truth, and the engine's undo
+ * history — commands about the objects just replaced — is cleared. Before, the
+ * React quick start's Save → Load → Ctrl+Z threw "Cannot undo command: Add Link"
+ * (S10, docs review v4). Spec input (plain objects) is ordinary host state and
+ * leaves history alone.
+ */
+function markLoaded(diagram: DiagramModel): void {
+  diagram.markDocumentReplaced?.();
 }
 
 /** True for a live `GroupModel`. */

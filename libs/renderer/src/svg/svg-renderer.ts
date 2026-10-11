@@ -405,6 +405,21 @@ export function fitFontSize(text: string, maxWidth: number, base: number): numbe
   return needed >= base ? base : Math.max(MIN_LABEL_FONT_PX, Math.floor(needed));
 }
 
+/**
+ * Link-end markers whose glyph sits AT the end — a port dot drawn there hides
+ * them (see SVGRenderer.portUnderEndGlyph).
+ */
+const END_GLYPH_MARKERS = new Set<string>([
+  'crow-foot',
+  'one',
+  'zero-or-one',
+  'zero-or-many',
+  'one-or-many',
+  'hollow-diamond',
+  'filled-diamond',
+  'generalization',
+]);
+
 export class SVGRenderer implements IRenderer {
   readonly mode = 'svg' as const;
 
@@ -5590,6 +5605,12 @@ export class SVGRenderer implements IRenderer {
     // rule to hover, so paint and input agree the ports do not exist.
     if (node.behavior?.connectable === false) return false;
     if (!this.shouldRenderPortByMode(port, node, config)) return false;
+    // END-GLYPH veto (S15, docs review v4). Ports paint in an overlay above every
+    // link, so a port's dot covered the marker drawn at the link end landing on
+    // it — round dots where an ER crow's foot / "one" bar should be. A port
+    // yields to such a marker until a connection gesture makes it a live target
+    // again. Paint only: the port is still there to press.
+    if (!port.isHighlighted && !port.isValidTarget && this.portUnderEndGlyph(port)) return false;
     // Occlusion veto, AFTER the (cheap) mode decision so only ports that would
     // actually show pay for it: a port whose anchor is covered by a node above
     // its owner is not part of the visible picture — pre-fix, hovering an
@@ -5602,6 +5623,27 @@ export class SVGRenderer implements IRenderer {
       if (diagram.isPointCoveredAbove(anchor.x, anchor.y, node.id)) return false;
     }
     return true;
+  }
+
+  /**
+   * Does a link end that lands on `port` carry a marker whose glyph SITS AT the
+   * end (the ERD cardinalities, UML diamonds, the generalization triangle)? A
+   * dot drawn there hides it. Plain arrows are left alone: their tip only meets
+   * the port, and the flowchart look is unchanged.
+   */
+  private portUnderEndGlyph(port: PortModel): boolean {
+    const connections = port.currentConnections;
+    if (!connections || connections.size === 0) return false;
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return false;
+    for (const linkId of connections) {
+      const link = diagram.getLink(linkId);
+      if (!link) continue;
+      const marker =
+        link.targetPortId === port.id ? link.style?.arrowHead : link.sourcePortId === port.id ? link.style?.arrowTail : undefined;
+      if (marker && END_GLYPH_MARKERS.has(marker.type)) return true;
+    }
+    return false;
   }
 
   private shouldRenderPortByMode(
@@ -7698,6 +7740,15 @@ export class SVGRenderer implements IRenderer {
           ? (() => {
               const labelVNodes: VNode[] = [];
 
+              // END chips (`slot: 'start' | 'end'` — UML multiplicities, ER
+              // cardinality text) sit at the line's ends and never replace its
+              // NAME. The display label used to be drawn only while `labels` was
+              // empty, so the first chip hid it (S8, docs review v4). A label ON
+              // the line (a placed label, how `labelPlacement` edges carry their
+              // text) still supersedes it.
+              const chipsOnly =
+                !!link.labels && link.labels.length > 0 && link.labels.every((l) => l.slot === 'start' || l.slot === 'end');
+
               // Render labels from link.labels array
               if (link.labels && link.labels.length > 0) {
                 link.labels.forEach(label => {
@@ -7721,7 +7772,7 @@ export class SVGRenderer implements IRenderer {
                 });
               }
               // Backward compatibility: support old metadata label
-              else if (label) {
+              if (label && (chipsOnly || !link.labels || link.labels.length === 0)) {
                 // Convert old label format to new LinkLabel format
                 const legacyLabel = {
                   id: 'legacy-label',

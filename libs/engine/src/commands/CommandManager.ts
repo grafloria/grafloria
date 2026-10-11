@@ -246,8 +246,15 @@ export class CommandManager {
 
     const command = entry.command;
 
+    // A STALE command: what it changed is no longer in the document (a load, a
+    // host's setEdges reconcile, a plugin removed it outside any command). It is
+    // not an error the user can act on, so it never throws — the old throw reached
+    // a keyboard handler as an uncaught rejection (S10, docs review v4). It and
+    // every older step go: they were made on a document that no longer exists, and
+    // undoing them one by one would replay positions and links onto the new one.
     if (!command.canUndo(this.context)) {
-      throw new Error(`Cannot undo command: ${command.name}`);
+      this.dropStale('undo', command);
+      return;
     }
 
     const startTime = performance.now();
@@ -268,7 +275,8 @@ export class CommandManager {
         action: 'undo',
         error,
       });
-      throw error;
+      // Its target vanished in a way canUndo() could not see: stale all the same.
+      this.dropStale('undo', command);
     }
   }
 
@@ -315,7 +323,9 @@ export class CommandManager {
         action: 'redo',
         error,
       });
-      throw error;
+      // A redo that cannot apply to the document as it is now is stale (see
+      // undo): the redo branch goes, and Ctrl+Shift+Z never throws at the user.
+      this.dropStale('redo', command);
     }
   }
 
@@ -376,6 +386,24 @@ export class CommandManager {
     this.history = [];
     this.currentIndex = -1;
     this.eventBus.emit(DiagramEventTypes.COMMAND_HISTORY_CLEARED);
+  }
+
+  /**
+   * Forget the part of history a stale command sits on: for undo, that entry and
+   * every older one; for redo, the whole redo branch. Announced as
+   * `command:history-stale` so a host can tell the user why Ctrl+Z went quiet.
+   */
+  private dropStale(phase: 'undo' | 'redo', command: Command): void {
+    let dropped: number;
+    if (phase === 'undo') {
+      dropped = this.currentIndex + 1;
+      this.history = this.history.slice(this.currentIndex + 1);
+      this.currentIndex = -1;
+    } else {
+      dropped = this.history.length - (this.currentIndex + 1);
+      this.history = this.history.slice(0, this.currentIndex + 1);
+    }
+    this.eventBus.emit('command:history-stale', { command, phase, dropped });
   }
 
   /**

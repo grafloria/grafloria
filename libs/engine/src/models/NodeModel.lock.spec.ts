@@ -40,6 +40,15 @@ function node(): NodeModel {
   });
 }
 
+// S2: a layout fills the frame's CONTENT box (inside padding, below the title
+// band). These pixel specs were written for a container with no chrome, so they
+// say so instead of inheriting the default padding and header.
+function chromeless(g: GroupModel): GroupModel {
+  g.padding = 0;
+  g.headerHeight = 0;
+  return g;
+}
+
 describe('NodeModel — per-node lock is authoritative (D)', () => {
   let diagram: DiagramModel;
 
@@ -133,6 +142,7 @@ describe('NodeModel — per-node lock is authoritative (D)', () => {
   describe('auto-layout skips locked members but keeps their slot', () => {
     it('leaves a locked widget where it is while reflowing the rest', () => {
       const g = new GroupModel({ name: 'Dashboard' });
+      chromeless(g);
       g.size = { width: 1200, height: 800, depth: 0 };
       diagram.addGroup(g);
       g.setLayout('flexbox', {
@@ -177,6 +187,7 @@ describe('NodeModel — per-node lock is authoritative (D)', () => {
 
     it('still consumes its column slot so nothing is stacked on top of it', () => {
       const g = new GroupModel({ name: 'Dashboard' });
+      chromeless(g);
       g.size = { width: 1200, height: 800, depth: 0 };
       diagram.addGroup(g);
       g.setLayout('flexbox', {

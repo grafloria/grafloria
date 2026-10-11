@@ -26,6 +26,15 @@ function widget(width: number, height: number): NodeModel {
   });
 }
 
+// S2: a layout fills the frame's CONTENT box (inside padding, below the title
+// band). These pixel specs were written for a container with no chrome, so they
+// say so instead of inheriting the default padding and header.
+function chromeless(g: GroupModel): GroupModel {
+  g.padding = 0;
+  g.headerHeight = 0;
+  return g;
+}
+
 describe('GroupModel — push-driven layout (A)', () => {
   let diagram: DiagramModel;
 
@@ -35,6 +44,7 @@ describe('GroupModel — push-driven layout (A)', () => {
 
   function dashboard(width = 1200, height = 800): GroupModel {
     const g = new GroupModel({ name: 'Dashboard' });
+    chromeless(g);
     g.size = { width, height, depth: 0 };
     diagram.addGroup(g);
     g.setLayout('flexbox', {
@@ -81,6 +91,7 @@ describe('GroupModel — push-driven layout (A)', () => {
 
     it('does nothing for a container that declares no layout', () => {
       const g = new GroupModel({ name: 'Plain' });
+      chromeless(g);
       g.size = { width: 500, height: 500, depth: 0 };
       diagram.addGroup(g);
       const w = widget(10, 10);
@@ -208,6 +219,7 @@ describe('GroupModel — push-driven layout (A)', () => {
 
     it('terminates for a nested container whose parent lays it out', () => {
       const outer = new GroupModel({ name: 'Outer' });
+      chromeless(outer);
       outer.size = { width: 800, height: 600, depth: 0 };
       diagram.addGroup(outer);
       outer.setLayout('flexbox', {
@@ -221,6 +233,8 @@ describe('GroupModel — push-driven layout (A)', () => {
       });
 
       const inner = new GroupModel({ name: 'Inner' });
+
+      chromeless(inner);
       inner.size = { width: 400, height: 200, depth: 0 };
       diagram.addGroup(inner);
       inner.setLayout('flexbox', {
@@ -255,6 +269,7 @@ describe('GroupModel — push-driven layout (A)', () => {
   describe('a nested group without a layout of its own', () => {
     function setup() {
       const outer = new GroupModel({ name: 'Outer' });
+      chromeless(outer);
       diagram.addGroup(outer);
       outer.setFrame({ x: 80, y: 70, width: 460, height: 300 });
       const a = widget(120, 60);
@@ -263,6 +278,8 @@ describe('GroupModel — push-driven layout (A)', () => {
       outer.addMember(a.id, diagram);
 
       const inner = new GroupModel({ name: 'Inner' });
+
+      chromeless(inner);
       diagram.addGroup(inner);
       inner.setFrame({ x: 300, y: 180, width: 200, height: 150 });
       const r = widget(120, 60);
@@ -270,6 +287,7 @@ describe('GroupModel — push-driven layout (A)', () => {
       diagram.addNode(r);
       inner.addMember(r.id, diagram);
       const deep = new GroupModel({ name: 'Deep' });
+      chromeless(deep);
       diagram.addGroup(deep);
       deep.setFrame({ x: 320, y: 200, width: 60, height: 40 });
       inner.addMember(deep.id, diagram);

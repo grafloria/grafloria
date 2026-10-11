@@ -10,6 +10,15 @@ import { NodeModel } from '../models/NodeModel';
 import { GroupModel } from '../models/GroupModel';
 import type { FlexboxLayoutConfig, GridLayoutConfig } from '../types/layout.types';
 
+// S2: a layout fills the frame's CONTENT box (inside padding, below the title
+// band). These pixel specs were written for a container with no chrome, so they
+// say so instead of inheriting the default padding and header.
+function chromeless(g: GroupModel): GroupModel {
+  g.padding = 0;
+  g.headerHeight = 0;
+  return g;
+}
+
 describe('Smart Layout - Automatic Node Positioning', () => {
   let engine: DiagramEngine;
   let diagram: DiagramModel;
@@ -27,6 +36,7 @@ describe('Smart Layout - Automatic Node Positioning', () => {
     it('should automatically stack nodes vertically in flex column', () => {
       // Create container with flex column layout
       const container = new GroupModel({ name: 'Column Container' });
+      chromeless(container);
       diagram.addGroup(container);
 
       const flexConfig: FlexboxLayoutConfig = {
@@ -84,6 +94,7 @@ describe('Smart Layout - Automatic Node Positioning', () => {
 
     it('should respect padding in flex column layout', () => {
       const container = new GroupModel({ name: 'Padded Container' });
+      chromeless(container);
       diagram.addGroup(container);
 
       container.setLayout('flexbox', {
@@ -115,6 +126,7 @@ describe('Smart Layout - Automatic Node Positioning', () => {
   describe('Flex Row Layout', () => {
     it('should automatically stack nodes horizontally in flex row', () => {
       const container = new GroupModel({ name: 'Row Container' });
+      chromeless(container);
       diagram.addGroup(container);
 
       container.setLayout('flexbox', {
@@ -155,6 +167,7 @@ describe('Smart Layout - Automatic Node Positioning', () => {
 
     it('should center align items in flex row', () => {
       const container = new GroupModel({ name: 'Centered Row' });
+      chromeless(container);
       diagram.addGroup(container);
 
       container.setLayout('flexbox', {
@@ -203,6 +216,7 @@ describe('Smart Layout - Automatic Node Positioning', () => {
   describe('Auto-layout on Add', () => {
     it('should auto-apply layout when adding new child nodes', () => {
       const container = new GroupModel({ name: 'Auto Container' });
+      chromeless(container);
       diagram.addGroup(container);
 
       container.setLayout('flexbox', {
@@ -251,6 +265,7 @@ describe('Smart Layout - Automatic Node Positioning', () => {
     it('should apply layouts recursively for nested containers', () => {
       // Outer container - column
       const outerContainer = new GroupModel({ name: 'Outer' });
+      chromeless(outerContainer);
       diagram.addGroup(outerContainer);
       outerContainer.setLayout('flexbox', {
         direction: 'column',
@@ -264,6 +279,7 @@ describe('Smart Layout - Automatic Node Positioning', () => {
 
       // Inner container - row
       const innerContainer = new GroupModel({ name: 'Inner' });
+      chromeless(innerContainer);
       diagram.addGroup(innerContainer);
       innerContainer.setLayout('flexbox', {
         direction: 'row',

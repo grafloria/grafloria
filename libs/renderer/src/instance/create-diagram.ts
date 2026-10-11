@@ -1893,6 +1893,7 @@ export function createDiagram(
         beforeNodes: templatedData,
         afterNodes: (before) => rederiveTemplates(before as Map<string, string> | null),
         warnEdge: (w) => warnEdge(w),
+        adoptComments: commentStore ? (tree, o) => commentStore?.adopt(tree, o) : undefined,
       });
       const kit = textKitFor(result.diagram.getMetadata('diagramType'));
       scheduler.schedule();

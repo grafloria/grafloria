@@ -1,6 +1,8 @@
 import {
   DSL,
+  adoptComments,
   adoptTextGrammarMetadata,
+  type CommentRegisterTree,
   importDiagramText,
   stripGrafloriaSidecar,
   type DiagramModel,
@@ -18,6 +20,12 @@ export interface LoadTextHooks {
   afterNodes?: (before: unknown) => void;
   /** Receives every edge the reconcile drops or re-attaches. */
   warnEdge?: (warning: EdgeWarning) => void;
+  /**
+   * Puts the loaded document's comment threads on the model (replacing its own).
+   * A canvas with a comment store passes `store.adopt` so old @mentions stay
+   * history; the default writes the model directly.
+   */
+  adoptComments?: (tree: CommentRegisterTree, options: { replace: true }) => void;
 }
 
 /**
@@ -82,6 +90,22 @@ export function loadTextInto(
   // class cards + markers), when a kit registered one — see text-kits.ts.
   textKitFor(result.diagram.getMetadata('diagramType'))?.decorate(result.diagram);
 
+  // ONE undo step under a history owner (a sync Replica): the load is a shared
+  // edit, and Ctrl+Z takes it back in one press, not one op at a time.
+  const owner = model.getHistoryOwner?.() ?? null;
+  owner?.beginStep();
+  try {
+    reconcileLoaded(model, result, hooks);
+  } finally {
+    owner?.endStep();
+  }
+  // The engine's own undo history described the document that was just
+  // replaced; it clears on this signal (S10, docs review v4).
+  model.markDocumentReplaced?.();
+  return result;
+}
+
+function reconcileLoaded(model: DiagramModel, result: ImportTextResult, hooks: LoadTextHooks): void {
   const before = hooks.beforeNodes?.();
   applyNodes(model, result.diagram.getNodes());
   hooks.afterNodes?.(before);
@@ -122,6 +146,12 @@ export function loadTextInto(
   // diagram-level keys of their own), so an erDiagram, stateDiagram,
   // block-beta or architecture-beta loaded here exported as a flowchart,
   // and a classDiagram lost its members.
+  // …and comment threads, which the lossless sidecar carries in `comments` like
+  // any saved document (S5, docs review v4). Replaced like the ink: plain text
+  // carries none, so it clears them.
+  const tree = result.diagram.comments ?? {};
+  if (hooks.adoptComments) hooks.adoptComments(tree, { replace: true });
+  else adoptComments(model, tree, { replace: true });
+
   adoptTextGrammarMetadata(model, result.diagram);
-  return result;
 }

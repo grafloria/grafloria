@@ -20,6 +20,7 @@
 import {
   StrokeModel,
   NodeModel,
+  AddNodeCommand,
   AddStrokeCommand,
   RemoveStrokesCommand,
   SetStrokePointsCommand,
@@ -301,7 +302,14 @@ export class RectangleTool extends WhiteboardTool implements CanvasTool {
     node.setStyle(style as never);
     if (this.opts.label !== undefined) node.setMetadata('label', this.opts.label);
 
-    this.commit(() => this.model().addNode(node));
+    // Through the COMMAND STACK when the host has an engine, like a drawn stroke:
+    // a dragged box is one ⌘Z away (S11, docs review v4 — it wasn't).
+    const engine = this.host.getEngine?.();
+    if (engine) {
+      void engine.commandManager.execute(new AddNodeCommand(node));
+    } else {
+      this.commit(() => this.model().addNode(node));
+    }
     this.host.render();
   }
 }
