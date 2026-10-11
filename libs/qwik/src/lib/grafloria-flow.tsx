@@ -232,6 +232,14 @@ export interface GrafloriaFlowProps {
 }
 
 /** A bridge by VALUE: an inline object literal on every render is not a change. */
+/** A prop's VALUE key (an inline object must not re-apply on every render). Module-level: a Qwik task may capture it. */
+function layoutKeyOf(layout: GrafloriaFlowProps['layout']): string | undefined {
+  return layout === undefined ? undefined : JSON.stringify(layout);
+}
+function pluginsKeyOf(plugins: GrafloriaFlowProps['plugins']): string | undefined {
+  return plugins === undefined ? undefined : JSON.stringify(plugins);
+}
+
 function bridgeKey(bridge: TokenBridge | undefined): string {
   return bridge === undefined ? '' : JSON.stringify(bridge);
 }
@@ -246,9 +254,11 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
   // Track layout / plugins / highlighter by JSON VALUE, exactly as the React
   // and Vue wrappers do: an inline object must not re-apply on every render,
   // and a relayout must never fight a user's drag.
-  const layoutKey = props.layout === undefined ? undefined : JSON.stringify(props.layout);
-  const pluginsKey = props.plugins === undefined ? undefined : JSON.stringify(props.plugins);
-  const highlighterKey = JSON.stringify(props.highlighterConfig ?? false);
+  //
+  // The keys are computed INSIDE the tasks below, from the props. Computed here,
+  // in the render body, they subscribed the component to those props — a live
+  // change re-rendered it and emptied the container the canvas lives in — while
+  // each task tracked a captured constant that never changed.
   // The bridge the live instance has (by value), so only a CHANGE re-applies it.
   // Read ONLY inside the task below: reading `props.tokenBridge` in this render
   // body would subscribe the component to it, and a re-render empties the
@@ -440,7 +450,7 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
   // -- the outline layer, live ------------------------------------------------
   // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(({ track }) => {
-    const key = track(() => highlighterKey);
+    const key = track(() => JSON.stringify(props.highlighterConfig ?? false));
     const instance = track(() => instanceRef.value);
     if (!instance) return;
     instance.setHighlighterConfig(
@@ -462,7 +472,7 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
   // -- canvas plugins (minimap / controls / background) -----------------------
   // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(({ track, cleanup }) => {
-    const key = track(() => pluginsKey);
+    const key = track(() => pluginsKeyOf(props.plugins));
     const instance = track(() => instanceRef.value);
     if (!instance || key === undefined) return;
     const parsed = JSON.parse(key) as boolean | CanvasPluginOptions;
@@ -488,7 +498,7 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
   // -- declarative layout -----------------------------------------------------
   // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(({ track }) => {
-    const key = track(() => layoutKey);
+    const key = track(() => layoutKeyOf(props.layout));
     const instance = track(() => instanceRef.value);
     if (!instance || key === undefined) return;
     const req = JSON.parse(key) as string | GrafloriaLayoutRequest;

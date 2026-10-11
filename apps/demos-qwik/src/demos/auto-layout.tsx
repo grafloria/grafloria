@@ -1,4 +1,4 @@
-import { component$ } from '@builder.io/qwik';
+import { component$, useSignal } from '@builder.io/qwik';
 import { GrafloriaFlow, type EdgeSpec, type NodeSpec } from '@grafloria/qwik';
 
 /**
@@ -7,7 +7,7 @@ import { GrafloriaFlow, type EdgeSpec, type NodeSpec } from '@grafloria/qwik';
  * object literal does not re-run the layout on every render — and a relayout
  * never fights a drag in progress.
  */
-const layout = { name: 'dagre', options: { direction: 'TB', nodeSpacing: 40, rankSpacing: 90 } };
+const layoutFor = (direction: 'TB' | 'LR') => ({ name: 'dagre', options: { direction, nodeSpacing: 40, rankSpacing: 90 } });
 
 const nodes: NodeSpec[] = ['root', 'a', 'b', 'a1', 'a2', 'b1', 'b2'].map((id) => ({
   id,
@@ -25,6 +25,19 @@ const edges: EdgeSpec[] = [
   { id: 'e6', source: 'b', target: 'b2', sourceHandle: 'bottom', targetHandle: 'top' },
 ];
 
-export default component$(() => (
-  <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout={layout} plugins={{ controls: true }} />
-));
+export default component$(() => {
+  // A live layout change re-arranges the SAME canvas (the prop is tracked by value).
+  const direction = useSignal<'TB' | 'LR'>('TB');
+  return (
+    <>
+      <div class="toolbar">
+        <button type="button" id="toggle-direction" onClick$={() => (direction.value = direction.value === 'TB' ? 'LR' : 'TB')}>
+          Direction: {direction.value}
+        </button>
+      </div>
+      <div class="canvas">
+        <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout={layoutFor(direction.value)} plugins={{ controls: true }} />
+      </div>
+    </>
+  );
+});

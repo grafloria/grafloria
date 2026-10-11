@@ -103,6 +103,14 @@ try {
     { slug: 'auto-layout', nodes: 4, links: 3, extra: async (page) => {
       const spread = await page.evaluate(() => new Set([...document.querySelectorAll('svg [data-node-id]')].map((g) => Math.round(g.getBoundingClientRect().x / 10))).size);
       check('auto-layout', 'LAYOUT', spread >= 3, `${spread} distinct columns after the layout`);
+      // A LIVE layout change: the same canvas re-arranges (it used to re-render the component and empty it).
+      const pos = () => page.evaluate(() => [...document.querySelectorAll('svg [data-node-id]')].map((g) => { const r = g.getBoundingClientRect(); return `${Math.round(r.x)},${Math.round(r.y)}`; }));
+      const tb = await pos();
+      await page.locator('#toggle-direction').click();
+      await page.waitForTimeout(900);
+      const lr = await pos();
+      check('auto-layout', 'LAYOUT-LIVE', lr.length === tb.length && tb.length >= 7 && lr.join('|') !== tb.join('|'),
+        `${tb.length} → ${lr.length} nodes drawn; moved: ${lr.join('|') !== tb.join('|')}`);
     } },
     { slug: 'custom-nodes', nodes: 1, links: 3, extra: async (page) => {
       const cards = await page.evaluate(() => [...document.querySelectorAll('.grafloria-html-layer [data-node-id]')]
@@ -166,6 +174,19 @@ try {
       const back = await bridged();
       check('zones-and-highlight', 'BRIDGE-LIVE', !off.mapped && on.mapped && on.fill === 'rgb(237, 233, 254)' && !back.mapped && back.fill === off.fill,
         `fill ${off.fill} → ${on.fill} → ${back.fill}; mapped ${off.mapped} → ${on.mapped} → ${back.mapped}`);
+
+      // LIVE plugins and outline config: applied to the SAME canvas, which keeps its nodes.
+      const drawn = () => page.evaluate(() => [...document.querySelectorAll('svg [data-node-id]')].filter((n) => !n.closest('.grafloria-minimap')).length);
+      const n0 = await drawn();
+      await page.locator('#toggle-minimap').click();
+      await page.waitForTimeout(700);
+      const map1 = await page.evaluate(() => !!document.querySelector('.grafloria-minimap'));
+      const n1 = await drawn();
+      await page.locator('#toggle-outline').click();
+      await page.waitForTimeout(400);
+      const n2 = await drawn();
+      check('zones-and-highlight', 'PLUGINS-LIVE', map1 && n1 === n0 && n2 === n0 && n0 >= 4,
+        `minimap shown ${map1}; nodes drawn ${n0} → ${n1} → ${n2}`);
     } },
     { slug: 'spec-swap', nodes: 3, links: 2, extra: async (page) => {
       const readies = async () => Number((/ready (\d+)/.exec(await page.locator('#ready-count').textContent()) || [])[1]);

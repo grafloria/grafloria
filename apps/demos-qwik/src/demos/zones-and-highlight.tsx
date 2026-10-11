@@ -31,6 +31,8 @@ export default component$(() => {
   const highlight = useSignal(true);
   const zoned = useSignal(true);
   const branded = useSignal(false);
+  const mapped = useSignal(false);
+  const outlined = useSignal(false);
   return (
     <>
       <div class="toolbar">
@@ -43,6 +45,12 @@ export default component$(() => {
         <button type="button" id="toggle-bridge" onClick$={() => (branded.value = !branded.value)}>
           Brand tokens: {branded.value ? 'on' : 'off'}
         </button>
+        <button type="button" id="toggle-minimap" onClick$={() => (mapped.value = !mapped.value)}>
+          Minimap: {mapped.value ? 'on' : 'off'}
+        </button>
+        <button type="button" id="toggle-outline" onClick$={() => (outlined.value = !outlined.value)}>
+          Outline layer: {outlined.value ? 'on' : 'off'}
+        </button>
         <span class="readout">Click a step to see its lines.</span>
       </div>
       <div class="canvas">
@@ -52,6 +60,8 @@ export default component$(() => {
           groups={zoned.value ? [WAREHOUSE] : []}
           highlightConnected={highlight.value}
           tokenBridge={branded.value ? BRAND_BRIDGE : undefined}
+          plugins={mapped.value ? { minimap: true } : false}
+          highlighterConfig={outlined.value ? { validation: true } : false}
           fitView
         />
       </div>
