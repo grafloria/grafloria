@@ -160,7 +160,9 @@ async function shoot(tab, page) {
   await settle(tab);
   await settle(tab);
   const region = await tab.evaluate(() => {
-    const host = document.getElementById('canvas');
+    // A page whose picture is not its diagram canvas names it with data-thumb (the robot
+    // cell programmer shows its 3D cell; its timeline is a dock along the bottom).
+    const host = document.querySelector('[data-thumb]') ?? document.getElementById('canvas');
     host?.scrollIntoView({ block: 'nearest' });
     const r = host?.getBoundingClientRect();
     const head = document.getElementById('demo-head')?.getBoundingClientRect();
