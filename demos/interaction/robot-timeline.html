@@ -1,0 +1,1288 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Robot cell programmer — Grafloria</title>
+<meta name="description" content="Program a multi-use robot arm on a timeline: drag commands into place, set each one in a popup, loop a run of steps, and press Run to watch the cell work. Simple mode is one line; Advanced runs two arms, a conveyor and a camera in lanes that wait for each other.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/robot-timeline.html">
+<meta property="og:title" content="Robot cell programmer — Grafloria">
+<meta property="og:description" content="Program a multi-use robot arm on a timeline: drag commands into place, set each one in a popup, loop a run of steps, and press Run to watch the cell work.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/robot-timeline.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/robot-timeline.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/robot-timeline.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<link rel="stylesheet" href="robot-timeline.css">
+
+<div id="demo-head"></div>
+<div id="stage">
+  <div class="rt-bar-top">
+    <div class="rt-seg" role="tablist" aria-label="Mode">
+      <button id="rt-simple" role="tab" aria-selected="true" title="One line: the arm's steps in order">Simple</button>
+      <button id="rt-adv" role="tab" aria-selected="false" title="Lanes: two arms, a conveyor and a camera that wait for each other">Advanced</button>
+    </div>
+    <div class="rt-job" id="rt-job"></div>
+    <span class="rt-sp"></span>
+    <button class="rt-btn" id="rt-undo" title="Undo (Ctrl/⌘+Z)">Undo</button>
+    <button class="rt-btn" id="rt-redo" title="Redo (Ctrl/⌘+⇧+Z)">Redo</button>
+    <button class="rt-btn" id="rt-reset" title="Put the sample program back (undoable)">Reset</button>
+    <button class="rt-btn" id="rt-fit" title="Zoom out to the whole program (press again for a readable zoom)">Fit</button>
+    <label class="rt-cycles" id="rt-cycles-wrap" hidden>Cycles <select class="rt-select" id="rt-cycles" aria-label="Cycles to run"></select></label>
+    <select class="rt-select" id="rt-speed" aria-label="Run speed">
+      <option value="1">×1</option><option value="4" selected>×4</option><option value="10">×10</option><option value="30">×30</option>
+    </select>
+    <button class="rt-btn" id="rt-step" title="Run one step at a time">Step</button>
+    <button class="rt-btn rt-primary" id="rt-run">▶ Run</button>
+  </div>
+  <div class="rt-body">
+    <aside class="rt-palette" id="rt-palette" aria-label="Commands"></aside>
+    <div class="rt-wrap">
+      <div id="canvas"></div>
+      <div class="rt-status" id="rt-status" aria-live="polite"></div>
+      <div class="rt-toast" id="rt-toast" role="status"></div>
+    </div>
+    <aside class="rt-side" aria-label="The cell">
+      <div class="rt-cellbox"><h2>The cell</h2><div id="rt-cell"></div></div>
+      <div class="rt-stats" id="rt-stats"></div>
+      <div class="rt-logbox"><h2>Run log</h2><ol class="rt-log" id="rt-log"></ol></div>
+    </aside>
+  </div>
+</div>
+
+<script type="text/plain" data-code="angular">
+// The robot cell programmer is plain JavaScript — no Angular port yet. The page
+// drives one render() instance; <grafloria-diagram> mounts the same instance in
+// Angular, and the catalog, schedule, layout and cards modules are framework-free.
+import { Component } from '@angular/core';
+import { GrafloriaDiagramComponent } from '@grafloria/angular';
+import { schedule, check } from './robot-timeline-schedule';
+import { layout } from './robot-timeline-layout';
+import { sampleSimple } from './robot-timeline-catalog';
+
+@Component({
+  selector: 'robot-timeline',
+  imports: [GrafloriaDiagramComponent],
+  template: `<grafloria-diagram [spec]="{ nodes: [], edges: [] }" (ready)="onReady($event)" style="display:block; height:100%" />`,
+})
+export class RobotTimeline {
+  program = sampleSimple();
+  onReady(api: any) {
+    const sched = schedule(this.program);           // when each step runs
+    const boxes = layout(this.program, sched).boxes; // where each card sits
+    const problems = check(this.program, sched).problems; // an empty gripper, a full pallet…
+    // add one node per box (its html is cardTree(step)), then Run with runEvents() + cellAt()
+  }
+}
+</script>
+<script type="text/plain" data-code="react">
+// The robot cell programmer is plain JavaScript — no React port yet. GrafloriaFlow
+// hands over the same render() instance in onInit; the modules are framework-free.
+import { GrafloriaFlow } from '@grafloria/react';
+import { schedule, check } from './robot-timeline-schedule';
+import { layout } from './robot-timeline-layout';
+import { sampleSimple } from './robot-timeline-catalog';
+
+export function RobotTimeline() {
+  const onInit = (api: any) => {
+    const program = sampleSimple();
+    const sched = schedule(program);
+    const { boxes } = layout(program, sched);
+    // one node per box (html: cardTree(step)); problems: check(program, sched).problems
+  };
+  return <GrafloriaFlow defaultNodes={[]} defaultEdges={[]} onInit={onInit} style={{ height: '100%' }} />;
+}
+</script>
+<script type="text/plain" data-code="vue">
+<!-- The robot cell programmer is plain JavaScript — no Vue port yet. GrafloriaFlow
+     emits the same render() instance on init; the modules are framework-free. -->
+<script setup lang="ts">
+import { GrafloriaFlow } from '@grafloria/vue';
+import { schedule, check } from './robot-timeline-schedule';
+import { layout } from './robot-timeline-layout';
+import { sampleSimple } from './robot-timeline-catalog';
+
+function onInit(api: any) {
+  const program = sampleSimple();
+  const sched = schedule(program);
+  const { boxes } = layout(program, sched);
+  // one node per box (html: cardTree(step)); problems: check(program, sched).problems
+}
+</script>
+<template>
+  <GrafloriaFlow :default-nodes="[]" :default-edges="[]" @init="onInit" style="height: 100%" />
+</template>
+</script>
+<script type="text/plain" data-code="qwik">
+// The robot cell programmer is plain JavaScript — no Qwik port yet. GrafloriaFlow
+// mounts the same canvas; the catalog, schedule, layout and cards modules are framework-free.
+import { component$ } from '@builder.io/qwik';
+import { GrafloriaFlow } from '@grafloria/qwik';
+
+export const RobotTimeline = component$(() => (
+  <GrafloriaFlow defaultNodes={[]} defaultEdges={[]} style={{ height: '100%' }} />
+  // then schedule(program) → layout(program, sched).boxes → one node per box
+));
+</script>
+
+<script src="../vendor/fieldia-0.14.0/fieldia.js"></script>
+<script type="module">
+import { render, NodeModel, LinkModel, PortModel, Command, registerConnectionValidator } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
+import { COMMANDS, REPEAT, DEVICES, OUTFEED_SLOTS, sampleSimple, sampleAdvanced, findItem, allSteps, newProps, canRun, settingsPage, durationOf, fmt, itemSeconds, isArm } from './robot-timeline-catalog.js';
+import { schedule, check as checkProgram, runEvents, cellAt, topOf, perHour, clock } from './robot-timeline-schedule.js';
+import { layout } from './robot-timeline-layout.js';
+import { cardTree, frameTree, toHtml, iconCss, chipHtml, laneHeadHtml, icon, esc, SIMPLE, ADV } from './robot-timeline-cards.js';
+import { drawCell } from './robot-timeline-cell.js';
+
+/* ================================================================================
+   ROBOT CELL PROGRAMMER — a timeline of commands for a multi-use robot arm.
+
+   • The PROGRAM is plain data (robot-timeline-catalog.js): lanes of steps and
+     loops, and the waits between lanes. Every page edit is ONE undo step on the
+     engine's own command stack (a DocCommand holding the state before and after).
+   • Steps and loop frames are NODES whose html is painted from the program; the
+     page lays them out (robot-timeline-layout.js) and moves them with a tween.
+     The page drags them itself, so a drop is one step and the timeline closes up.
+   • A wait ("this starts once that has finished") is an engine LINK drawn from a
+     card's right dot to a card in another lane — the engine's connect gesture,
+     its undo, its delete; a connection validator refuses a same-lane wait or one
+     that would wait in a circle. The schedule re-times the lanes after each.
+   • Settings open in a Fieldia popup (the vendored @fieldia/viewer bundle).
+   • Run replays the schedule: cards light up, the cell view moves the arms, the
+     log counts the boxes. check() finds the step where the program goes wrong
+     (an empty gripper, a full pallet, a camera with nothing to look at).
+   ================================================================================ */
+
+const clone = (v) => JSON.parse(JSON.stringify(v));
+const newId = (p = 's') => p + Date.now().toString(36).slice(-4) + Math.floor(Math.random() * 46656).toString(36);
+const isTextEntry = (t) => !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''));
+const $ = (id) => document.getElementById(id);
+
+/** One undo step for a page edit: the whole state before and after. */
+class DocCommand extends Command {
+  constructor(name, before, after, apply) { super(name); this.before = before; this.after = after; this.apply = apply; this.fresh = true; }
+  execute() { if (this.fresh) { this.fresh = false; return; } this.apply(this.after); }
+  undo() { this.apply(this.before); }
+  redo() { this.apply(this.after); }
+  serialize() { return { id: this.id, name: this.name, timestamp: this.timestamp, data: { before: this.before, after: this.after } }; }
+}
+
+document.head.insertAdjacentHTML('beforeend', `<style>${iconCss()}</style>`);
+
+const SYNC_STYLE = () => ({ stroke: getComputedStyle($('stage')).getPropertyValue('--rt-accent').trim() || '#3654d1', strokeWidth: 1.8, strokeDasharray: '6 4', arrowHead: { type: 'arrow', size: 9 }, animation: { type: 'none' } });
+
+defineDemo({
+  name: 'Robot cell programmer',
+  blurb: 'Program a multi-use robot arm on a timeline. Drag commands from the palette into place (Pick, Place, Insert into, Close lid, Stamp…), set each one in a Fieldia popup, wrap steps in a Repeat loop, and press Run: the cards light up in turn while the cell view shows the arm fetching, filling, closing and stamping each box. Simple mode is one line for one arm; Advanced puts two arms, a conveyor and a vision camera in lanes on a time ruler, where a dashed line makes one step wait for another. The program is checked as you edit: a Place with an empty gripper or a seventh box for a six-slot pallet is flagged on its card, and Run says what to fix.',
+  howTo: [
+    'Read the Simple sample left to right: Pick a box base from Infeed A, Place it on the work pallet, Pick an insert and Insert it into the box, Pick a lid and Close it, Stamp the box, then Pick it up and Place it on the outfeed pallet. The purple frame repeats those nine steps six times, one box per outfeed slot.',
+    'Press ▶ Run: each card lights up and fills its progress bar, the frame counts its passes, and the cell view on the right shows the arm turning to each station, the box filling up, the lid going on and the stamp mark appearing; finished boxes land in the outfeed slots. Change the speed, press Step to go one step at a time, or Stop.',
+    'Drag a command from the palette (left) onto the timeline (or tap it, or focus it and press Enter, to add it at the end): a blue caret shows where it will go, inside the frame or outside it. Let go and its settings open in a popup. Drag a card to move it, drop it outside the frame to take it out of the loop. Drop Repeat on a step outside a loop to loop it.',
+    'Click a card\'s gear (or double-click the card) to change its settings: where it picks from, which slot it fills, the stamp text, the press force. Click the frame\'s "Repeat × 6" header to change the count. Every edit, move and delete is one undo step (Ctrl/⌘+Z, ⇧ for redo).',
+    'Break it on purpose: drag the insert\'s Pick after the Insert, delete the Stamp, or set the loop to 7. The card that would go wrong turns red (or amber for a warning) and says why — "The gripper is empty", "The outfeed pallet is full" — and Run refuses until it is fixed.',
+    'Switch to Advanced (each mode keeps its own program; a switch starts a fresh undo history): the conveyor brings a box, Arm A loads it with three inserts (a Repeat × 3), Arm B closes and stamps it, the camera inspects it and Arm A carries it to the outfeed. Card widths are seconds on the ruler; the dashed lines are waits and the hatched bars show a lane waiting. Delete a wait (click it, Delete) and watch the lane slide left and the camera complain; drag from a card\'s right dot to a card in another lane to add one.',
+    'In Advanced, a lane only takes the commands its device can run: dropping Pick on the camera lane is refused with the reason. The status bar under the timeline gives the cycle time and the boxes per hour, and Run plays all the cycles on the time ruler.',
+  ],
+
+  async setup(ctx) {
+    const host = ctx.host, stage = $('stage');
+
+    // ---- state ----------------------------------------------------------------------
+    const S = { mode: 'simple', programs: { simple: sampleSimple(), advanced: sampleAdvanced() }, sel: null, sched: null, problems: new Map(), L: null, dragging: null, dialog: false };
+    ctx.S = S;
+    const prog = () => S.programs[S.mode];
+    ctx.animMs = 260;
+
+    // ---- keyboard: registered BEFORE render() so the page answers first ---------------
+    let keysReady = false;
+    window.addEventListener('keydown', (e) => {
+      if (!keysReady || S.dialog || isTextEntry(e.target) || document.querySelector('.fd-backdrop, [role="dialog"][aria-modal="true"]')) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); e.stopImmediatePropagation(); void (e.shiftKey ? cm.redo() : cm.undo()); return; }
+      if (mod && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); e.stopImmediatePropagation(); void cm.redo(); return; }
+      if (e.key === 'Escape') { if (drag) cancelDrag(); else if (S.sel) select(null); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Cards and frames are the program's: delete them through it (one undo step), whether
+        // the page selected them or the engine did. A selected wait (a link) is the engine's.
+        const picked = model.getSelectedNodes().map((n) => n.id).filter((id) => findItem(prog(), id));
+        const ids = picked.length ? picked : S.sel ? [S.sel.id] : [];
+        if (!ids.length) return;
+        e.preventDefault(); e.stopImmediatePropagation();
+        deleteItems(ids);
+      }
+    }, true);
+
+    const api = render({ nodes: [], edges: [] }, host, { interaction: { portVisibility: 'hover', connectionLineStyle: 'bezier' } });
+    ctx.instance = api;
+    const model = api.getModel(), engine = api.getEngine(), cm = engine.commandManager;
+    ctx.diagram = model; ctx.engine = engine;
+    api.animations?.updateConfig?.({ respectBatteryStatus: false, batterySavingMode: false });
+    try {
+      const cfg = model.getLODConfig(), all = new Set();
+      for (const t of cfg.tiers) for (const f of t.features) all.add(f);
+      for (const t of cfg.tiers) for (const f of all) t.features.add(f);
+      model.setLODConfig(cfg);
+    } catch { /* an engine without LOD config draws everything anyway */ }
+
+    // ---- layers: lanes, ruler and arrows under the diagram; lane names, caret over it --------
+    const root = host.querySelector('.grafloria-diagram-root') || host;
+    const under = document.createElement('div'); under.className = 'rt-under';
+    root.insertBefore(under, root.firstChild);
+    const over = document.createElement('div'); over.className = 'rt-over';
+    host.appendChild(over);
+    const syncLayers = () => {
+      const t = api.viewport.getHtmlLayerTransform(); under.style.transform = t; over.style.transform = t;
+      // lane names stay readable at the left edge while the ruler pans under them
+      const b = api.viewport.getViewBox(), z = api.viewport.getZoom();
+      const away = b.x > -ADV.HEAD_W * 0.4;
+      over.querySelectorAll('.rt-lanechip').forEach((el, i) => {
+        el.hidden = !away;
+        el.style.left = `${b.x + 8 / z}px`;
+        el.style.top = `${ADV.RULER + i * ADV.LANE_H + 4}px`;
+        el.style.transform = `scale(${1 / Math.max(0.6, z)})`;
+      });
+    };
+    api.on('viewport:change', syncLayers);
+
+    const toast = (text) => { const t = $('rt-toast'); t.textContent = text; t.classList.add('on'); clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('on'), 2800); };
+    ctx.toast = toast;
+    // The viewport's own conversions: its x/y is the camera before zoom-about-centre, so
+    // "v.x + px / zoom" is only right at zoom 1 (the visible box is getViewBox()).
+    const toWorld = (cx, cy) => api.viewport.clientToWorld(cx, cy, host.getBoundingClientRect());
+    const toClient = (wx, wy) => api.viewport.worldToClient(wx, wy, host.getBoundingClientRect());
+    const viewBox = () => api.viewport.getViewBox();
+    /** Put world point (wx, wy) at client-relative fraction (fx, fy) of the canvas. */
+    const panTo = (wx, wy, fx = 0.5, fy = 0.5) => {
+      const b = viewBox(), v = api.viewport.getViewport();
+      api.viewport.setViewport({ ...v, x: v.x + (wx - (b.x + b.width * fx)), y: v.y + (wy - (b.y + b.height * fy)) });
+    };
+    ctx.toWorld = toWorld; ctx.toClient = toClient;
+
+    // ---- the cell view ------------------------------------------------------------------
+    let cellView = null;
+
+    // ---- painting -------------------------------------------------------------------------
+    const RUN = { on: false, paused: false, t: 0, speed: 4, events: [], total: 0, raf: 0, last: 0, logged: 0, status: new Map(), stepMode: false, until: null };
+    ctx.RUN = RUN;
+    const stepNumbers = () => { const m = new Map(); let n = 0; for (const { step } of allSteps(prog())) m.set(step.id, ++n); return m; };
+    let numbers = new Map();
+    function paint(id) {
+      const node = model.getNode(id), f = findItem(prog(), id);
+      if (!node || !f) return;
+      const st = RUN.status.get(id);
+      const opts = { mode: S.mode, sel: S.sel?.id === id, problem: S.problems.get(id), status: st?.status, k: st?.k, pass: st?.pass, passes: st?.passes, dragging: S.dragging === id, w: node.size.width };
+      const tree = f.item.loop ? frameTree(f.item, { ...opts, empty: !f.item.steps.length }) : cardTree(f.item, { ...opts, n: S.mode === 'simple' ? numbers.get(id) : 0 });
+      const key = JSON.stringify(tree);
+      if (node.__html === key) return;
+      node.__html = key;
+      node.setMetadata('html', { content: tree, padding: 0, interactive: true, style: { overflow: 'visible' } });
+    }
+    const paintAll = () => { for (const n of model.getNodes()) paint(n.id); };
+
+    const portModel = (id, type, x, y) => new PortModel({
+      id, type, side: type === 'input' ? 'left' : 'right', shape: { shape: 'circle', size: 11 },
+      layout: { strategy: 'absolute', args: { units: 'px', x, y } },
+      style: { fill: '#ffffff', stroke: getComputedStyle(stage).getPropertyValue('--rt-accent').trim() || '#3654d1', strokeWidth: 2 },
+      isConnectableStart: type === 'output', isConnectableEnd: type === 'input', allowSelfLink: false, allowDuplicateLinks: false,
+    });
+    function seatPorts(node, box, want) {
+      const ids = want ? [`${node.id}__in`, `${node.id}__out`] : [];
+      for (const p of [...node.getPorts()]) {
+        const keep = ids.includes(p.id) && p.layout?.args?.x === (p.id.endsWith('__in') ? 0 : box.w) && p.layout?.args?.y === box.h / 2;
+        if (!keep) {
+          for (const l of model.getLinks()) if (l.sourcePortId === p.id || l.targetPortId === p.id) l.__reseat = true;
+          node.removePort(p.id);
+        }
+      }
+      if (!want) return;
+      if (!node.getPort(`${node.id}__in`)) node.addPort(portModel(`${node.id}__in`, 'input', 0, box.h / 2));
+      if (!node.getPort(`${node.id}__out`)) node.addPort(portModel(`${node.id}__out`, 'output', box.w, box.h / 2));
+    }
+
+    // ---- syncs: engine links between top-level items (Advanced) ------------------------------
+    const nodeOfPort = (pid, fallback) => model.getNodeByPortId(pid)?.id ?? fallback;
+    const readSyncs = () => model.getLinks().map((l) => ({ id: l.id, from: nodeOfPort(l.sourcePortId, l.sourceNodeId), to: nodeOfPort(l.targetPortId, l.targetNodeId) }));
+    function addSyncLink(s) {
+      const sp = `${s.from}__out`, tp = `${s.to}__in`;
+      if (!model.getNodeByPortId(sp) || !model.getNodeByPortId(tp)) return null;
+      const l = new LinkModel(sp, tp, 'bezier');
+      l.id = s.id; l.sourceNodeId = s.from; l.targetNodeId = s.to; l.data = { sync: true };
+      l.updateStyle(SYNC_STYLE()); l.__styled = true;
+      model.addLink(l);
+      return l;
+    }
+    let reconciling = false;
+    function reconcileLinks(p) {
+      reconciling = true;
+      try { reconcileLinksNow(p); } finally { reconciling = false; }
+    }
+    function reconcileLinksNow(p) {
+      const want = new Map(p.mode === 'advanced' ? (p.syncs ?? []).map((s) => [s.id, s]) : []);
+      for (const l of [...model.getLinks()]) {
+        const w = want.get(l.id);
+        if (!w || w.from !== nodeOfPort(l.sourcePortId, l.sourceNodeId) || w.to !== nodeOfPort(l.targetPortId, l.targetNodeId) || l.__reseat) { model.removeLink(l.id); continue; }
+        if (!l.__styled) { l.__styled = true; l.data = { ...(l.data ?? {}), sync: true }; l.updateStyle(SYNC_STYLE()); }
+      }
+      for (const s of want.values()) if (!model.getLink(s.id)) addSyncLink(s);
+    }
+
+    // ---- the tween --------------------------------------------------------------------------
+    const tween = { raf: 0, to: null };
+    function moveTo(target, ms) {
+      cancelAnimationFrame(tween.raf);
+      if (!ms) { for (const [id, p] of target) model.getNode(id)?.setPosition(p.x, p.y); api.renderNow(); return Promise.resolve(); }
+      const from = new Map([...target.keys()].map((id) => { const n = model.getNode(id); return [id, { x: n.position.x, y: n.position.y }]; }));
+      const t0 = performance.now();
+      return (ctx.layoutDone = new Promise((done) => {
+        const step = (now) => {
+          const k = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - k, 3);
+          for (const [id, p] of target) { const a = from.get(id), n = model.getNode(id); if (n && a) n.setPosition(Math.round(a.x + (p.x - a.x) * e), Math.round(a.y + (p.y - a.y) * e)); }
+          api.renderNow();
+          if (k < 1) tween.raf = requestAnimationFrame(step); else done();
+        };
+        tween.raf = requestAnimationFrame(step);
+      }));
+    }
+
+    // ---- apply a state to the canvas ----------------------------------------------------------
+    function redraw(opts = {}) {
+      const p = prog();
+      if (p.mode === 'advanced') p.syncs = p.syncs ?? [];
+      S.sched = schedule(p);
+      S.problems = checkProgram(p, S.sched).problems;
+      S.L = layout(p, S.sched);
+      numbers = stepNumbers();
+      const want = S.L.boxes;
+      // stuck items (a circular wait) have no slot on the ruler: park them after the lane's end
+      if (p.mode === 'advanced') {
+        p.lanes.forEach((lane, li) => {
+          let x = S.L.width - 60;
+          for (const it of lane.items) {
+            if (want.has(it.id)) continue;
+            const w = it.loop ? 140 : Math.max(30, durationOf(it) * ADV.PPS - 4);
+            want.set(it.id, { x, y: ADV.RULER + li * ADV.LANE_H + 34, w, h: ADV.H, kind: it.loop ? 'loop' : 'step', lane: lane.id, loop: null });
+            if (it.loop) it.steps.forEach((s, j) => want.set(s.id, { x: x + 8 + j * 34, y: ADV.RULER + li * ADV.LANE_H + 34, w: 30, h: ADV.H, kind: 'step', lane: lane.id, loop: it.id }));
+            x += w + 12;
+          }
+        });
+      }
+      for (const n of [...model.getNodes()]) if (!want.has(n.id)) model.removeNode(n.id);
+      const target = new Map();
+      for (const [id, b] of want) {
+        let node = model.getNode(id);
+        const fresh = !node;
+        if (fresh) {
+          node = new NodeModel({ id, type: 'rect', position: { x: b.x, y: b.y }, size: { width: b.w, height: b.h } });
+          node.ports.clear();
+          node.setMetadata('shape', { type: 'rect' });
+          node.behavior.resizable = false;
+          node.style = { ...node.style, selection: 'none' };
+          node.zIndex = b.kind === 'loop' ? 0 : 2;
+          model.addNode(node);
+        }
+        if (node.size.width !== b.w || node.size.height !== b.h) node.setSize(b.w, b.h);
+        seatPorts(node, b, p.mode === 'advanced' && !b.loop);
+        node.__html = null;
+        if (fresh || opts.animate === false) node.setPosition(b.x, b.y);
+        else target.set(id, { x: b.x, y: b.y });
+      }
+      reconcileLinks(p);
+      paintAll();
+      drawLayers();
+      renderChrome();
+      api.renderNow();
+      if (target.size) return moveTo(target, opts.animate === false ? 0 : ctx.animMs);
+      return (ctx.layoutDone = Promise.resolve());
+    }
+    ctx.render = redraw;
+
+    function drawLayers() {
+      const p = prog(), L = S.L;
+      const parts = [], top = [];
+      if (p.mode === 'advanced') {
+        const left = -ADV.HEAD_W - 20, width = L.width - left + 40;
+        L.lanes.forEach((ln) => parts.push(`<div class="rt-lane" data-lane="${ln.id}" style="left:${left}px;top:${ln.y}px;width:${width}px;height:${ln.h}px"></div>`));
+        // ruler
+        const ticks = [];
+        const secs = Math.ceil(L.width / ADV.PPS);
+        for (let s = 0; s <= secs; s += 5) ticks.push(`<span class="rt-tick" style="left:${s * ADV.PPS}px">${s} s</span>`);
+        top.push(`<div class="rt-ruler" style="left:0;top:4px;width:${L.width}px">${ticks.join('')}</div>`);
+        const busy = (lane) => { const t = lane.items.reduce((a, it) => a + itemSeconds(it), 0); return S.sched.seconds ? `busy ${Math.round((100 * t) / S.sched.seconds)} %` : ''; };
+        p.lanes.forEach((lane) => top.push(`<div class="rt-lanechip rt-k-${lane.device === 'belt' ? 'belt' : lane.device === 'camera' ? 'camera' : 'arm'}" hidden style="position:absolute;top:0">${icon(DEVICES[lane.device]?.icon ?? 'arm', 13)}<b>${esc(DEVICES[lane.device]?.label ?? lane.device)}</b></div>`));
+        p.lanes.forEach((lane, i) => top.push(`<div style="position:absolute;left:${-ADV.HEAD_W - 10}px;top:${ADV.RULER + i * ADV.LANE_H}px;width:${ADV.HEAD_W}px;height:${ADV.LANE_H}px;display:flex;align-items:center">${laneHeadHtml(lane, busy(lane)).replace('class="rt-lhead', 'style="position:static" class="rt-lhead')}</div>`));
+        for (const g of L.gaps) {
+          const who = findItem(p, g.waitFor);
+          const label = who ? `waits for ${DEVICES[p.lanes.find((l) => l.items.some((x) => x.id === g.waitFor))?.device]?.label.split(' —')[0] ?? ''}` : 'waits';
+          parts.push(`<div class="rt-gap" style="left:${g.x}px;top:${g.y}px;width:${Math.max(6, g.w - 4)}px"><span>${esc(label)} · ${fmt(g.end - g.start)} s</span></div>`);
+        }
+        for (const t of L.tails) parts.push(`<div class="rt-ghost-tail" data-tail="${t.loop}" style="left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px"><span>+${t.passes} more pass${t.passes > 1 ? 'es' : ''} · ${fmt(t.seconds)} s</span></div>`);
+        top.push(`<div class="rt-playhead" id="rt-playhead" hidden style="left:0;top:${ADV.RULER - 6}px;height:${L.height - ADV.RULER + 6}px"><span>0.0 s</span></div>`);
+      } else {
+        const ln = L.lanes[0];
+        parts.push(`<div class="rt-lane" data-lane="${ln.id}" style="left:${-30}px;top:${ln.y}px;width:${L.width + 60}px;height:${ln.h}px;border-radius:18px;border:1px solid var(--rt-line)"></div>`);
+        const ar = L.arrows.map((a) => `<path d="M${a.x1} ${a.y1} H${a.x2 - 6}" /><path d="M${a.x2 - 7} ${a.y2 - 4.5} L${a.x2} ${a.y2} L${a.x2 - 7} ${a.y2 + 4.5}" class="rt-ah"/>`).join('');
+        parts.push(`<svg style="position:absolute;left:0;top:0;overflow:visible" width="1" height="1"><g fill="none" stroke="var(--rt-faint)" stroke-width="1.8" stroke-linecap="round">${ar}</g></svg>`);
+        top.push(`<div style="position:absolute;left:${SIMPLE.X0}px;top:${ln.y - 26}px;font:600 12px system-ui,sans-serif;color:var(--rt-mut);display:flex;gap:8px;align-items:center;white-space:nowrap">${icon('arm', 15)} Robot arm — one line, steps run left to right</div>`);
+      }
+      under.innerHTML = parts.join('');
+      over.innerHTML = top.join('') + '<div class="rt-caret" id="rt-caret" hidden></div><div class="rt-wraptarget" id="rt-wraptarget" hidden></div>';
+      syncLayers();
+    }
+
+    // ---- chrome: mode, job, palette, status, stats --------------------------------------------
+    function renderChrome() {
+      const p = prog();
+      $('rt-simple').setAttribute('aria-selected', String(p.mode === 'simple'));
+      $('rt-adv').setAttribute('aria-selected', String(p.mode === 'advanced'));
+      $('rt-job').innerHTML = p.mode === 'simple'
+        ? 'Box, insert, lid, stamp<small>One arm · one line of steps</small>'
+        : 'Two-arm gift-box cell<small>Conveyor · Arm A loads · Arm B closes and stamps · camera checks</small>';
+      $('rt-cycles-wrap').hidden = p.mode !== 'advanced';
+      if (p.mode === 'advanced') {
+        const sel = $('rt-cycles');
+        if (sel.options.length !== OUTFEED_SLOTS) sel.innerHTML = Array.from({ length: OUTFEED_SLOTS }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+        sel.value = String(p.cycles || 1);
+      }
+      $('rt-undo').disabled = !cm.canUndo();
+      $('rt-redo').disabled = !cm.canRedo();
+      renderPalette();
+      renderStatus();
+    }
+    let paletteMode = null;
+    function renderPalette() {
+      if (paletteMode === S.mode) return;
+      paletteMode = S.mode;
+      const groups = S.mode === 'simple'
+        ? [['Robot arm', ['pick', 'place', 'insert', 'close', 'stamp', 'move']], ['Flow', ['repeat', 'wait']]]
+        : [['Robot arms', ['pick', 'place', 'insert', 'close', 'stamp', 'move']], ['Conveyor', ['advance', 'sense']], ['Camera', ['inspect']], ['Flow', ['repeat', 'wait']]];
+      const hint = S.mode === 'simple'
+        ? 'Drag a command onto the line. Drop Repeat on a step outside a loop to loop it.'
+        : 'Drag a command into a lane its device can run. Drag from a card\'s right dot to a card in another lane to make it wait.';
+      $('rt-palette').innerHTML = groups.map(([t, cmds]) => `<section class="rt-pgroup"><h3>${t}</h3><div class="rt-plist">${cmds.map(chipHtml).join('')}</div></section>`).join('') + `<p class="rt-phint">${hint}</p>`;
+    }
+    function renderStatus() {
+      const p = prog(), sched = S.sched;
+      const errs = [...S.problems].filter(([, v]) => v.level === 'error'), warns = [...S.problems].filter(([, v]) => v.level === 'warn');
+      const probs = errs.length
+        ? `<button class="rt-probs" id="rt-probs">${icon('warn', 13)} ${errs.length} problem${errs.length > 1 ? 's' : ''} to fix before Run${warns.length ? ` · ${warns.length} warning${warns.length > 1 ? 's' : ''}` : ''}</button>`
+        : `<span class="rt-probs rt-clean">✓ Ready to run${warns.length ? ` · ${warns.length} warning${warns.length > 1 ? 's' : ''}` : ''}</span>`;
+      let stats, cards;
+      if (p.mode === 'simple') {
+        const outer = p.lanes[0].items.find((it) => it.loop && it.steps.some((s) => s.cmd === 'place' && s.props.on === 'outfeed'));
+        const perBox = outer ? outer.steps.reduce((t, s) => t + durationOf(s), 0) : sched.seconds;
+        stats = `<span class="rt-stat">one box every <b>${fmt(perBox)} s</b></span><span class="rt-stat"><b>${perHour(perBox)}</b> boxes an hour</span><span class="rt-stat">whole job <b>${clock(sched.seconds)}</b></span>`;
+        cards = [['One box every', `${fmt(perBox)} s`], ['Boxes an hour', perHour(perBox)], ['Whole job', clock(sched.seconds)], ['Steps', allSteps(p).length]];
+      } else {
+        const waits = sched.gaps.reduce((t, g) => t + g.end - g.start, 0);
+        stats = `<span class="rt-stat">cycle time <b>${fmt(sched.seconds)} s</b></span><span class="rt-stat"><b>${perHour(sched.seconds)}</b> boxes an hour</span><span class="rt-stat">${p.cycles} cycles <b>${clock(sched.seconds * p.cycles)}</b></span>`;
+        cards = [['Cycle time', `${fmt(sched.seconds)} s`], ['Boxes an hour', perHour(sched.seconds)], [`${p.cycles} cycles`, clock(sched.seconds * p.cycles)], ['Time spent waiting', `${fmt(waits)} s`]];
+      }
+      $('rt-status').innerHTML = `${probs}<span class="rt-sp"></span>${stats}`;
+      if (!RUN.on) $('rt-stats').innerHTML = cards.map(([k, v]) => `<div><small>${k}</small><b>${v}</b></div>`).join('');
+      $('rt-probs')?.addEventListener('click', () => { const first = errs[0]?.[0]; if (first) { select(first); reveal(first); toast(errs[0][1].msg); } });
+    }
+    function reveal(id) {
+      const b = S.L?.boxes.get(id);
+      if (!b) return;
+      const v = viewBox();
+      const inView = b.x >= v.x && b.x + b.w <= v.x + v.width && b.y >= v.y && b.y + b.h <= v.y + v.height;
+      if (!inView) { panTo(b.x + b.w / 2, b.y + b.h / 2); syncLayers(); api.renderNow(); }
+    }
+
+    // ---- the state as a document; edits are DocCommands ----------------------------------------
+    const docNow = () => { if (S.mode === 'advanced') S.programs.advanced.syncs = readSyncs(); return { mode: S.mode, programs: clone(S.programs) }; };
+    function applyDoc(doc) {
+      stopRun(true);
+      cancelDrag();
+      const switching = doc.mode !== S.mode;
+      S.programs = clone(doc.programs);
+      S.mode = doc.mode;
+      if (S.sel && !findItem(prog(), S.sel.id)) S.sel = null;
+      if (switching) { model.getLinks().forEach((l) => model.removeLink(l.id)); for (const n of [...model.getNodes()]) model.removeNode(n.id); }
+      const done = redraw({ animate: !switching });
+      if (switching) frame();
+      return done;
+    }
+    ctx.applyDoc = applyDoc;
+    function edit(name, fn) {
+      const before = docNow(), after = clone(before);
+      if (fn(after.programs[after.mode], after) === false) return false;
+      if (JSON.stringify(before) === JSON.stringify(after)) return false;
+      applyDoc(after);
+      void cm.execute(new DocCommand(name, before, after, applyDoc)).then(renderChrome);
+      return true;
+    }
+    ctx.edit = edit;
+    for (const ev of ['command:executed', 'command:undone', 'command:redone', 'command:history:cleared']) {
+      engine.eventBus.on(ev, (p) => {
+        renderChrome();
+        if (ev === 'command:history:cleared') return;
+        // An engine gesture (a wait drawn, deleted, or one of those undone): re-time the lanes.
+        if (!(p?.command instanceof DocCommand) && S.mode === 'advanced') { S.programs.advanced.syncs = readSyncs(); redraw(); }
+      });
+    }
+
+    // ---- program edits --------------------------------------------------------------------
+    /** Remove an item (a step anywhere, or a loop) from its list; returns it. */
+    function takeOut(p, id) {
+      for (const lane of p.lanes) {
+        const i = lane.items.findIndex((x) => x.id === id);
+        if (i >= 0) return { item: lane.items.splice(i, 1)[0], lane: lane.id, loop: null, index: i };
+        for (const it of lane.items) if (it.loop) {
+          const j = it.steps.findIndex((x) => x.id === id);
+          if (j >= 0) return { item: it.steps.splice(j, 1)[0], lane: lane.id, loop: it.id, index: j };
+        }
+      }
+      return null;
+    }
+    function putIn(p, item, to) {
+      const lane = p.lanes.find((l) => l.id === to.lane);
+      const list = to.loop ? lane.items.find((x) => x.id === to.loop).steps : lane.items;
+      list.splice(Math.max(0, Math.min(to.index, list.length)), 0, item);
+    }
+    const dropSyncsOf = (p, ids) => { p.syncs = (p.syncs ?? []).filter((s) => !ids.has(s.from) && !ids.has(s.to)); };
+    function moveItem(id, to) {
+      return edit('Move a step', (p) => {
+        const out = takeOut(p, id);
+        if (!out) return false;
+        const sameList = out.lane === to.lane && out.loop === to.loop;
+        const index = sameList && out.index < to.index ? to.index - 1 : to.index;
+        // a step leaving the top level (into a loop) takes its waits with it; a loop's ids stay
+        if (!out.item.loop && to.loop) dropSyncsOf(p, new Set([id]));
+        if (out.lane !== to.lane) dropSyncsOf(p, new Set([id, ...(out.item.steps ?? []).map((s) => s.id)]));
+        putIn(p, out.item, { ...to, index });
+      });
+    }
+    function insertNew(cmd, to) {
+      const id = newId(cmd === 'repeat' ? 'l' : 's');
+      const item = cmd === 'repeat' ? { id, loop: true, props: newProps('repeat'), steps: [] } : { id, cmd, props: newProps(cmd) };
+      if (cmd === 'repeat') item.props.times = 2;
+      const ok = edit(`Add ${cmd === 'repeat' ? 'a loop' : COMMANDS[cmd].label}`, (p) => putIn(p, item, to));
+      if (ok) { select(id); if (!ctx.quiet) void openSettings(id); }
+      return ok ? id : null;
+    }
+    ctx.insertNew = insertNew;
+    function wrapInLoop(stepId) {
+      const id = newId('l');
+      const ok = edit('Loop a step', (p) => {
+        for (const lane of p.lanes) {
+          const i = lane.items.findIndex((x) => x.id === stepId);
+          if (i < 0) continue;
+          const step = lane.items[i];
+          lane.items.splice(i, 1, { id, loop: true, props: { ...newProps('repeat'), times: 2 }, steps: [step] });
+          p.syncs = (p.syncs ?? []).map((s) => ({ ...s, from: s.from === stepId ? id : s.from, to: s.to === stepId ? id : s.to }));
+          return;
+        }
+        return false;
+      });
+      if (ok) { select(id); if (!ctx.quiet) void openSettings(id); }
+      return ok ? id : null;
+    }
+    ctx.wrapInLoop = wrapInLoop;
+    function deleteItems(ids) {
+      const found = ids.map((id) => findItem(prog(), id)).filter(Boolean);
+      if (!found.length) return false;
+      const what = found.length > 1 ? `${found.length} items` : found[0].item.loop ? 'a loop' : COMMANDS[found[0].item.cmd].label;
+      const ok = edit(`Delete ${what}`, (p) => {
+        for (const f of found) {
+          const out = takeOut(p, f.item.id);
+          if (out) dropSyncsOf(p, new Set([f.item.id, ...(out.item.steps ?? []).map((s) => s.id)]));
+        }
+      });
+      if (ok && S.sel && ids.includes(S.sel.id)) S.sel = null;
+      if (ok) { model.clearSelection?.(); toast(`${found.length > 1 ? `${found.length} items` : found[0].item.loop ? 'Loop' : COMMANDS[found[0].item.cmd].label} deleted — Ctrl/⌘+Z brings it back`); }
+      return ok;
+    }
+    const deleteItem = (id) => deleteItems([id]);
+    ctx.deleteItem = deleteItem;
+    function unloop(id) {
+      return edit('Remove a loop', (p) => {
+        for (const lane of p.lanes) {
+          const i = lane.items.findIndex((x) => x.id === id);
+          if (i < 0 || !lane.items[i].loop) continue;
+          const loop = lane.items[i];
+          lane.items.splice(i, 1, ...loop.steps);
+          dropSyncsOf(p, new Set([id]));
+          return;
+        }
+        return false;
+      });
+    }
+    ctx.unloop = unloop;
+    function setProps(id, values) {
+      const f = findItem(prog(), id);
+      if (!f) return false;
+      return edit(`Edit ${f.item.loop ? 'the loop' : COMMANDS[f.item.cmd].label}`, (p) => { Object.assign(findItem(p, id).item.props, values); });
+    }
+    ctx.setProps = setProps;
+
+    // ---- selection and the settings popup ------------------------------------------------------
+    function select(sel) {
+      const id = typeof sel === 'string' ? sel : sel?.id ?? null;
+      const prev = S.sel?.id;
+      S.sel = id ? { id } : null;
+      // one selection: the page's, kept in step with the engine's (a marquee, a script)
+      const engineSel = model.getSelectedNodes().map((n) => n.id);
+      if (engineSel.length && (engineSel.length > 1 || engineSel[0] !== id)) { syncingSel = true; try { model.clearSelection?.(); } finally { syncingSel = false; } }
+      if (prev && model.getNode(prev)) paint(prev);
+      if (id) paint(id);
+      api.renderNow();
+    }
+    ctx.select = select;
+    let syncingSel = false;
+    api.on('selection:change', ({ nodes }) => {
+      if (syncingSel) return;
+      const ids = (nodes ?? []).map((n) => n.id).filter((id) => findItem(prog(), id));
+      if (!ids.length) return;
+      const prev = S.sel?.id;
+      S.sel = { id: ids[ids.length - 1] };
+      if (prev && model.getNode(prev)) paint(prev);
+      paint(S.sel.id);
+      api.renderNow();
+    });
+    const normalize = (values, fields) => {
+      const out = {};
+      for (const [k, f] of Object.entries(fields)) {
+        let v = values[k];
+        if (f.type === 'integer') v = v === '' || v == null ? f.default : Math.round(Number(v));
+        else if (f.type === 'float') v = v === '' || v == null ? f.default : Number(v);
+        else if (v == null) v = f.default ?? '';
+        out[k] = v;
+      }
+      return out;
+    };
+    async function openSettings(id) {
+      const f = findItem(prog(), id);
+      if (!f || S.dialog || !window.Fieldia) return null;
+      const cmd = f.item.loop ? 'repeat' : f.item.cmd;
+      const spec = f.item.loop ? REPEAT : COMMANDS[cmd];
+      const lane = prog().lanes.find((l) => l.id === f.lane.id);
+      const where = S.mode === 'advanced' ? ` · ${DEVICES[lane.device].label.split(' —')[0]}` : numbers.get(id) ? ` · step ${numbers.get(id)}` : '';
+      S.dialog = true;
+      ctx.dialogOpen = true;
+      let r = null;
+      try {
+        r = await window.Fieldia.openFormDialog({ page: settingsPage(cmd), values: clone(f.item.props), mode: 'values', title: `${spec.label}${where}`, size: 'small' });
+      } finally { S.dialog = false; ctx.dialogOpen = false; }
+      if (r?.saved) setProps(id, normalize(r.values, spec.fields));
+      return r;
+    }
+    ctx.openSettings = openSettings;
+
+    // ---- dragging: cards, frames and palette chips -------------------------------------------
+    let drag = null, press = null, lastClick = { id: null, t: 0 };
+    const caret = () => $('rt-caret'), wrapBox = () => $('rt-wraptarget');
+    function laneAt(w) {
+      const p = prog();
+      if (p.mode === 'simple') return p.lanes[0];
+      const i = Math.max(0, Math.min(p.lanes.length - 1, Math.floor((w.y - ADV.RULER) / ADV.LANE_H)));
+      return p.lanes[i];
+    }
+    /** Where a drag would land: { lane, loop, index, slot } | { wrap } | { refuse, slot? }. */
+    function resolveDrop(w, d) {
+      const p = prog(), L = S.L, lane = laneAt(w);
+      const dragged = d.kind === 'chip' ? null : findItem(p, d.id)?.item;
+      const cmd = d.kind === 'chip' ? d.cmd : dragged?.loop ? 'repeat' : dragged?.cmd;
+      const inside = (b) => w.x >= b.x && w.x <= b.x + b.w && w.y >= b.y && w.y <= b.y + b.h;
+      if (d.kind === 'chip' && d.cmd === 'repeat') {
+        const over = [...L.boxes].find(([id, b]) => b.kind === 'step' && b.lane === lane.id && inside(b));
+        if (over) {
+          if (over[1].loop) return { refuse: 'Loops don\'t nest: this step is already in a loop.', box: over[1] };
+          return { wrap: over[0], box: over[1] };
+        }
+      }
+      const frame = cmd !== 'repeat' ? [...L.boxes].find(([id, b]) => b.kind === 'loop' && b.lane === lane.id && id !== d.id && inside(b)) : null;
+      const pool = L.slots.filter((s) => s.lane === lane.id && s.loop === (frame ? frame[0] : null));
+      if (!pool.length) return { refuse: 'Nothing to drop on here.' };
+      const slot = pool.reduce((a, b) => (Math.abs(b.x - w.x) < Math.abs(a.x - w.x) ? b : a));
+      if (cmd !== 'repeat' && !canRun(cmd, lane.device)) return { refuse: `${DEVICES[lane.device].label.split(' —')[0]} can't run ${COMMANDS[cmd].label}.`, slot };
+      if (dragged?.loop) {
+        const bad = dragged.steps.find((s) => !canRun(s.cmd, lane.device));
+        if (bad) return { refuse: `${DEVICES[lane.device].label.split(' —')[0]} can't run ${COMMANDS[bad.cmd].label}.`, slot };
+      }
+      return { lane: lane.id, loop: slot.loop, index: slot.index, slot };
+    }
+    ctx.resolveDrop = resolveDrop;
+    function showTarget(t) {
+      const c = caret(), wb = wrapBox();
+      if (!c || !wb) return;
+      c.hidden = !t?.slot; wb.hidden = !t?.wrap && !(t?.refuse && t.box);
+      if (t?.slot) { c.style.left = `${t.slot.x - 2}px`; c.style.top = `${t.slot.y - 8}px`; c.style.height = `${t.slot.h + 16}px`; c.classList.toggle('rt-no', !!t.refuse); }
+      if (t?.box) { wb.style.left = `${t.box.x - 6}px`; wb.style.top = `${t.box.y - 6}px`; wb.style.width = `${t.box.w + 12}px`; wb.style.height = `${t.box.h + 12}px`; wb.style.borderColor = t.refuse ? 'var(--rt-bad)' : ''; }
+      for (const el of under.querySelectorAll('.rt-lane')) { el.classList.remove('rt-target', 'rt-refuse'); }
+      if (prog().mode === 'advanced' && t && drag?.w) {
+        const ln = under.querySelector(`.rt-lane[data-lane="${laneAt(drag.w).id}"]`);
+        ln?.classList.add(t.refuse ? 'rt-refuse' : 'rt-target');
+      }
+    }
+    function startDrag(e) {
+      const d = drag;
+      d.started = true;
+      const g = document.createElement('div');
+      g.className = 'rt-dragghost';
+      if (d.kind === 'chip') { g.innerHTML = chipHtml(d.cmd); g.style.width = '170px'; }
+      else {
+        const b = S.L.boxes.get(d.id), z = api.viewport.getZoom();
+        const f = findItem(prog(), d.id);
+        g.innerHTML = `<div style="width:${b.w}px;height:${b.h}px;transform:scale(${z});transform-origin:0 0">${toHtml(f.item.loop ? frameTree(f.item, { mode: S.mode }) : cardTree(f.item, { mode: S.mode, w: b.w }))}</div>`;
+        S.dragging = d.id; paint(d.id);
+      }
+      g.insertAdjacentHTML('beforeend', '<span class="rt-why" hidden></span>');
+      stage.appendChild(g);
+      d.ghost = g;
+    }
+    function moveDrag(cx, cy) {
+      const d = drag;
+      d.ghost.style.left = `${cx - d.gx}px`; d.ghost.style.top = `${cy - d.gy}px`;
+      const r = host.getBoundingClientRect();
+      const onCanvas = cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+      d.w = toWorld(cx, cy);
+      d.target = onCanvas ? resolveDrop(d.w, d) : null;
+      const why = d.ghost.querySelector('.rt-why');
+      why.hidden = !d.target?.refuse; why.textContent = d.target?.refuse ?? '';
+      showTarget(d.target);
+    }
+    function finishDrag() {
+      const d = drag;
+      drag = null;
+      d.ghost?.remove();
+      showTarget(null);
+      if (S.dragging) { const id = S.dragging; S.dragging = null; paint(id); api.renderNow(); }
+      const t = d.target;
+      if (!t) return;
+      if (t.refuse) { toast(t.refuse); return; }
+      if (t.wrap) { wrapInLoop(t.wrap); return; }
+      if (d.kind === 'chip') insertNew(d.cmd, t);
+      else moveItem(d.id, t);
+    }
+    function cancelDrag() {
+      if (!drag) return;
+      drag.ghost?.remove();
+      drag = null;
+      showTarget(null);
+      if (S.dragging) { const id = S.dragging; S.dragging = null; paint(id); api.renderNow(); }
+    }
+    host.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || RUN.on) { press = null; return; }
+      const tb = e.target.closest?.('.rt-tb');
+      const card = e.target.closest?.('.rt-card'), head = e.target.closest?.('.rt-fhead');
+      const nodeId = e.target.closest?.('[data-node-id]')?.getAttribute('data-node-id');
+      if (tb && nodeId) { e.stopPropagation(); e.preventDefault(); press = { tool: [...tb.classList].find((c) => c.startsWith('rt-act-'))?.slice(7), id: nodeId }; return; }
+      if ((card || head) && nodeId) {
+        e.stopPropagation(); e.preventDefault();
+        const id = nodeId;
+        const r = (card || head.closest('.rt-frame')).getBoundingClientRect();
+        drag = { kind: card ? 'step' : 'loop', id, x0: e.clientX, y0: e.clientY, gx: e.clientX - r.left, gy: e.clientY - r.top, started: false };
+        return;
+      }
+      press = { x: e.clientX, y: e.clientY, bg: true };
+    }, true);
+    $('rt-palette').addEventListener('pointerdown', (e) => {
+      const chip = e.target.closest?.('.rt-chip');
+      if (!chip || e.button !== 0 || RUN.on) return;
+      e.preventDefault();
+      const r = chip.getBoundingClientRect();
+      drag = { kind: 'chip', cmd: chip.dataset.chip, x0: e.clientX, y0: e.clientY, gx: e.clientX - r.left, gy: e.clientY - r.top, started: false };
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      if (!drag.started) { if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 5) return; startDrag(e); }
+      moveDrag(e.clientX, e.clientY);
+    }, true);
+    window.addEventListener('pointerup', (e) => {
+      if (drag) {
+        if (drag.started) { moveDrag(e.clientX, e.clientY); finishDrag(); return; }
+        const d = drag; drag = null;
+        if (d.kind === 'chip') { appendChip(d.cmd); return; }
+        const now = performance.now();
+        if (lastClick.id === d.id && now - lastClick.t < 380) { lastClick = { id: null, t: 0 }; void openSettings(d.id); return; }
+        lastClick = { id: d.id, t: now };
+        select(d.id);
+        if (d.kind === 'loop') void openSettings(d.id);
+        return;
+      }
+      const p = press; press = null;
+      if (!p) return;
+      if (p.tool) {
+        const under2 = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.rt-tb');
+        if (!under2 || !under2.classList.contains(`rt-act-${p.tool}`)) return;
+        if (p.tool === 'settings') void openSettings(p.id);
+        else if (p.tool === 'delete') deleteItem(p.id);
+        else if (p.tool === 'unloop') unloop(p.id);
+        return;
+      }
+      if (p.bg && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 4 && host.contains(e.target) && S.sel) select(null);
+    }, true);
+    // Keyboard: Enter or Space on a focused chip adds it, like a tap.
+    $('rt-palette').addEventListener('keydown', (e) => {
+      const chip = e.target.closest?.('.rt-chip');
+      if (!chip || RUN.on || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      appendChip(chip.dataset.chip);
+    });
+    /** A tap on a chip (no drag) adds it at the end of the first lane that can run it. */
+    function appendChip(cmd) {
+      const p = prog();
+      const lane = p.lanes.find((l) => canRun(cmd, l.device));
+      if (!lane) return;
+      const lastLoop = p.mode === 'simple' && lane.items.length === 1 && lane.items[0].loop ? lane.items[0] : null;
+      if (cmd === 'repeat') return insertNew(cmd, { lane: lane.id, loop: null, index: lane.items.length });
+      if (lastLoop) return insertNew(cmd, { lane: lane.id, loop: lastLoop.id, index: lastLoop.steps.length });
+      return insertNew(cmd, { lane: lane.id, loop: null, index: lane.items.length });
+    }
+    ctx.appendChip = appendChip;
+
+    // ---- waits: the engine's connect gesture, refused when it makes no sense -----------------------
+    ctx.disposeValidator = registerConnectionValidator(({ sourceNode, targetNode }) => {
+      if (S.mode !== 'advanced') return 'Waits are for Advanced mode';
+      const p = prog();
+      const a = findItem(p, sourceNode?.id), b = findItem(p, targetNode?.id);
+      if (!a || !b) return 'Draw a wait from one step to another';
+      if (a.lane.id === b.lane.id) return 'Steps in one lane already run in order';
+      const syncs = readSyncs();
+      if (syncs.some((s) => s.from === sourceNode.id && s.to === targetNode.id)) return 'That wait is already there';
+      const trial = { ...clone(p), syncs: [...syncs, { id: 'trial', from: sourceNode.id, to: targetNode.id }] };
+      if (schedule(trial).stuck.length) return 'They would wait for each other forever';
+      return true;
+    });
+    api.on('connect', ({ link }) => {
+      const l = model.getLink(link.id);
+      if (!l || reconciling) return;
+      l.data = { ...(l.data ?? {}), sync: true };
+      l.sourceNodeId = model.getNodeByPortId(l.sourcePortId)?.id ?? l.sourceNodeId;
+      l.targetNodeId = model.getNodeByPortId(l.targetPortId)?.id ?? l.targetNodeId;
+      l.updateStyle(SYNC_STYLE());
+      S.programs.advanced.syncs = readSyncs();
+      redraw();
+      const f = findItem(prog(), l.targetNodeId), g = findItem(prog(), l.sourceNodeId);
+      if (f && g) toast(`${COMMANDS[f.item.cmd]?.label ?? 'The loop'} now waits for ${COMMANDS[g.item.cmd]?.label ?? 'the loop'}`);
+    });
+
+    // ---- run ----------------------------------------------------------------------------------
+    const log = (text, cls = '', t = RUN.t) => {
+      const li = document.createElement('li');
+      if (cls) li.className = cls;
+      li.innerHTML = `<time>${fmt(t)} s</time><span>${text}</span>`;
+      $('rt-log').appendChild(li);
+      while ($('rt-log').children.length > 240) $('rt-log').firstChild.remove();
+      $('rt-log').scrollTop = 1e9;
+    };
+    function setRunButtons() {
+      const b = $('rt-run');
+      b.innerHTML = RUN.on ? '■ Stop' : '▶ Run';
+      b.classList.toggle('rt-stop', RUN.on); b.classList.toggle('rt-primary', !RUN.on);
+      $('rt-step').textContent = RUN.on && RUN.paused ? 'Next step' : 'Step';
+      for (const id of ['rt-undo', 'rt-redo', 'rt-reset', 'rt-simple', 'rt-adv']) $(id).disabled = RUN.on || (id === 'rt-undo' && !cm.canUndo()) || (id === 'rt-redo' && !cm.canRedo());
+    }
+    function startRun({ paused = false } = {}) {
+      const errs = [...S.problems].filter(([, v]) => v.level === 'error');
+      if (errs.length) {
+        const [id, pr] = errs[0];
+        select(id); reveal(id);
+        toast(`Can't run yet: ${errs.length} problem${errs.length > 1 ? 's' : ''}. ${pr.msg}`);
+        log(`Not started: ${esc(pr.msg)}`, 'rt-lerr', 0);
+        return false;
+      }
+      select(null);
+      const p = prog();
+      RUN.events = runEvents(p, S.sched);
+      RUN.total = RUN.events.reduce((m, e) => Math.max(m, e.end), 0);
+      RUN.t = 0; RUN.on = true; RUN.paused = paused; RUN.logged = 0; RUN.boxes = 0; RUN.status = new Map();
+      RUN.speed = Number($('rt-speed').value) || 4;
+      $('rt-log').innerHTML = '';
+      log(`Started: ${p.mode === 'simple' ? 'one arm, one line' : `${p.cycles} cycle${p.cycles > 1 ? 's' : ''} of the two-arm cell`}`, 'rt-lok', 0);
+      setRunButtons();
+      cellView.update({ hold: {}, work: null, outfeed: [], belt: false, rejects: 0 }, []);
+      const ph = $('rt-playhead'); if (ph) ph.hidden = false;
+      RUN.last = performance.now();
+      cancelAnimationFrame(RUN.raf);
+      RUN.raf = requestAnimationFrame(tick);
+      if (paused) nextStep();
+      return true;
+    }
+    ctx.startRun = startRun;
+    function tick(now) {
+      if (!RUN.on) return;
+      const dt = Math.min(0.1, (now - RUN.last) / 1000);
+      RUN.last = now;
+      if (!RUN.paused) {
+        RUN.t = Math.min(RUN.total, RUN.t + dt * RUN.speed);
+        if (RUN.until != null && RUN.t >= RUN.until) { RUN.t = RUN.until; RUN.until = null; RUN.paused = true; setRunButtons(); }
+      }
+      showRun();
+      if (RUN.t >= RUN.total - 1e-6) { finishRun(); return; }
+      RUN.raf = requestAnimationFrame(tick);
+    }
+    function nextStep() {
+      // run to the end of the step that is running (or the next one to start), then pause
+      const t = RUN.t + 1e-4;
+      const running = RUN.events.filter((e) => e.start <= t && e.end > t);
+      const next = running.length ? Math.min(...running.map((e) => e.end)) : (RUN.events.find((e) => e.start > t)?.end ?? RUN.total);
+      RUN.until = next; RUN.paused = false; setRunButtons();
+    }
+    function showRun() {
+      const p = prog(), t = RUN.t;
+      const { cell, running } = cellAt(p, RUN.events, t);
+      cellView.update(cell, running);
+      const cycleLen = p.mode === 'advanced' ? S.sched.seconds : Infinity;
+      const cycle = p.mode === 'advanced' ? Math.min((p.cycles || 1) - 1, Math.floor(t / cycleLen)) : 0;
+      const status = new Map();
+      const loopPass = new Map();
+      for (const r of running) if (r.loop) loopPass.set(r.loop, r.pass);
+      for (const e of RUN.events) {
+        if (e.end > t + 1e-6 || e.cycle !== cycle) continue;
+        if (e.loop && loopPass.has(e.loop) && e.pass !== loopPass.get(e.loop)) continue;
+        status.set(e.step.id, { status: 'done' });
+      }
+      for (const r of running) {
+        const loop = r.loop ? findItem(p, r.loop)?.item : null;
+        status.set(r.step.id, { status: 'running', k: r.k, pass: r.pass, passes: loop ? Number(loop.props.times) || 1 : 1 });
+        if (loop) status.set(loop.id, { status: 'running', pass: r.pass });
+      }
+      const changed = new Set([...status.keys(), ...RUN.status.keys()]);
+      RUN.status = status;
+      for (const id of changed) paint(id);
+      follow(p, running, t, cycle, cycleLen);
+      // the playhead (Advanced)
+      const ph = $('rt-playhead');
+      if (ph && p.mode === 'advanced') {
+        const local = t - cycle * cycleLen;
+        ph.style.left = `${local * ADV.PPS}px`;
+        ph.firstElementChild.textContent = `${fmt(local)} s`;
+      }
+      // the log
+      while (RUN.logged < RUN.events.length && RUN.events[RUN.logged].start <= t + 1e-6) {
+        const e = RUN.events[RUN.logged++];
+        const lane = p.lanes.find((l) => l.id === e.lane);
+        const who = p.mode === 'advanced' ? `${DEVICES[lane.device].label.split(' —')[0]}: ` : '';
+        const cyc = p.mode === 'advanced' ? `cycle ${e.cycle + 1} · ` : e.loop ? `box ${e.pass + 1} · ` : '';
+        log(`${cyc}${who}${esc(COMMANDS[e.step.cmd].label)} ${esc(COMMANDS[e.step.cmd].summary(e.step.props))}`, '', e.start);
+      }
+      if (cell.outfeed.length > RUN.boxes) {
+        RUN.boxes = cell.outfeed.length;
+        const b = cell.outfeed[cell.outfeed.length - 1];
+        log(`Box ${RUN.boxes} is on the outfeed pallet, slot ${b.slot}${b.stamped ? '' : ' (no stamp)'}`, 'rt-lok');
+      }
+      $('rt-stats').innerHTML = [['Running', `${clock(t)} of ${clock(RUN.total)}`], ['Boxes done', `${cell.outfeed.length} of ${OUTFEED_SLOTS}`],
+        [p.mode === 'advanced' ? 'Cycle' : 'Steps run', p.mode === 'advanced' ? `${cycle + 1} of ${p.cycles}` : `${RUN.logged} of ${RUN.events.length}`], ['Speed', `×${RUN.speed}`]]
+        .map(([k, v], i) => `<div${i === 0 ? ' class="rt-wide"' : ''}><small>${k}</small><b>${v}</b></div>`).join('');
+      api.renderNow();
+    }
+    /** Keep the action in view: the running card (Simple) or the playhead (Advanced). */
+    function follow(p, running, t, cycle, cycleLen) {
+      if (ctx.noFollow) return;
+      let fx = null;
+      if (p.mode === 'advanced') fx = (t - cycle * cycleLen) * ADV.PPS;
+      else { const b = running[0] && S.L.boxes.get(running[0].step.id); if (b) fx = b.x + b.w / 2; }
+      if (fx == null) return;
+      const v = viewBox();
+      if (fx > v.x + v.width * 0.12 && fx < v.x + v.width * 0.82) return;
+      panTo(fx, v.y + v.height / 2, 0.3, 0.5);
+      syncLayers();
+    }
+    function finishRun() {
+      const n = RUN.boxes;
+      showRun();
+      RUN.on = false;
+      cancelAnimationFrame(RUN.raf);
+      log(`Done: ${n} box${n === 1 ? '' : 'es'} in ${clock(RUN.total)}`, 'rt-lok');
+      setRunButtons();
+      ctx.lastRun = { boxes: n, seconds: RUN.total };
+    }
+    function stopRun(silent) {
+      if (!RUN.on) { RUN.status = new Map(); return; }
+      RUN.on = false;
+      cancelAnimationFrame(RUN.raf);
+      const ids = [...RUN.status.keys()];
+      RUN.status = new Map();
+      for (const id of ids) paint(id);
+      const ph = $('rt-playhead'); if (ph) ph.hidden = true;
+      if (!silent) log('Stopped', 'rt-lerr');
+      setRunButtons();
+      renderStatus();
+      api.renderNow();
+    }
+    ctx.stopRun = stopRun;
+    ctx.seek = (t) => { RUN.t = Math.min(RUN.total, t); RUN.until = null; showRun(); };
+    $('rt-run').addEventListener('click', () => (RUN.on ? stopRun() : startRun()));
+    $('rt-step').addEventListener('click', () => { if (!RUN.on) startRun({ paused: true }); else nextStep(); });
+    $('rt-speed').addEventListener('change', () => { RUN.speed = Number($('rt-speed').value) || 4; });
+    $('rt-undo').addEventListener('click', () => void cm.undo());
+    $('rt-redo').addEventListener('click', () => void cm.redo());
+    $('rt-reset').addEventListener('click', () => {
+      edit('Reset the sample', (p, doc) => { doc.programs[doc.mode] = S.mode === 'simple' ? sampleSimple() : sampleAdvanced(); });
+      toast('Sample program restored — Ctrl/⌘+Z undoes the reset');
+    });
+    $('rt-cycles').addEventListener('change', () => edit('Change the cycles', (p) => { p.cycles = Number($('rt-cycles').value) || 1; }));
+    const setMode = (mode) => {
+      if (mode === S.mode || RUN.on) return;
+      if (S.mode === 'advanced') S.programs.advanced.syncs = readSyncs();
+      applyDoc({ mode, programs: clone(S.programs) });
+      // Each mode keeps its own program; the engine's own steps (a wait drawn, a link
+      // deleted) name the canvas they were made on, so a switch starts a fresh history.
+      cm.clear();
+      cellView = drawCell($('rt-cell'), prog());
+      $('rt-log').innerHTML = '';
+      renderChrome();
+    };
+    ctx.setMode = setMode;
+    $('rt-simple').addEventListener('click', () => setMode('simple'));
+    $('rt-adv').addEventListener('click', () => setMode('advanced'));
+
+    // ---- framing ------------------------------------------------------------------------------
+    function frame() {
+      const L = S.L, r = host.getBoundingClientRect();
+      if (!L || !r.width) return;
+      const simple = prog().mode === 'simple';
+      const left = simple ? 0 : -ADV.HEAD_W - 20;
+      const top = simple ? L.lanes[0].y - 40 : -20;
+      const w = L.width - left + 20, h = simple ? L.lanes[0].h + 60 : L.height + 20;
+      const z = simple ? Math.max(0.6, Math.min(1, (r.height - 40) / h)) : Math.max(0.72, Math.min(1, (r.width - 40) / w, (r.height - 40) / h));
+      api.viewport.setZoom(z);
+      const vb = viewBox();
+      if (w <= vb.width - 10) panTo(left + w / 2, top + h / 2);
+      else panTo(left - 10, top + h / 2, 0, 0.5);
+      syncLayers();
+      api.renderNow();
+    }
+    ctx.frame = frame;
+    /** The whole program in view, at whatever zoom that takes. */
+    function fitAll() {
+      const L = S.L, r = host.getBoundingClientRect();
+      if (!L || !r.width) return;
+      const adv = prog().mode === 'advanced';
+      const left = adv ? -ADV.HEAD_W - 20 : 0, top = adv ? -20 : L.lanes[0].y - 40;
+      const w = L.width - left + 40, h = adv ? L.height + 30 : L.lanes[0].h + 60;
+      api.viewport.setZoom(Math.min(1, (r.width - 30) / w, (r.height - 30) / h));
+      panTo(left + w / 2, top + h / 2);
+      syncLayers();
+      api.renderNow();
+    }
+    ctx.fitAll = fitAll;
+    let fitted = false;
+    $('rt-fit').addEventListener('click', () => { fitted = !fitted; if (fitted) fitAll(); else frame(); });
+
+    // ---- boot ---------------------------------------------------------------------------------
+    cellView = drawCell($('rt-cell'), prog());
+    await redraw({ animate: false });
+    frame();
+    setRunButtons();
+    keysReady = true;
+    window.addEventListener('resize', () => frame());
+  },
+
+  async showcase(ctx) {
+    ctx.noFollow = true;          // the card shows the first steps at a readable zoom, mid-run
+    ctx.frame();
+    ctx.startRun();
+    await new Promise((r) => setTimeout(r, 50));
+    ctx.RUN.paused = true;
+    ctx.seek(ctx.RUN.total * 0.37);
+  },
+
+  async assert(ctx) {
+    const S = ctx.S, host = ctx.host, m = ctx.diagram, cm = ctx.engine.commandManager;
+    const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const settle = async () => { await ctx.layoutDone; await raf(); };
+    const prog = () => S.programs[S.mode];
+    const order = () => prog().lanes[0].items.flatMap((it) => (it.loop ? [`[${it.id}`, ...it.steps.map((s) => s.id), ']'] : [it.id])).join(' ');
+    const fire = (type, x, y, target = document.elementFromPoint(x, y) || host) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+    const centre = (sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    // Drop points come from where the cards ARE on screen, not from the page's own
+    // world↔client helpers: a helper that is wrong both ways would agree with itself.
+    const rectOf = (sel) => document.querySelector(sel).getBoundingClientRect();
+    const cardRect = (id) => rectOf(`[data-node-id="${id}"] .rt-card`);
+    const frameRect = (id) => rectOf(`[data-node-id="${id}"] .rt-frame`);
+    async function dragTo(from, to, steps = 8) {
+      fire('pointerdown', from.x, from.y);
+      for (let i = 1; i <= steps; i++) { const x = from.x + ((to.x - from.x) * i) / steps, y = from.y + ((to.y - from.y) * i) / steps; fire('pointermove', x, y, window); await raf(); }
+      fire('pointerup', to.x, to.y, window);
+      await settle();
+    }
+    const box = (id) => S.L.boxes.get(id);
+    const cardEl = (id) => host.querySelector(`[data-node-id="${id}"] .rt-card`);
+    ctx.quiet = true;   // the checks open the popup on purpose, not after every drop
+    ctx.noFollow = true; // and drive the view themselves
+    while (cm.canUndo()) await cm.undo();
+    if (S.mode !== 'simple') ctx.setMode('simple');
+    await settle();
+    ctx.fitAll(); await raf();
+
+    // ① the Simple sample: nine steps in a Repeat × 6, on one line, clean
+    checkEqual(host.querySelectorAll('.rt-card').length, 9, 'the Simple sample draws nine step cards');
+    check(!!host.querySelector('[data-node-id="cycle"] .rt-frame') && /Repeat × 6/.test(host.querySelector('[data-node-id="cycle"] .rt-frame').textContent), 'the nine steps sit in a "Repeat × 6" frame');
+    const ys = new Set(['p1', 'p5', 'p9'].map((id) => Math.round(m.getNode(id).position.y)));
+    checkEqual(ys.size, 1, 'Simple mode is one line: every card on the same row');
+    const fr = box('cycle');
+    check(['p1', 'p9'].every((id) => box(id).x >= fr.x && box(id).x + box(id).w <= fr.x + fr.w), 'the frame wraps its first and last step');
+    check(m.getNode('p2').position.x > m.getNode('p1').position.x + 100, 'steps run left to right');
+    check(/Ready to run/.test(document.getElementById('rt-status').textContent), `the sample is ready to run: "${document.getElementById('rt-status').textContent.trim().slice(0, 80)}"`);
+    check(/one box every/.test(document.getElementById('rt-status').textContent) && /boxes an hour/.test(document.getElementById('rt-status').textContent), 'the status bar gives the time per box and boxes an hour');
+    check(!!document.querySelector('#rt-cell svg .cs-arm'), 'the cell view draws the arm');
+    check(cardEl('p1').textContent.includes('from Infeed A') && cardEl('p7').textContent.includes('LOT'), 'cards say what they do (from Infeed A, the stamp text)');
+
+    // ② drag a palette chip into the loop, between the insert's Pick and the Insert
+    const wait = centre('.rt-chip[data-chip="wait"]');
+    const between = { x: (cardRect('p3').right + cardRect('p4').left) / 2, y: cardRect('p3').top + cardRect('p3').height / 2 };
+    await dragTo(wait, between);
+    const added = prog().lanes[0].items[0].steps[3];
+    check(added?.cmd === 'wait', `a Wait dropped between steps 3 and 4 lands there (order: ${order()})`);
+    checkEqual(host.querySelectorAll('.rt-card').length, 10, 'and draws a tenth card');
+    check(m.getNode('p4').position.x > box('p3').x + 2 * SIMPLE.W, 'the steps after it moved right to make room');
+    await cm.undo(); await settle();
+    checkEqual(host.querySelectorAll('.rt-card').length, 9, 'one undo takes the dropped step back');
+
+    // ③ the settings popup (Fieldia): open, change, Done
+    const dlgP = ctx.openSettings('p7');
+    await raf(); await raf();
+    const dlg = document.querySelector('.fd-dialog, [role="dialog"]');
+    check(!!dlg, 'the gear opens a settings popup');
+    const input = dlg?.querySelector('input[name="text"], [data-field="text"] input, input[type="text"]');
+    check(!!input, 'the popup has the stamp text field');
+    if (input) {
+      input.value = 'BOX {n}';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    await raf();
+    const done = [...(dlg?.querySelectorAll('button') ?? [])].find((b) => /^(done|save|ok|save & close|save and close)$/i.test(b.textContent.trim()));
+    check(!!done, `the popup has a Done button (${[...(dlg?.querySelectorAll('button') ?? [])].map((b) => b.textContent.trim()).join(' | ')})`);
+    done?.click();
+    await dlgP; await settle();
+    check(cardEl('p7').textContent.includes('BOX {n}'), `Done writes the setting to the card: "${cardEl('p7').textContent.replace(/\s+/g, ' ').trim().slice(0, 60)}"`);
+    await cm.undo(); await settle();
+    check(cardEl('p7').textContent.includes('LOT {date}'), 'undo puts the old stamp text back');
+
+    // ④ move a card: the insert's Pick after the Insert → the Insert finds an empty gripper
+    const p3 = centre('[data-node-id="p3"] .rt-title');
+    const afterP4 = { x: (cardRect('p4').right + cardRect('p5').left) / 2, y: cardRect('p4').top + cardRect('p4').height / 2 };
+    await dragTo(p3, afterP4);
+    check(/p4 p3/.test(order()), `dragging the Pick after the Insert reorders them (${order()})`);
+    check(S.problems.get('p4')?.level === 'error' && /empty/.test(S.problems.get('p4').msg), `the Insert now says its gripper is empty: "${S.problems.get('p4')?.msg}"`);
+    check(cardEl('p4').classList.contains('rt-error') && /gripper is empty/i.test(cardEl('p4').textContent), 'its card turns red and says why');
+    check(/1 problem to fix/.test(document.getElementById('rt-status').textContent), `the status bar names the one root problem (the cell stops at its first fault): "${document.getElementById('rt-status').textContent.trim().slice(0, 60)}"`);
+    check(ctx.startRun() === false && !ctx.RUN.on, 'Run refuses while there is a problem');
+    await cm.undo(); await settle();
+    check(!S.problems.size, 'undo moves it back and the problems go');
+
+    // ⑤ delete the Stamp: a warning on the outfeed Place, not an error
+    ctx.deleteItem('p7'); await settle();
+    check(!cardEl('p7') && S.problems.get('p9')?.level === 'warn', `deleting the Stamp leaves a warning on the last Place: "${S.problems.get('p9')?.msg}"`);
+    check(/Ready to run/.test(document.getElementById('rt-status').textContent), 'a warning does not stop Run');
+    await cm.undo(); await settle();
+    check(!!cardEl('p7'), 'undo restores the deleted Stamp');
+    // a card the ENGINE selected (a marquee, a script) is deleted through the program too
+    m.selectNode(m.getNode('p8')); ctx.instance.renderNow();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    await settle();
+    check(!m.getNode('p8') && !findItem(prog(), 'p8'), 'Delete on an engine-selected card removes it from the program, not just the canvas');
+    await cm.undo(); await settle();
+    check(!!m.getNode('p8') && !!findItem(prog(), 'p8'), 'and one undo brings it back to both');
+
+    // ⑥ the loop count: seven boxes for a six-slot pallet
+    ctx.setProps('cycle', { times: 7, note: 'one box per outfeed slot' }); await settle();
+    check(/full/.test(S.problems.get('p9')?.msg ?? ''), `Repeat × 7 fills the six-slot pallet: "${S.problems.get('p9')?.msg}"`);
+    check(/Repeat × 7/.test(host.querySelector('[data-node-id="cycle"] .rt-frame').textContent), 'the frame header shows the new count');
+    await cm.undo(); await settle();
+
+    // ⑦ Repeat: refused on a step already in a loop; a new loop in the gap after the frame
+    ctx.fitAll(); await raf();   // a refused Run (④) pans to the problem card
+    const rep = centre('.rt-chip[data-chip="repeat"]');
+    const onP2 = { x: cardRect('p2').left + cardRect('p2').width / 2, y: cardRect('p2').top + cardRect('p2').height / 2 };
+    await dragTo(rep, onP2);
+    checkEqual(prog().lanes[0].items.length, 1, 'Repeat dropped on a step that is already looped is refused');
+    const afterFrame = { x: frameRect('cycle').right + 14, y: cardRect('p2').top + cardRect('p2').height / 2 };
+    await dragTo(rep, afterFrame);
+    const newLoop = prog().lanes[0].items[1];
+    check(newLoop?.loop && newLoop.steps.length === 0 && !!host.querySelector(`[data-node-id="${newLoop?.id}"] .rt-fdrop`), `Repeat dropped after the frame adds an empty loop that says "Drop steps here" (order: ${order()}; drop: ${JSON.stringify(ctx.resolveDrop(ctx.toWorld(afterFrame.x, afterFrame.y), { kind: 'chip', cmd: 'repeat' })).slice(0, 120)}; toast: ${document.getElementById('rt-toast').textContent}; zoom ${ctx.instance.viewport.getZoom().toFixed(2)})`);
+    await cm.undo(); await settle();
+
+    // ⑧ Run: cards light up, the arm moves, six boxes reach the outfeed
+    check(ctx.startRun() === true && ctx.RUN.on, 'Run starts on a clean program');
+    ctx.RUN.paused = true;
+    ctx.seek(3.5);
+    await raf();
+    check(!!host.querySelector('.rt-card.rt-running'), 'a running step lights up');
+    check(!!host.querySelector('[data-node-id="p1"] .rt-card.rt-done') || !!host.querySelector('[data-node-id="p2"] .rt-card.rt-running'), 'the first Pick is done, the Place is running');
+    const rot = document.querySelector('#rt-cell .cs-arm g')?.getAttribute('transform');
+    check(!!rot && rot !== 'rotate(0.0)', `the arm in the cell view turned (${rot})`);
+    ctx.seek(ctx.RUN.total * 0.5);
+    await raf();
+    check(/pass \d of 6/.test(host.querySelector('[data-node-id="cycle"] .rt-frame').textContent), 'the frame counts its passes while it runs');
+    ctx.seek(ctx.RUN.total);
+    await raf();
+    checkEqual(document.querySelectorAll('#rt-cell .cs-done:not([style*="none"])').length, OUTFEED_SLOTS, 'by the end the cell view shows six boxes on the outfeed pallet');
+    ctx.RUN.paused = false;
+    await new Promise((r) => setTimeout(r, 160));
+    check(!ctx.RUN.on && /Done: 6 boxes/.test(document.getElementById('rt-log').textContent), 'the run finishes and the log says "Done: 6 boxes"');
+
+    // ⑨ Advanced: four lanes on a time ruler, waits as links
+    ctx.setMode('advanced'); await settle();
+    ctx.fitAll(); await raf();
+    checkEqual(document.querySelectorAll('.rt-under .rt-lane').length, 4, 'Advanced draws four lanes');
+    check(/Conveyor/.test(document.querySelector('.rt-over').textContent) && /Vision camera/.test(document.querySelector('.rt-over').textContent), 'each lane is named for its device');
+    checkEqual(m.getLinks().filter((l) => l.data?.sync).length, 5, 'the five waits are links');
+    const pps = ADV.PPS;
+    check(Math.abs(box('a3').w - (durationOf(findItem(prog(), 'a3').item) * pps - 4)) < 1, 'a card is as wide as its duration on the ruler');
+    check(box('c2').x >= box('fill').x + box('fill').w - 2 * ADV.FRAME_PAD, 'Arm B closes only after Arm A\'s fill loop');
+    check(box('v1').x >= box('c3').x + box('c3').w - 1, 'the camera starts after the stamp');
+    check(!!document.querySelector('.rt-ghost-tail[data-tail="fill"]') && /\+2 more passes/.test(document.querySelector('.rt-ghost-tail').textContent), 'the loop\'s later passes show as a striped tail');
+    check(document.querySelectorAll('.rt-gap').length >= 3, 'hatched bars show the lanes waiting');
+    check(/Ready to run/.test(document.getElementById('rt-status').textContent) && /cycle time/.test(document.getElementById('rt-status').textContent), 'the Advanced sample is ready and gives its cycle time');
+
+    // ⑩ a lane only takes what its device can run
+    const pick = centre('.rt-chip[data-chip="pick"]');
+    const camLane = { x: cardRect('v1').right + 30, y: cardRect('v1').top + cardRect('v1').height / 2 };
+    const before = JSON.stringify(prog());
+    await dragTo(pick, camLane);
+    checkEqual(JSON.stringify(prog()), before, 'Pick dropped on the camera lane is refused');
+    check(/can't run Pick/.test(document.getElementById('rt-toast').textContent), `with the reason: "${document.getElementById('rt-toast').textContent}"`);
+    const insp = centre('.rt-chip[data-chip="inspect"]');
+    await dragTo(insp, camLane);
+    checkEqual(prog().lanes[3].items.length, 2, 'Inspect dropped on the camera lane is taken');
+    await cm.undo(); await settle();
+
+    // ⑪ delete a wait: the camera no longer waits for the stamp
+    const w4 = m.getLink('w4');
+    check(!!w4, 'the camera\'s wait for the stamp is drawn');
+    m.removeLink('w4');
+    S.programs.advanced.syncs = S.programs.advanced.syncs.filter((s) => s.id !== 'w4');
+    ctx.render(); await settle();
+    check(S.problems.get('v1')?.level === 'error', `without its wait the camera has nothing to inspect: "${S.problems.get('v1')?.msg}"`);
+    check(box('v1').x < 40, 'and its card slid to the start of the ruler');
+    // put the sample back through Reset (one undoable step)
+    document.getElementById('rt-reset').click(); await settle();
+    check(!S.problems.size && !!m.getLink('w4'), 'Reset brings the sample and its waits back');
+
+    // ⑫ a wait drawn through the engine's connect pipeline re-times the lane
+    const conv = m.getNode('b1').getPort('b1__out'), lidPick = m.getNode('c1').getPort('c1__in');
+    check(!!conv && !!lidPick, 'cards in Advanced have a wait dot on each side');
+    const c1x = box('c1').x;
+    const csm = ctx.engine.getConnectionStateManager();
+    const same = m.getNode('a2').getPort('a2__in');
+    csm.startConnection(m.getNode('a1').getPort('a1__out'), { x: 0, y: 0 });
+    const refused = csm.completeConnection(same);
+    await raf();
+    check(refused?.success === false && !m.getLinks().some((l) => l.targetPortId === 'a2__in'), 'a wait inside one lane is refused (its steps already run in order)');
+    csm.startConnection(conv, { x: 0, y: 0 });
+    const made = csm.completeConnection(lidPick);
+    await raf(); await settle();
+    check(made?.success !== false && m.getLinks().some((l) => l.sourcePortId === 'b1__out' && l.targetPortId === 'c1__in'), 'a wait from the conveyor to Arm B\'s lid pick is drawn');
+    check(box('c1').x >= box('b1').x + box('b1').w - 1 && box('c1').x > c1x, 'a new wait moves the waiting step after the one it waits for');
+
+    // ⑬ Advanced run to the end: six boxes with three inserts each
+    ctx.applyDoc({ mode: 'advanced', programs: { simple: sampleSimple(), advanced: sampleAdvanced() } }); await settle();
+    check(ctx.startRun() === true, 'the Advanced sample runs');
+    ctx.RUN.paused = true;
+    ctx.seek(ctx.RUN.total * 0.3); await raf();
+    check(!document.getElementById('rt-playhead').hidden, 'a playhead sweeps the ruler');
+    ctx.seek(ctx.RUN.total - 0.01); await raf();
+    const end = cellAt(prog(), ctx.RUN.events, ctx.RUN.total).cell;
+    check(end.outfeed.length === OUTFEED_SLOTS && end.outfeed.every((b) => b.inserts === 3 && b.stamped && b.lid), 'the two-arm cell finishes six boxes, three inserts each, closed and stamped');
+    ctx.stopRun(true);
+
+    // back to the page's own start
+    ctx.applyDoc({ mode: 'simple', programs: { simple: sampleSimple(), advanced: sampleAdvanced() } }); await settle();
+    cm.clear();
+    ctx.quiet = false; ctx.noFollow = false;
+  },
+});
+</script>
