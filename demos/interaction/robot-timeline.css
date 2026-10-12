@@ -11,7 +11,7 @@
   --rt-run: #3654d1; --rt-lane-a: #f7f8fb; --rt-lane-b: #eff1f6;
   --rt-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 14px rgba(16, 24, 40, .07);
   --rt-cell-floor: #eef0f5; --rt-cell-pad: #ffffff; --rt-cell-stroke: #c5cbd8;
-  --rt-dock-h: 262px;
+  --rt-dock-h: 236px;
   display: grid; grid-template-rows: auto minmax(0, 1fr) var(--rt-dock-h); height: calc(100vh - 96px); min-height: 700px; container-type: inline-size;
   color: var(--rt-ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--rt-bg);
 }
@@ -48,7 +48,7 @@
 .rt-select { border: 1px solid var(--rt-field); background: var(--rt-panel); color: var(--rt-ink); border-radius: 8px; padding: 5px 8px; font: 12.5px system-ui, sans-serif; }
 
 /* ---- main: the 3D cell (centre) and the cell panel (right) ------------------------------ */
-#stage.rt-mode-advanced { --rt-dock-h: 380px; }
+#stage.rt-mode-advanced { --rt-dock-h: 400px; }
 .rt-main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-height: 0; }
 .rt-3dwrap { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--rt-bg); }
 .rt-3d { position: absolute; inset: 0; }
@@ -105,12 +105,22 @@
 .rt-runrow { display: flex; gap: 6px; }
 .rt-runrow .rt-btn { padding: 5px 9px; }
 
-.rt-wrap { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
-#canvas { position: relative; overflow: hidden; height: 100%; background-color: var(--rt-bg);
-  background-image: linear-gradient(var(--rt-grid) 1px, transparent 1px), linear-gradient(90deg, var(--rt-grid) 1px, transparent 1px); background-size: 24px 24px; }
+.rt-wrap { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; }
+/* a fade at the edge where the program goes on, and a slim scrollbar under it */
+.rt-wrap::before, .rt-wrap::after { content: ''; position: absolute; top: 0; bottom: 34px; width: 40px; z-index: 3; pointer-events: none; opacity: 0; transition: opacity .15s; }
+.rt-wrap::before { left: 0; background: linear-gradient(to left, transparent, var(--rt-panel)); }
+.rt-wrap::after { right: 0; background: linear-gradient(to right, transparent, var(--rt-panel)); }
+.rt-wrap.rt-more-left::before, .rt-wrap.rt-more-right::after { opacity: 1; }
+.rt-hscroll { position: relative; height: 6px; margin: 0 16px 2px; border-radius: 3px; background: var(--rt-line); cursor: pointer; touch-action: none; }
+.rt-hscroll[hidden] { display: none; }
+.rt-hthumb { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--rt-field); cursor: grab; }
+.rt-hscroll:hover .rt-hthumb, .rt-hthumb:active { background: var(--rt-faint); }
+/* The timeline sits ON the dock: the dock's own surface, no grid, no frame around a canvas. */
+#canvas { position: relative; overflow: hidden; height: 100%; background: var(--rt-panel); }
 #canvas foreignObject { overflow: visible; }
 #canvas rect.diagram-node, #canvas rect.diagram-node.selected { fill: transparent !important; stroke: transparent !important; }
-.rt-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; border-top: 1px solid var(--rt-line); background: var(--rt-panel); font-size: 12.5px; }
+.rt-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 2px 16px 8px; background: var(--rt-panel); font-size: 12px; color: var(--rt-mut); }
+.rt-status .rt-stat b { color: var(--rt-ink); }
 .rt-status .rt-stat b { font-variant-numeric: tabular-nums; }
 .rt-probs { color: var(--rt-bad); font-weight: 600; cursor: pointer; border: 0; background: none; padding: 0; font: inherit; }
 .rt-probs.rt-clean { color: var(--rt-ok); cursor: default; }
@@ -131,8 +141,8 @@
 .rt-lhead .rt-ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--kw); color: var(--k); }
 .rt-lhead b { display: block; font-size: 12.5px; }
 .rt-lhead small { color: var(--rt-mut); font-size: 11px; }
-.rt-ruler { position: absolute; height: 28px; border-bottom: 1px solid var(--rt-line); }
-.rt-tick { position: absolute; top: 0; height: 28px; border-left: 1px solid var(--rt-field); padding-left: 4px; font-size: 10.5px; color: var(--rt-mut); font-variant-numeric: tabular-nums; }
+.rt-ruler { position: absolute; height: 24px; }
+.rt-tick { position: absolute; top: 0; height: 24px; border-left: 1px solid var(--rt-field); padding-left: 4px; font-size: 10.5px; color: var(--rt-mut); font-variant-numeric: tabular-nums; }
 .rt-gap { position: absolute; height: 10px; border-radius: 5px; background: repeating-linear-gradient(135deg, var(--rt-field) 0 4px, transparent 4px 8px); opacity: .9; }
 .rt-gap span { position: absolute; left: 4px; top: 11px; white-space: nowrap; font-size: 10.5px; color: var(--rt-mut); }
 .rt-ghost-tail { position: absolute; border: 1.5px dashed var(--rt-flow-line); border-left: 0; border-radius: 0 10px 10px 0; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--rt-flow-wash) 80%, transparent) 0 6px, transparent 6px 12px); }
@@ -219,7 +229,7 @@
 .rt-frame.rt-compact .rt-fdrop { inset: 28px 6px 6px; }
 
 /* ---- the cell panel ---------------------------------------------------------------------- */
-.rt-side { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-left: 1px solid var(--rt-line); background: var(--rt-panel); }
+.rt-side { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; border-left: 1px solid var(--rt-line); background: var(--rt-panel); }
 .rt-side h2 { margin: 0; font: 650 12px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--rt-mut); }
 .rt-cellbox { padding: 12px 14px 8px; display: grid; gap: 8px; }
 .rt-cellsvg { width: 100%; height: auto; display: block; }
@@ -250,7 +260,7 @@
 .rt-stats b { font-size: 15px; font-variant-numeric: tabular-nums; }
 .rt-stats .rt-wide { grid-column: 1 / -1; }
 .rt-logbox { flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--rt-line); padding: 10px 14px 12px; gap: 8px; }
-.rt-log { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 60px; font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
+.rt-log { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 110px; font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
 .rt-log li { display: flex; gap: 8px; align-items: baseline; }
 .rt-log li time { color: var(--rt-faint); font-variant-numeric: tabular-nums; flex: none; width: 46px; }
 .rt-log li.rt-lerr { color: var(--rt-bad); font-weight: 600; }

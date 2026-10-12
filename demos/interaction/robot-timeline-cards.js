@@ -54,7 +54,7 @@ export const kindOfCmd = (cmd) => (cmd === 'repeat' || cmd === 'wait' ? 'flow' :
 
 // ---- geometry ---------------------------------------------------------------------
 export const SIMPLE = { W: 156, H: 96, GAP: 44, LANE_Y: 60, FRAME_PAD: 18, FRAME_HEAD: 34, FRAME_FOOT: 30, X0: 40 };
-export const ADV = { PPS: 50, MIN_W: 66, H: 64, LANE_H: 138, X0: 0, HEAD_W: 170, RULER: 40, FRAME_HEAD: 24, FRAME_PAD: 8, FRAME_FOOT: 20 };
+export const ADV = { PPS: 50, MIN_W: 66, H: 56, LANE_H: 114, LANE_TOP: 30, X0: 0, HEAD_W: 170, RULER: 30, FRAME_HEAD: 24, FRAME_PAD: 8, FRAME_FOOT: 14 };
 
 const tool = (act, name, title) => h('span', `rt-tb rt-act-${act}`, [iconNode(name, 12)], { attrs: { title } });
 

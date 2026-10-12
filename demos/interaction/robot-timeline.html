@@ -49,6 +49,7 @@
     <div class="rt-dockl"><button class="rt-libbtn" id="rt-lib-toggle" aria-expanded="false" aria-controls="rt-library" title="Library: drag commands onto the timeline">+</button><span class="rt-libcap">Library</span></div>
     <div class="rt-wrap">
       <div id="canvas"></div>
+      <div class="rt-hscroll" id="rt-hscroll" hidden><div class="rt-hthumb" id="rt-hthumb"></div></div>
       <div class="rt-status" id="rt-status" aria-live="polite"></div>
       <div class="rt-toast" id="rt-toast" role="status"></div>
     </div>
@@ -258,7 +259,7 @@ defineDemo({
         el.style.transform = `scale(${1 / Math.max(0.6, z)})`;
       });
     };
-    api.on('viewport:change', syncLayers);
+    api.on('viewport:change', () => { syncLayers(); ctx.clampView?.(); ctx.showScroll?.(); });
 
     const toast = (text) => { const t = $('rt-toast'); t.textContent = text; t.classList.add('on'); clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('on'), 2800); };
     ctx.toast = toast;
@@ -425,8 +426,8 @@ defineDemo({
           for (const it of lane.items) {
             if (want.has(it.id)) continue;
             const w = it.loop ? 140 : Math.max(30, durationOf(it) * ADV.PPS - 4);
-            want.set(it.id, { x, y: ADV.RULER + li * ADV.LANE_H + 34, w, h: ADV.H, kind: it.loop ? 'loop' : 'step', lane: lane.id, loop: null });
-            if (it.loop) it.steps.forEach((s, j) => want.set(s.id, { x: x + 8 + j * 34, y: ADV.RULER + li * ADV.LANE_H + 34, w: 30, h: ADV.H, kind: 'step', lane: lane.id, loop: it.id }));
+            want.set(it.id, { x, y: ADV.RULER + li * ADV.LANE_H + ADV.LANE_TOP, w, h: ADV.H, kind: it.loop ? 'loop' : 'step', lane: lane.id, loop: null });
+            if (it.loop) it.steps.forEach((s, j) => want.set(s.id, { x: x + 8 + j * 34, y: ADV.RULER + li * ADV.LANE_H + ADV.LANE_TOP, w: 30, h: ADV.H, kind: 'step', lane: lane.id, loop: it.id }));
             x += w + 12;
           }
         });
@@ -465,7 +466,7 @@ defineDemo({
       const p = prog(), L = S.L;
       const parts = [], top = [];
       if (p.mode === 'advanced') {
-        const left = -ADV.HEAD_W - 20, width = L.width - left + 40;
+        const left = -ADV.HEAD_W - 2000, width = L.width + 6000;
         L.lanes.forEach((ln) => parts.push(`<div class="rt-lane" data-lane="${ln.id}" style="left:${left}px;top:${ln.y}px;width:${width}px;height:${ln.h}px"></div>`));
         // ruler
         const ticks = [];
@@ -484,10 +485,8 @@ defineDemo({
         top.push(`<div class="rt-playhead" id="rt-playhead" hidden style="left:0;top:${ADV.RULER - 6}px;height:${L.height - ADV.RULER + 6}px"><span>0.0 s</span></div>`);
       } else {
         const ln = L.lanes[0];
-        parts.push(`<div class="rt-lane" data-lane="${ln.id}" style="left:${-30}px;top:${ln.y}px;width:${L.width + 60}px;height:${ln.h}px;border-radius:18px;border:1px solid var(--rt-line)"></div>`);
         const ar = L.arrows.map((a) => `<path d="M${a.x1 + 5} ${a.y1} H${a.x2 - 6}" /><path d="M${a.x2 - 12} ${a.y2 - 4.5} L${a.x2 - 5} ${a.y2} L${a.x2 - 12} ${a.y2 + 4.5}" class="rt-ah"/>`).join('');
         parts.push(`<svg style="position:absolute;left:0;top:0;overflow:visible" width="1" height="1"><g fill="none" stroke="var(--rt-faint)" stroke-width="1.8" stroke-linecap="round">${ar}</g></svg>`);
-        top.push(`<div style="position:absolute;left:${SIMPLE.X0}px;top:${ln.y - 26}px;font:600 12px system-ui,sans-serif;color:var(--rt-mut);display:flex;gap:8px;align-items:center;white-space:nowrap">${icon('arm', 15)} Robot arm — one line, steps run left to right</div>`);
       }
       // A loop's way back: out of its LAST step's port (the right side, at the card's vertical
       // middle), under the row, and into its FIRST step's port (the left side) — port to port,
@@ -958,6 +957,11 @@ defineDemo({
       b.classList.toggle('rt-stop', RUN.on); b.classList.toggle('rt-primary', !RUN.on);
       $('rt-step').textContent = RUN.on && RUN.paused ? 'Next step' : 'Step';
       for (const id of ['rt-undo', 'rt-redo', 'rt-reset', 'rt-simple', 'rt-adv']) $(id).disabled = RUN.on || (id === 'rt-undo' && !cm.canUndo()) || (id === 'rt-redo' && !cm.canRedo());
+      // the status line says what the cell is doing, not that the program is ready
+      if (!S.sched) return;
+      if (!RUN.on) { renderStatus(); return; }
+      const el = document.querySelector('#rt-status .rt-probs');
+      if (el) { el.className = 'rt-probs rt-clean'; el.textContent = RUN.paused ? '⏸ Paused, press Next step' : '▶ Running'; }
     }
     function startRun({ paused = false } = {}) {
       const errs = [...S.problems].filter(([, v]) => v.level === 'error');
@@ -1122,40 +1126,107 @@ defineDemo({
     $('rt-simple').addEventListener('click', () => setMode('simple'));
     $('rt-adv').addEventListener('click', () => setMode('advanced'));
 
-    // ---- framing ------------------------------------------------------------------------------
-    function frame() {
-      const L = S.L, r = host.getBoundingClientRect();
-      if (!L || !r.width) return;
-      const simple = prog().mode === 'simple';
-      const left = simple ? 0 : -ADV.HEAD_W - 20;
-      const top = simple ? L.lanes[0].y - 40 : -20;
-      const w = L.width - left + 20, h = simple ? L.lanes[0].h + 60 : L.height + 20;
-      const z = simple ? Math.max(0.6, Math.min(1, (r.height - 40) / h)) : Math.max(0.72, Math.min(1, (r.width - 40) / w, (r.height - 40) / h));
-      api.viewport.setZoom(z);
-      const vb = viewBox();
-      const tall = h > vb.height - 10;               // taller than the dock: show the top (the ruler) first
-      const fy = tall ? top : top + h / 2, ay = tall ? 0 : 0.5;
-      if (w <= vb.width - 10) panTo(left + w / 2, fy, 0.5, ay);
-      else panTo(left - 10, fy, 0, ay);
+    // ---- framing: the timeline IS the dock ------------------------------------------------------
+    // Not a window onto a canvas: the timeline fills the dock's height exactly (the zoom is what
+    // fits), never drifts up or down, starts flush left, and the wheel scrolls it sideways like any
+    // timeline. "Fit" toggles an overview of the whole program; a resize keeps your place.
+    const PAD = 10;
+    function extent() {
+      const L = S.L;
+      if (!L) return null;
+      if (prog().mode === 'advanced') return { x0: -ADV.HEAD_W - 24, x1: L.width + 24, y0: 0, y1: L.height + 4 };
+      let y0 = Infinity, y1 = -Infinity, x1 = SIMPLE.X0 + SIMPLE.W;
+      for (const b of L.boxes.values()) { y0 = Math.min(y0, b.y); y1 = Math.max(y1, b.y + b.h); x1 = Math.max(x1, b.x + b.w); }
+      for (const lp of L.loops ?? []) y1 = Math.max(y1, lp.below + 10);
+      if (!Number.isFinite(y0)) { y0 = SIMPLE.LANE_Y; y1 = SIMPLE.LANE_Y + SIMPLE.H; }
+      return { x0: SIMPLE.X0 - 24, x1: x1 + 24, y0: y0 - 6, y1: y1 + 6 };
+    }
+    let overview = false, clamping = false;
+    /** Keep the program centred top to bottom and the view on it left to right. */
+    function clampView() {
+      const e = extent();
+      if (!e || clamping) return;
+      const vb = viewBox(), v = api.viewport.getViewport(), w = e.x1 - e.x0;
+      const dy = (e.y0 + e.y1) / 2 - (vb.y + vb.height / 2);
+      const nx = w <= vb.width ? (overview ? e.x0 - (vb.width - w) / 2 : e.x0) : Math.max(e.x0, Math.min(e.x1 - vb.width, vb.x));
+      const dx = nx - vb.x;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+      clamping = true;
+      try { api.viewport.setViewport({ ...v, x: v.x + dx, y: v.y + dy }); } finally { clamping = false; }
       syncLayers();
+    }
+    ctx.clampView = clampView;
+    ctx.extent = extent;
+    /** The slim scrollbar under the timeline, and a fade at whichever edge has more to see. */
+    function showScroll() {
+      const e = extent(), bar = $('rt-hscroll'), wrap = bar?.parentElement;
+      if (!e || !bar) return;
+      const vb = viewBox(), w = e.x1 - e.x0, ratio = vb.width / w;
+      const more = ratio < 0.995;
+      bar.hidden = !more;
+      wrap.classList.toggle('rt-more-left', more && vb.x > e.x0 + 1);
+      wrap.classList.toggle('rt-more-right', more && vb.x + vb.width < e.x1 - 1);
+      if (!more) return;
+      const th = $('rt-hthumb');
+      th.style.left = `${Math.max(0, Math.min(1 - ratio, (vb.x - e.x0) / w)) * 100}%`;
+      th.style.width = `${ratio * 100}%`;
+    }
+    ctx.showScroll = showScroll;
+    $('rt-hscroll').addEventListener('pointerdown', (ev) => {
+      const e = extent(), bar = $('rt-hscroll'), r = bar.getBoundingClientRect();
+      if (!e) return;
+      ev.preventDefault();
+      const perPx = (e.x1 - e.x0) / r.width;
+      const onThumb = ev.target.id === 'rt-hthumb';
+      if (!onThumb) {                                   // a click on the track pages towards it
+        const vb = viewBox(), v = api.viewport.getViewport(), at = e.x0 + (ev.clientX - r.left) * perPx;
+        api.viewport.setViewport({ ...v, x: v.x + (at < vb.x ? -vb.width : vb.width) * 0.9 });
+        clampView(); syncLayers(); api.renderNow();
+        return;
+      }
+      bar.setPointerCapture(ev.pointerId);
+      let lastX = ev.clientX;
+      const move = (m) => { const v = api.viewport.getViewport(); api.viewport.setViewport({ ...v, x: v.x + (m.clientX - lastX) * perPx }); lastX = m.clientX; clampView(); syncLayers(); api.renderNow(); };
+      const up = () => { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); };
+      bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up);
+    });
+    /** The dock fit: the zoom that fills the dock's height (readable: 0.45–1). */
+    function frame({ keepX = false } = {}) {
+      overview = false;
+      const e = extent(), r = host.getBoundingClientRect();
+      if (!e || !r.height) return;
+      const left = keepX ? viewBox().x : e.x0;
+      api.viewport.setZoom(Math.max(0.45, Math.min(1, (r.height - 2 * PAD) / (e.y1 - e.y0))));
+      panTo(left, (e.y0 + e.y1) / 2, 0, 0.5);
+      clampView();
+      syncLayers();
+      showScroll();
       api.renderNow();
     }
     ctx.frame = frame;
-    /** The whole program in view, at whatever zoom that takes. */
+    /** The overview: the whole program in view, at whatever zoom that takes. */
     function fitAll() {
-      const L = S.L, r = host.getBoundingClientRect();
-      if (!L || !r.width) return;
-      const adv = prog().mode === 'advanced';
-      const left = adv ? -ADV.HEAD_W - 20 : 0, top = adv ? -20 : L.lanes[0].y - 40;
-      const w = L.width - left + 40, h = adv ? L.height + 30 : L.lanes[0].h + 60;
-      api.viewport.setZoom(Math.min(1, (r.width - 30) / w, (r.height - 30) / h));
-      panTo(left + w / 2, top + h / 2);
+      overview = true;
+      const e = extent(), r = host.getBoundingClientRect();
+      if (!e || !r.width) return;
+      api.viewport.setZoom(Math.min(1, (r.width - 2 * PAD) / (e.x1 - e.x0), (r.height - 2 * PAD) / (e.y1 - e.y0)));
+      panTo((e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2);
+      clampView();
       syncLayers();
       api.renderNow();
     }
     ctx.fitAll = fitAll;
-    let fitted = false;
-    $('rt-fit').addEventListener('click', () => { fitted = !fitted; if (fitted) fitAll(); else frame(); });
+    // the wheel scrolls the timeline sideways (and never zooms it out of the dock's fit)
+    host.addEventListener('wheel', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const v = api.viewport.getViewport();
+      api.viewport.setViewport({ ...v, x: v.x + d / api.viewport.getZoom() });
+      clampView(); syncLayers(); api.renderNow();
+    }, { capture: true, passive: false });
+    // the dock resized (its grip, the window, a mode switch): fit its new height, keep the place
+    new ResizeObserver(() => { if (S.L) (overview ? fitAll() : frame({ keepX: true })); }).observe(host);
+    $('rt-fit').addEventListener('click', () => (overview ? frame() : fitAll()));
 
     // ---- the library drawer ---------------------------------------------------------------------
     const setLibrary = (open) => { $('rt-library').hidden = !open; $('rt-lib-toggle').setAttribute('aria-expanded', String(open)); };
@@ -1184,7 +1255,6 @@ defineDemo({
     frame();
     setRunButtons();
     keysReady = true;
-    window.addEventListener('resize', () => frame());
   },
 
   async showcase(ctx) {
@@ -1343,6 +1413,7 @@ defineDemo({
     check(ctx.startRun() === true && ctx.RUN.on, 'Run starts on a clean program');
     ctx.RUN.paused = true;
     check(document.getElementById('rt-library').hidden, 'Run closes the library, so the cell is in full view');
+    check(/Running/.test(document.getElementById('rt-status').textContent), `the status line says the cell is running ("${document.getElementById('rt-status').textContent.trim().slice(0, 30)}")`);
     // the arm goes where the step says: 60 % into the first Pick its finger tips are down at Infeed A
     const p1 = ctx.RUN.events.find((e) => e.step.id === 'p1');
     ctx.seek(p1.start + 0.6 * (p1.end - p1.start)); await raf();
@@ -1369,6 +1440,30 @@ defineDemo({
     ctx.RUN.paused = false;
     await new Promise((r) => setTimeout(r, 160));
     check(!ctx.RUN.on && /Done: 6 boxes/.test(document.getElementById('rt-log').textContent), 'the run finishes and the log says "Done: 6 boxes"');
+
+    // ⑧½ the timeline IS the dock: it fits the dock's height, the wheel scrolls it sideways, it stops at the ends
+    {
+      ctx.frame(); await raf();
+      const vp = ctx.instance.viewport, e = ctx.extent();
+      let vb = vp.getViewBox();
+      check(e.y0 >= vb.y - 0.5 && e.y1 <= vb.y + vb.height + 0.5, `the dock shows the whole program top to bottom (program ${Math.round(e.y0)}–${Math.round(e.y1)}, view ${Math.round(vb.y)}–${Math.round(vb.y + vb.height)})`);
+      check(Math.abs(vb.x - e.x0) < 1, 'it starts flush with the program\'s left end');
+      const z0 = vp.getZoom(), y0 = vb.y, x0 = vb.x;
+      const wheel = (dy) => host.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, clientX: host.getBoundingClientRect().left + 200, clientY: host.getBoundingClientRect().top + 60, bubbles: true, cancelable: true }));
+      wheel(240); await raf();
+      vb = vp.getViewBox();
+      check(vb.x > x0 + 50 && Math.abs(vb.y - y0) < 0.5 && vp.getZoom() === z0, `the wheel scrolls the timeline sideways, never up/down or zoom (x ${Math.round(x0)}→${Math.round(vb.x)}, y ${Math.round(y0)}→${Math.round(vb.y)}, zoom ${z0}→${vp.getZoom()})`);
+      check(!document.getElementById('rt-hscroll').hidden && parseFloat(document.getElementById('rt-hthumb').style.left) > 0, 'the scrollbar shows, and its thumb moved along');
+      wheel(1e6); await raf();
+      vb = vp.getViewBox();
+      check(Math.abs(vb.x + vb.width - e.x1) < 1, 'scrolling stops at the program\'s right end');
+      document.getElementById('stage').style.setProperty('--rt-dock-h', '420px');
+      await new Promise((r) => setTimeout(r, 120)); await raf();
+      vb = vp.getViewBox();
+      check(e.y0 >= vb.y - 0.5 && e.y1 <= vb.y + vb.height + 0.5, 'a taller dock still fits the program top to bottom');
+      document.getElementById('stage').style.removeProperty('--rt-dock-h');
+      await new Promise((r) => setTimeout(r, 120)); ctx.fitAll(); await raf();
+    }
 
     // ⑨ Advanced: four lanes on a time ruler, waits as links
     ctx.setMode('advanced'); await settle();

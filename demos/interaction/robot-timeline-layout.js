@@ -60,11 +60,11 @@ function layoutSimple(program) {
 }
 
 function layoutAdvanced(program, sched) {
-  const { PPS, H, LANE_H, RULER, FRAME_HEAD, FRAME_PAD, FRAME_FOOT } = ADV;
+  const { PPS, H, LANE_H, LANE_TOP, RULER, FRAME_HEAD, FRAME_PAD, FRAME_FOOT } = ADV;
   const boxes = new Map(), slots = [], tails = [], lanes = [], loops = [];
   const tx = (t) => t * PPS;
   program.lanes.forEach((lane, li) => {
-    const ly = RULER + li * LANE_H, cy = ly + 34;
+    const ly = RULER + li * LANE_H, cy = ly + LANE_TOP;
     lanes.push({ id: lane.id, y: ly, h: LANE_H });
     const ranges = [];
     for (const it of lane.items) {
@@ -79,7 +79,7 @@ function layoutAdvanced(program, sched) {
       const body = bodySeconds(it), times = Number(it.props.times) || 1;
       const fx = tx(t.start) - FRAME_PAD, fw = Math.max(tx(body), it.steps.length ? 0 : 120) + FRAME_PAD * 2 - 4;
       boxes.set(it.id, { x: fx, y: cy - FRAME_HEAD - 4, w: fw, h: FRAME_HEAD + H + 4 + FRAME_FOOT, kind: 'loop', lane: lane.id, loop: null });
-      if (it.steps.length) loops.push({ loop: it.id, first: it.steps[0].id, last: it.steps[it.steps.length - 1].id, times, below: cy + H + 9 });
+      if (it.steps.length) loops.push({ loop: it.id, first: it.steps[0].id, last: it.steps[it.steps.length - 1].id, times, below: cy + H + 7 });
       let s0 = t.start;
       it.steps.forEach((s, j) => {
         const w = Math.max(30, tx(durationOf(s)) - 4);
@@ -98,7 +98,7 @@ function layoutAdvanced(program, sched) {
   });
   const gaps = sched.gaps.map((g) => {
     const li = program.lanes.findIndex((l) => l.id === g.lane);
-    return { ...g, x: tx(g.start), w: tx(g.end - g.start), y: RULER + li * LANE_H + 34 + H + FRAME_FOOT + 4 };
+    return { ...g, x: tx(g.start), w: tx(g.end - g.start), y: RULER + li * LANE_H + LANE_TOP + H + FRAME_FOOT + 2 };
   });
   const width = tx(sched.seconds) + 120;
   return { boxes, arrows: [], slots, loops, lanes, tails, gaps, width, height: RULER + program.lanes.length * LANE_H };
