@@ -121,6 +121,7 @@ const esc = (s) =>
 // The wow-factor demos, in the order a first-time visitor should meet them —
 // so the flagships are never buried below alphabetical A-Z. Keys are `cat/name`.
 const FEATURED = [
+  'interaction/robot-timeline',
   'diagrams/visio-editor', 'misc/drawio-import',
   'interaction/n8n-workflow', 'interaction/chatbot-flow',
   'interaction/workflow-builder', 'interaction/marketing-automation', 'diagrams/data-modeling',

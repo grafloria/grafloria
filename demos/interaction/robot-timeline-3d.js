@@ -56,7 +56,7 @@ function solve(base, x, y, z, roll = 0) {
   return [a1, a2, a3, 0, a5, roll];
 }
 
-export function createCell3D(host, program) {
+export function createCell3D(host, program, opts = {}) {
   const mode = program.mode === 'advanced' ? 'advanced' : 'simple';
   const L = LAYOUT[mode];
   host.innerHTML = '';
@@ -75,8 +75,9 @@ export function createCell3D(host, program) {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 40);
-  const target = new THREE.Vector3(0, mode === 'advanced' ? 0.18 : 0.26, mode === 'advanced' ? 0.05 : 0);
-  const orbit = { yaw: mode === 'advanced' ? 0.42 : 0.78, pitch: mode === 'advanced' ? 0.62 : 0.5, dist: mode === 'advanced' ? 2.9 : 2.4 };
+  const target = new THREE.Vector3(...(opts.target ?? [0, mode === 'advanced' ? 0.18 : 0.26, mode === 'advanced' ? 0.05 : 0]));
+  const home = { yaw: mode === 'advanced' ? 0.42 : 0.78, pitch: mode === 'advanced' ? 0.62 : 0.5, dist: mode === 'advanced' ? 2.9 : 2.4, ...(opts.view ?? {}) };
+  const orbit = { ...home };
   const placeCamera = () => {
     const cp = Math.cos(orbit.pitch);
     camera.position.set(target.x + orbit.dist * cp * Math.sin(orbit.yaw), target.y + orbit.dist * Math.sin(orbit.pitch), target.z + orbit.dist * cp * Math.cos(orbit.yaw));
@@ -394,11 +395,11 @@ export function createCell3D(host, program) {
   });
   el.addEventListener('pointerup', () => { drag = null; });
   el.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist = Math.max(1.2, Math.min(7, orbit.dist * (1 + Math.sign(e.deltaY) * 0.08))); markMoved(true); render(); }, { passive: false });
-  const resetView = () => { orbit.yaw = mode === 'advanced' ? 0.42 : 0.78; orbit.pitch = mode === 'advanced' ? 0.62 : 0.5; orbit.dist = mode === 'advanced' ? 2.9 : 2.4; markMoved(false); render(); };
+  const resetView = () => { Object.assign(orbit, home); markMoved(false); render(); };
 
   const ro = new ResizeObserver(resize);
   ro.observe(host);
-  setTheme(matchMedia('(prefers-color-scheme: dark)').matches);
+  setTheme(opts.dark ?? matchMedia('(prefers-color-scheme: dark)').matches);
   resize();
   update(last);
 
