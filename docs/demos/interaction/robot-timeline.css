@@ -11,7 +11,8 @@
   --rt-run: #3654d1; --rt-lane-a: #f7f8fb; --rt-lane-b: #eff1f6;
   --rt-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 14px rgba(16, 24, 40, .07);
   --rt-cell-floor: #eef0f5; --rt-cell-pad: #ffffff; --rt-cell-stroke: #c5cbd8;
-  display: grid; grid-template-rows: auto 1fr; height: calc(100vh - 96px); min-height: 600px; container-type: inline-size;
+  --rt-dock-h: 236px;
+  display: grid; grid-template-rows: auto minmax(0, 1fr) var(--rt-dock-h); height: calc(100vh - 96px); min-height: 700px; container-type: inline-size;
   color: var(--rt-ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--rt-bg);
 }
 @media (prefers-color-scheme: dark) {
@@ -46,23 +47,80 @@
 .rt-btn .rt-i { flex: none; }
 .rt-select { border: 1px solid var(--rt-field); background: var(--rt-panel); color: var(--rt-ink); border-radius: 8px; padding: 5px 8px; font: 12.5px system-ui, sans-serif; }
 
-/* ---- body: palette | canvas | cell -------------------------------------------------- */
-.rt-body { display: grid; grid-template-columns: 196px minmax(0, 1fr) 320px; min-height: 0; }
-.rt-palette { display: flex; flex-direction: column; gap: 12px; padding: 12px; overflow-y: auto; border-right: 1px solid var(--rt-line); background: var(--rt-panel); }
-.rt-pgroup h3 { margin: 0 0 6px; font: 650 11px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--rt-mut); }
-.rt-pgroup .rt-plist { display: flex; flex-direction: column; gap: 6px; }
-.rt-chip { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--rt-line); border-radius: 9px; background: var(--rt-panel); cursor: grab; user-select: none; touch-action: none; }
-.rt-chip:hover { border-color: var(--k); box-shadow: var(--rt-shadow); }
-.rt-chip .rt-clabel { font-weight: 600; flex: 1; }
-.rt-chip .rt-cdur { color: var(--rt-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
-.rt-phint { color: var(--rt-mut); font-size: 11.5px; line-height: 1.45; margin: 0; }
+/* ---- main: the 3D cell (centre) and the cell panel (right) ------------------------------ */
+#stage.rt-mode-advanced { --rt-dock-h: 400px; }
+.rt-main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-height: 0; }
+.rt-3dwrap { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--rt-bg); }
+.rt-3d { position: absolute; inset: 0; }
+.rt-3d-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.rt-3d-canvas:active { cursor: grabbing; }
+.rt-3d-off { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--rt-mut); }
+.rt-hud { position: absolute; left: 14px; top: 12px; max-width: min(460px, 60%); display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+.rt-hud .rt-hudrow { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; padding: 5px 10px; border-radius: 9px; background: color-mix(in srgb, var(--rt-panel) 90%, transparent); box-shadow: var(--rt-shadow); font-size: 12.5px; }
+.rt-hud .rt-hudrow b { font-weight: 650; }
+.rt-hud .rt-hudhint { color: var(--rt-mut); font-size: 11.5px; padding-left: 2px; }
+.rt-joints { position: absolute; right: 12px; top: 12px; display: flex; gap: 8px; pointer-events: none; }
+.rt-jbox { padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--rt-panel) 92%, transparent); box-shadow: var(--rt-shadow); font-size: 11.5px; min-width: 112px; }
+.rt-jbox h4 { margin: 0 0 4px; font: 650 10.5px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--rt-mut); }
+.rt-jbox table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.rt-jbox td { padding: 1px 0; }
+.rt-jbox td:first-child { color: var(--rt-accent); font-weight: 650; padding-right: 10px; }
+.rt-jbox td:last-child { text-align: right; }
+.rt-viewreset { position: absolute; left: 14px; top: 76px; padding: 4px 9px; font-size: 11.5px; }
+.rt-viewreset[hidden] { display: none; }
+/* the library: a drawer over the bottom of the 3D view, right above the timeline (Festo-style) */
+.rt-library { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 6; padding: 8px 12px 10px; border-radius: 14px; background: color-mix(in srgb, var(--rt-panel) 96%, transparent); box-shadow: 0 6px 24px rgba(16, 24, 40, .16); border: 1px solid var(--rt-line); }
+.rt-library[hidden] { display: none; }
+.rt-library header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.rt-library header b { font-size: 13px; }
+.rt-libhint { color: var(--rt-mut); font-size: 11.5px; }
+.rt-tbx { border: 0; background: none; color: var(--rt-mut); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.rt-tbx:hover { color: var(--rt-ink); background: var(--rt-bg); }
+.rt-libgroups { display: flex; gap: 18px; overflow-x: auto; padding-bottom: 2px; }
+.rt-pgroup { flex: none; }
+.rt-pgroup h3 { margin: 0 0 5px; font: 650 10.5px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--rt-mut); }
+.rt-pgroup .rt-plist { display: flex; gap: 6px; }
+.rt-chip { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 78px; height: 66px; padding: 4px; box-sizing: border-box; text-align: center;
+  border: 1px solid var(--rt-line); border-radius: 10px; background: var(--rt-panel); cursor: grab; user-select: none; touch-action: none; }
+.rt-chip:hover, .rt-chip:focus-visible { border-color: var(--k); box-shadow: var(--rt-shadow); outline: none; }
+.rt-chip .rt-clabel { font-weight: 600; font-size: 11.5px; line-height: 1.15; }
+.rt-chip .rt-cdur { color: var(--rt-faint); font-size: 10px; font-variant-numeric: tabular-nums; }
+.rt-dragghost .rt-chip { width: 78px; }
+.rt-phint { display: none; }
 
-.rt-wrap { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
-#canvas { position: relative; overflow: hidden; height: 100%; background-color: var(--rt-bg);
-  background-image: linear-gradient(var(--rt-grid) 1px, transparent 1px), linear-gradient(90deg, var(--rt-grid) 1px, transparent 1px); background-size: 24px 24px; }
+/* ---- the dock: library button | the timeline | run controls ----------------------------- */
+.rt-dock { position: relative; display: grid; grid-template-columns: 64px minmax(0, 1fr) 132px; min-height: 0; border-top: 1px solid var(--rt-line); background: var(--rt-panel); }
+.rt-dockgrip { position: absolute; left: 0; right: 0; top: -5px; height: 10px; z-index: 7; cursor: ns-resize; }
+.rt-dockgrip::after { content: ''; position: absolute; left: 50%; top: 3px; width: 44px; height: 4px; margin-left: -22px; border-radius: 2px; background: var(--rt-field); }
+.rt-dockgrip:hover::after { background: var(--rt-accent); }
+.rt-dockl { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 14px; border-right: 1px solid var(--rt-line); }
+.rt-libcap { font-size: 10.5px; font-weight: 600; color: var(--rt-mut); }
+.rt-libbtn { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--rt-accent); color: var(--rt-on-accent); font: 400 26px/1 system-ui, sans-serif; cursor: pointer; box-shadow: var(--rt-shadow); }
+.rt-libbtn[aria-expanded="true"] { background: var(--rt-panel); color: var(--rt-accent); border: 1.5px solid var(--rt-accent); }
+.rt-dockr { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; border-left: 1px solid var(--rt-line); padding: 10px; }
+.rt-play { width: 92px; height: 52px; border-radius: 26px; border: 0; font: 700 14px system-ui, sans-serif; cursor: pointer; box-shadow: var(--rt-shadow); }
+.rt-play.rt-primary { background: var(--rt-accent); color: var(--rt-on-accent); }
+.rt-play.rt-stop { background: var(--rt-bad); color: #fff; }
+.rt-play:disabled { opacity: .45; cursor: default; }
+.rt-runrow { display: flex; gap: 6px; }
+.rt-runrow .rt-btn { padding: 5px 9px; }
+
+.rt-wrap { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; }
+/* a fade at the edge where the program goes on, and a slim scrollbar under it */
+.rt-wrap::before, .rt-wrap::after { content: ''; position: absolute; top: 0; bottom: 34px; width: 40px; z-index: 3; pointer-events: none; opacity: 0; transition: opacity .15s; }
+.rt-wrap::before { left: 0; background: linear-gradient(to left, transparent, var(--rt-panel)); }
+.rt-wrap::after { right: 0; background: linear-gradient(to right, transparent, var(--rt-panel)); }
+.rt-wrap.rt-more-left::before, .rt-wrap.rt-more-right::after { opacity: 1; }
+.rt-hscroll { position: relative; height: 6px; margin: 0 16px 2px; border-radius: 3px; background: var(--rt-line); cursor: pointer; touch-action: none; }
+.rt-hscroll[hidden] { display: none; }
+.rt-hthumb { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--rt-field); cursor: grab; }
+.rt-hscroll:hover .rt-hthumb, .rt-hthumb:active { background: var(--rt-faint); }
+/* The timeline sits ON the dock: the dock's own surface, no grid, no frame around a canvas. */
+#canvas { position: relative; overflow: hidden; height: 100%; background: var(--rt-panel); }
 #canvas foreignObject { overflow: visible; }
 #canvas rect.diagram-node, #canvas rect.diagram-node.selected { fill: transparent !important; stroke: transparent !important; }
-.rt-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; border-top: 1px solid var(--rt-line); background: var(--rt-panel); font-size: 12.5px; }
+.rt-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 2px 16px 8px; background: var(--rt-panel); font-size: 12px; color: var(--rt-mut); }
+.rt-status .rt-stat b { color: var(--rt-ink); }
 .rt-status .rt-stat b { font-variant-numeric: tabular-nums; }
 .rt-probs { color: var(--rt-bad); font-weight: 600; cursor: pointer; border: 0; background: none; padding: 0; font: inherit; }
 .rt-probs.rt-clean { color: var(--rt-ok); cursor: default; }
@@ -79,13 +137,12 @@
   background: var(--kw); color: var(--k); border: 1px solid var(--kl); font: 600 11px system-ui, sans-serif; box-shadow: var(--rt-shadow); }
 .rt-lanechip[hidden] { display: none; }
 .rt-lanechip b { color: var(--rt-ink); font-weight: 650; }
-.rt-unused-lanename .rt-lhead { background: color-mix(in srgb, var(--rt-panel) 88%, transparent); border-radius: 10px; padding: 6px 10px; box-shadow: var(--rt-shadow); }
 .rt-lhead { position: absolute; display: flex; align-items: center; gap: 9px; padding: 0 12px; box-sizing: border-box; color: var(--rt-ink); }
 .rt-lhead .rt-ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--kw); color: var(--k); }
 .rt-lhead b { display: block; font-size: 12.5px; }
 .rt-lhead small { color: var(--rt-mut); font-size: 11px; }
-.rt-ruler { position: absolute; height: 28px; border-bottom: 1px solid var(--rt-line); }
-.rt-tick { position: absolute; top: 0; height: 28px; border-left: 1px solid var(--rt-field); padding-left: 4px; font-size: 10.5px; color: var(--rt-mut); font-variant-numeric: tabular-nums; }
+.rt-ruler { position: absolute; height: 24px; }
+.rt-tick { position: absolute; top: 0; height: 24px; border-left: 1px solid var(--rt-field); padding-left: 4px; font-size: 10.5px; color: var(--rt-mut); font-variant-numeric: tabular-nums; }
 .rt-gap { position: absolute; height: 10px; border-radius: 5px; background: repeating-linear-gradient(135deg, var(--rt-field) 0 4px, transparent 4px 8px); opacity: .9; }
 .rt-gap span { position: absolute; left: 4px; top: 11px; white-space: nowrap; font-size: 10.5px; color: var(--rt-mut); }
 .rt-ghost-tail { position: absolute; border: 1.5px dashed var(--rt-flow-line); border-left: 0; border-radius: 0 10px 10px 0; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--rt-flow-wash) 80%, transparent) 0 6px, transparent 6px 12px); }
@@ -165,10 +222,6 @@
 .rt-ftot { color: var(--rt-mut); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rt-frame .rt-tb { width: 20px; height: 20px; opacity: 0; }
 .rt-frame:hover .rt-tb, .rt-frame.rt-sel .rt-tb { opacity: 1; }
-.rt-fback { position: absolute; left: 22px; right: 22px; bottom: 6px; height: 20px; color: var(--rt-flow); }
-.rt-fback-line { position: absolute; left: 0; right: 0; top: 0; height: 10px; border: 1.6px dashed var(--rt-flow); border-top: 0; border-radius: 0 0 10px 10px; }
-.rt-fback-line::before { content: ''; position: absolute; left: -5.5px; top: -6px; border: 5px solid transparent; border-bottom: 7px solid var(--rt-flow); }
-.rt-fback-label { position: absolute; left: 50%; top: 2px; transform: translateX(-50%); background: color-mix(in srgb, var(--rt-flow-wash) 92%, var(--rt-bg)); padding: 0 8px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .rt-fprob { position: absolute; left: 12px; right: 12px; bottom: 4px; color: var(--rt-bad); font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rt-fdrop { position: absolute; inset: 40px 12px 30px; display: grid; place-items: center; border: 1.5px dashed var(--rt-flow-line); border-radius: 10px; color: var(--rt-flow); font-weight: 600; font-size: 12px; }
 .rt-frame.rt-compact { border-radius: 12px; }
@@ -176,7 +229,7 @@
 .rt-frame.rt-compact .rt-fdrop { inset: 28px 6px 6px; }
 
 /* ---- the cell panel ---------------------------------------------------------------------- */
-.rt-side { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--rt-line); background: var(--rt-panel); }
+.rt-side { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; border-left: 1px solid var(--rt-line); background: var(--rt-panel); }
 .rt-side h2 { margin: 0; font: 650 12px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--rt-mut); }
 .rt-cellbox { padding: 12px 14px 8px; display: grid; gap: 8px; }
 .rt-cellsvg { width: 100%; height: auto; display: block; }
@@ -207,33 +260,37 @@
 .rt-stats b { font-size: 15px; font-variant-numeric: tabular-nums; }
 .rt-stats .rt-wide { grid-column: 1 / -1; }
 .rt-logbox { flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--rt-line); padding: 10px 14px 12px; gap: 8px; }
-.rt-log { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 60px; font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
+.rt-log { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 110px; font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
 .rt-log li { display: flex; gap: 8px; align-items: baseline; }
 .rt-log li time { color: var(--rt-faint); font-variant-numeric: tabular-nums; flex: none; width: 46px; }
 .rt-log li.rt-lerr { color: var(--rt-bad); font-weight: 600; }
 .rt-log li.rt-lok { color: var(--rt-ok); font-weight: 600; }
 
 /* ---- narrower windows (last, so they win over the rules above) ------------------------------ */
-/* Laptop: the cell, its numbers and the log move into a row under the timeline. */
 @container (max-width: 1080px) {
-  .rt-body { grid-template-columns: 172px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
-  .rt-palette { grid-row: 1 / -1; }
-  .rt-side { flex-direction: row; border-left: 0; border-top: 1px solid var(--rt-line); height: 236px; }
-  .rt-cellbox { flex: 0 0 290px; padding-bottom: 10px; }
-  .rt-stats { flex: 0 0 210px; align-content: start; padding-top: 34px; }
-  .rt-logbox { border-top: 0; border-left: 1px solid var(--rt-line); min-width: 0; }
+  .rt-main { grid-template-columns: minmax(0, 1fr) 250px; }
+  .rt-joints .rt-jbox:nth-child(n + 2) { display: none; }
 }
-/* Phone: everything stacks; the palette is one row that scrolls sideways. */
-@container (max-width: 720px) {
-  .rt-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(380px, 62vh) auto; }
-  .rt-palette { grid-row: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--rt-line); gap: 14px; padding: 10px 12px; }
-  .rt-pgroup { flex: none; }
-  .rt-pgroup .rt-plist { flex-direction: row; }
-  .rt-chip { flex: none; }
-  .rt-phint { display: none; }
-  .rt-side { flex-direction: column; height: auto; }
-  .rt-cellbox { flex: none; }
-  .rt-stats { flex: none; padding-top: 0; }
-  .rt-logbox { border-left: 0; border-top: 1px solid var(--rt-line); height: 220px; flex: none; }
+/* Phone: the 3D view, then the timeline, then the cell panel; the page scrolls. */
+@container (max-width: 760px) {
+  .rt-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 340px auto; }
+  .rt-side { border-left: 0; border-top: 1px solid var(--rt-line); }
+  .rt-logbox { height: 220px; flex: none; }
+  .rt-joints { display: none; }
+  .rt-dock { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
+  .rt-dockl { border-right: 0; padding: 8px; justify-content: flex-start; }
+  .rt-dockr { flex-direction: row; border-left: 0; border-top: 1px solid var(--rt-line); }
+  .rt-library { left: 6px; right: 6px; bottom: 6px; }
 }
-@media (max-width: 760px) { #stage { height: auto; min-height: 0; } }
+@media (max-width: 760px) {
+  #stage { height: auto; min-height: 0; grid-template-rows: auto auto var(--rt-dock-h); }
+  #stage .rt-main { order: 0; }
+}
+
+/* ---- a loop's way back, and the ports the connectors meet ---------------------------------- */
+.rt-wb { stroke: var(--rt-flow); stroke-width: 1.8; stroke-dasharray: 6 4; }
+.rt-wbh { stroke-dasharray: none; }
+.rt-wayback { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; padding: 1px 8px; border-radius: 8px; background: var(--rt-panel); border: 1px solid var(--rt-flow-line);
+  color: var(--rt-flow); font: 600 11px system-ui, sans-serif; }
+.rt-wayback.rt-wb-compact { font-size: 10px; padding: 0 5px; }
+.rt-port { fill: var(--rt-panel); stroke: var(--rt-faint); stroke-width: 1.6; }

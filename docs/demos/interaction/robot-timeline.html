@@ -1,10 +1,10 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Robot cell programmer — Grafloria</title>
-<meta name="description" content="Program a multi-use robot arm on a timeline: drag commands into place, set each one in a popup, loop a run of steps, and press Run to watch the cell work. Simple mode is one line; Advanced runs two arms, a conveyor and a camera in lanes that wait for each other.">
+<meta name="description" content="Program a multi-use robot arm on a timeline docked along the bottom and watch a six-axis cobot do it in 3D: drag commands from the Library, set each one in a popup, loop a run of steps, and press Run. Simple mode is one line; Advanced runs two arms, a conveyor and a camera in lanes that wait for each other.">
 <link rel="canonical" href="https://grafloria.com/demos/interaction/robot-timeline.html">
 <meta property="og:title" content="Robot cell programmer — Grafloria">
-<meta property="og:description" content="Program a multi-use robot arm on a timeline: drag commands into place, set each one in a popup, loop a run of steps, and press Run to watch the cell work.">
+<meta property="og:description" content="Program a multi-use robot arm on a timeline docked along the bottom and watch a six-axis cobot do it in 3D: drag commands from the Library, set each one in a popup, loop a run of steps, and press Run. Simple mode is one line; Advanced runs two arms, a conveyor and a camera in lanes that wait for each other.">
 <meta property="og:url" content="https://grafloria.com/demos/interaction/robot-timeline.html">
 <meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/robot-timeline.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -24,26 +24,44 @@
     <button class="rt-btn" id="rt-undo" title="Undo (Ctrl/⌘+Z)">Undo</button>
     <button class="rt-btn" id="rt-redo" title="Redo (Ctrl/⌘+⇧+Z)">Redo</button>
     <button class="rt-btn" id="rt-reset" title="Put the sample program back (undoable)">Reset</button>
-    <button class="rt-btn" id="rt-fit" title="Zoom out to the whole program (press again for a readable zoom)">Fit</button>
+    <button class="rt-btn" id="rt-fit" title="Zoom the timeline out to the whole program (press again for a readable zoom)">Fit</button>
     <label class="rt-cycles" id="rt-cycles-wrap" hidden>Cycles <select class="rt-select" id="rt-cycles" aria-label="Cycles to run"></select></label>
-    <select class="rt-select" id="rt-speed" aria-label="Run speed">
-      <option value="1">×1</option><option value="4" selected>×4</option><option value="10">×10</option><option value="30">×30</option>
-    </select>
-    <button class="rt-btn" id="rt-step" title="Run one step at a time">Step</button>
-    <button class="rt-btn rt-primary" id="rt-run">▶ Run</button>
   </div>
-  <div class="rt-body">
-    <aside class="rt-palette" id="rt-palette" aria-label="Commands"></aside>
-    <div class="rt-wrap">
-      <div id="canvas"></div>
-      <div class="rt-status" id="rt-status" aria-live="polite"></div>
-      <div class="rt-toast" id="rt-toast" role="status"></div>
+  <div class="rt-main">
+    <div class="rt-3dwrap" data-thumb>
+      <div class="rt-3d" id="rt-3d" role="img" aria-label="The robot cell in 3D"></div>
+      <div class="rt-hud" id="rt-hud" aria-live="polite"></div>
+      <div class="rt-joints" id="rt-joints" aria-label="Joint angles"></div>
+      <button class="rt-btn rt-viewreset" id="rt-viewreset" title="Put the 3D camera back" hidden>Reset view</button>
+      <section class="rt-library" id="rt-library" aria-label="Library" hidden>
+        <header><b>Library</b><span class="rt-libhint" id="rt-libhint"></span><span class="rt-sp"></span><button class="rt-tbx" id="rt-lib-close" aria-label="Close the library">×</button></header>
+        <div class="rt-libgroups" id="rt-palette"></div>
+      </section>
     </div>
     <aside class="rt-side" aria-label="The cell">
-      <div class="rt-cellbox"><h2>The cell</h2><div id="rt-cell"></div></div>
+      <div class="rt-cellbox"><h2>The cell, from above</h2><div id="rt-cell"></div></div>
       <div class="rt-stats" id="rt-stats"></div>
       <div class="rt-logbox"><h2>Run log</h2><ol class="rt-log" id="rt-log"></ol></div>
     </aside>
+  </div>
+  <div class="rt-dock">
+    <div class="rt-dockgrip" id="rt-dockgrip" title="Drag to make the timeline taller or shorter" aria-hidden="true"></div>
+    <div class="rt-dockl"><button class="rt-libbtn" id="rt-lib-toggle" aria-expanded="false" aria-controls="rt-library" title="Library: drag commands onto the timeline">+</button><span class="rt-libcap">Library</span></div>
+    <div class="rt-wrap">
+      <div id="canvas"></div>
+      <div class="rt-hscroll" id="rt-hscroll" hidden><div class="rt-hthumb" id="rt-hthumb"></div></div>
+      <div class="rt-status" id="rt-status" aria-live="polite"></div>
+      <div class="rt-toast" id="rt-toast" role="status"></div>
+    </div>
+    <div class="rt-dockr">
+      <button class="rt-play rt-primary" id="rt-run" title="Run the program">▶ Run</button>
+      <div class="rt-runrow">
+        <button class="rt-btn" id="rt-step" title="Run one step at a time">Step</button>
+        <select class="rt-select" id="rt-speed" aria-label="Run speed">
+          <option value="1">×1</option><option value="4" selected>×4</option><option value="10">×10</option><option value="30">×30</option>
+        </select>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -127,10 +145,11 @@ export const RobotTimeline = component$(() => (
 import { render, NodeModel, LinkModel, PortModel, Command, registerConnectionValidator } from '../shell/grafloria.js';
 import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
 import { COMMANDS, REPEAT, DEVICES, OUTFEED_SLOTS, sampleSimple, sampleAdvanced, findItem, allSteps, newProps, canRun, settingsPage, durationOf, fmt, itemSeconds, isArm } from './robot-timeline-catalog.js';
-import { schedule, check as checkProgram, runEvents, cellAt, topOf, perHour, clock } from './robot-timeline-schedule.js';
+import { schedule, check as checkProgram, runEvents, cellAt, effect, topOf, perHour, clock } from './robot-timeline-schedule.js';
 import { layout } from './robot-timeline-layout.js';
 import { cardTree, frameTree, toHtml, iconCss, chipHtml, laneHeadHtml, icon, esc, SIMPLE, ADV } from './robot-timeline-cards.js';
 import { drawCell } from './robot-timeline-cell.js';
+import { createCell3D } from './robot-timeline-3d.js';
 
 /* ================================================================================
    ROBOT CELL PROGRAMMER — a timeline of commands for a multi-use robot arm.
@@ -171,14 +190,14 @@ const SYNC_STYLE = () => ({ stroke: getComputedStyle($('stage')).getPropertyValu
 
 defineDemo({
   name: 'Robot cell programmer',
-  blurb: 'Program a multi-use robot arm on a timeline. Drag commands from the palette into place (Pick, Place, Insert into, Close lid, Stamp…), set each one in a Fieldia popup, wrap steps in a Repeat loop, and press Run: the cards light up in turn while the cell view shows the arm fetching, filling, closing and stamping each box. Simple mode is one line for one arm; Advanced puts two arms, a conveyor and a vision camera in lanes on a time ruler, where a dashed line makes one step wait for another. The program is checked as you edit: a Place with an empty gripper or a seventh box for a six-slot pallet is flagged on its card, and Run says what to fix.',
+  blurb: 'Program a multi-use robot arm on a timeline docked along the bottom, and watch it work in 3D. Open the Library and drag commands into place (Pick, Place, Insert into, Close lid, Stamp…), set each one in a Fieldia popup, and wrap steps in a Repeat loop whose way back runs port to port. Press Run: the six-axis cobot in the centre reaches, grips, inserts, presses and stamps while its A1–A6 joint angles count, the cards light up in turn, and a map of the cell from above and a run log follow along. Simple mode is one line for one arm; Advanced puts two arms, a conveyor and a vision camera in lanes on a time ruler, where a dashed line makes one step wait for another. The program is checked as you edit: a Place with an empty gripper or a seventh box for a six-slot pallet is flagged on its card, and Run says what to fix.',
   howTo: [
-    'Read the Simple sample left to right: Pick a box base from Infeed A, Place it on the work pallet, Pick an insert and Insert it into the box, Pick a lid and Close it, Stamp the box, then Pick it up and Place it on the outfeed pallet. The purple frame repeats those nine steps six times, one box per outfeed slot.',
-    'Press ▶ Run: each card lights up and fills its progress bar, the frame counts its passes, and the cell view on the right shows the arm turning to each station, the box filling up, the lid going on and the stamp mark appearing; finished boxes land in the outfeed slots. Change the speed, press Step to go one step at a time, or Stop.',
-    'Drag a command from the palette (left) onto the timeline (or tap it, or focus it and press Enter, to add it at the end): a blue caret shows where it will go, inside the frame or outside it. Let go and its settings open in a popup. Drag a card to move it, drop it outside the frame to take it out of the loop. Drop Repeat on a step outside a loop to loop it.',
-    'Click a card\'s gear (or double-click the card) to change its settings: where it picks from, which slot it fills, the stamp text, the press force. Click the frame\'s "Repeat × 6" header to change the count. Every edit, move and delete is one undo step (Ctrl/⌘+Z, ⇧ for redo).',
+    'Read the Simple sample in the dock along the bottom, left to right: Pick a box base from Infeed A, Place it on the work pallet, Pick an insert and Insert it, Pick a lid and Close it, Stamp the box, then Pick it up and Place it on the outfeed pallet. The purple frame repeats those nine steps six times; its way back leaves the last step\'s port and enters the first step\'s port.',
+    'Press ▶ Run (right of the dock): the 3D cobot in the centre turns to each station, reaches down, closes its fingers on the part and carries it; the A1–A6 panel shows its joint angles as it moves, the running card fills its progress bar, and the map of the cell from above, the numbers and the run log on the right follow along. Change the speed, press Step to go one step at a time, or Stop. Drag the 3D view to turn it, use the wheel to zoom, and Reset view to put it back.',
+    'Press + (left of the dock) to open the Library and drag a command onto the timeline: a blue caret shows where it will go, inside the frame or outside it. Let go and its settings open in a popup. Drag a card to move it, drop it outside the frame to take it out of the loop. Drop Repeat on a step outside a loop to loop it. Tap a command (or focus it and press Enter) to add it at the end.',
+    'Click a card\'s gear (or double-click the card) to change its settings: where it picks from, which slot it fills, the stamp text, the press force. Click the frame\'s "Repeat × 6" header to change the count. Every edit, move and delete is one undo step (Ctrl/⌘+Z, ⇧ for redo). Drag the dock\'s top edge to make the timeline taller or shorter.',
     'Break it on purpose: drag the insert\'s Pick after the Insert, delete the Stamp, or set the loop to 7. The card that would go wrong turns red (or amber for a warning) and says why — "The gripper is empty", "The outfeed pallet is full" — and Run refuses until it is fixed.',
-    'Switch to Advanced (each mode keeps its own program; a switch starts a fresh undo history): the conveyor brings a box, Arm A loads it with three inserts (a Repeat × 3), Arm B closes and stamps it, the camera inspects it and Arm A carries it to the outfeed. Card widths are seconds on the ruler; the dashed lines are waits and the hatched bars show a lane waiting. Delete a wait (click it, Delete) and watch the lane slide left and the camera complain; drag from a card\'s right dot to a card in another lane to add one.',
+    'Switch to Advanced (each mode keeps its own program; a switch starts a fresh undo history): the 3D cell now has a conveyor, a camera on a pole and two arms. The conveyor brings a box, Arm A loads it with three inserts (a Repeat × 3), Arm B closes and stamps it, the camera inspects it and Arm A carries it to the outfeed. Card widths are seconds on the ruler; the dashed lines are waits and the hatched bars show a lane waiting. Delete a wait (click it, Delete) and watch the lane slide left and the camera complain; drag from a card\'s right dot to a card in another lane to add one.',
     'In Advanced, a lane only takes the commands its device can run: dropping Pick on the camera lane is refused with the reason. The status bar under the timeline gives the cycle time and the boxes per hour, and Run plays all the cycles on the time ruler.',
   ],
 
@@ -240,7 +259,7 @@ defineDemo({
         el.style.transform = `scale(${1 / Math.max(0.6, z)})`;
       });
     };
-    api.on('viewport:change', syncLayers);
+    api.on('viewport:change', () => { syncLayers(); ctx.clampView?.(); ctx.showScroll?.(); });
 
     const toast = (text) => { const t = $('rt-toast'); t.textContent = text; t.classList.add('on'); clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('on'), 2800); };
     ctx.toast = toast;
@@ -256,8 +275,57 @@ defineDemo({
     };
     ctx.toWorld = toWorld; ctx.toClient = toClient;
 
-    // ---- the cell view ------------------------------------------------------------------
-    let cellView = null;
+    // ---- the cell views: the map from above (right) and the cell in 3D (centre) -----------
+    let cellView = null, cell3d = null;
+    const emptyCell = () => ({ hold: {}, work: null, outfeed: [], belt: false, rejects: 0 });
+    function buildCells() {
+      cellView = drawCell($('rt-cell'), prog());
+      cell3d?.dispose();
+      cell3d = createCell3D($('rt-3d'), prog());
+      ctx.cell3d = cell3d;
+      $('rt-viewreset').hidden = true;                // shown once the view is turned or zoomed
+      cell3d.onView = (moved) => { $('rt-viewreset').hidden = !moved; };
+    }
+    /**
+     * What the cameras see at time t: the cell with every finished step applied, plus each running
+     * step's effect once its part has visibly changed hands (70 % in: the fingers closed or opened).
+     */
+    function visualAt(t) {
+      const { cell, running } = cellAt(prog(), RUN.events, t);
+      const seen = clone(cell);
+      for (const r of running) if (r.k >= 0.7) effect(seen, r);
+      return { cell: seen, running };
+    }
+    const armLanes = () => prog().lanes.filter((l) => l.device === 'arm' || DEVICES[l.device]?.arm);
+    function showJoints() {
+      const j = cell3d?.joints?.() ?? {};
+      $('rt-joints').innerHTML = armLanes().map((l) => {
+        const q = j[l.id]?.q ?? [0, 0, 0, 0, 0, 0];
+        const name = l.device === 'arm' ? 'Joints' : DEVICES[l.device].label.split(' —')[0];
+        return `<div class="rt-jbox"><h4>${esc(name)}</h4><table>${q.map((v, i) => `<tr><td>A${i + 1}</td><td>${v.toFixed(1)}°</td></tr>`).join('')}</table></div>`;
+      }).join('');
+    }
+    function showHud(running = []) {
+      const p = prog();
+      const rows = running.length
+        ? running.map((r) => {
+          const lane = p.lanes.find((l) => l.id === r.lane);
+          const who = p.mode === 'advanced' ? `${DEVICES[lane.device].label.split(' —')[0]} · ` : `#${numbers.get(r.step.id) ?? ''} · `;
+          const loop = r.loop ? findItem(p, r.loop)?.item : null;
+          const pass = loop ? ` <span style="color:var(--rt-mut)">pass ${r.pass + 1}/${Number(loop.props.times) || 1}</span>` : '';
+          return `<div class="rt-hudrow">${icon(COMMANDS[r.step.cmd].icon, 14)}<span>${esc(who)}<b>${esc(COMMANDS[r.step.cmd].label)}</b> ${esc(COMMANDS[r.step.cmd].summary(r.step.props))}${pass}</span></div>`;
+        }).join('')
+        : `<div class="rt-hudrow">${RUN.on ? '<b>Waiting</b>' : `<b>${p.mode === 'simple' ? 'One arm' : 'Two arms, a conveyor and a camera'}</b> · press ▶ Run`}</div>`;
+      $('rt-hud').innerHTML = rows + '<span class="rt-hudhint">Drag to turn the view · wheel to zoom</span>';
+    }
+    /** Not running: the arms at home, an empty cell. */
+    function showIdle() {
+      cellView?.update(emptyCell(), []);
+      cell3d?.update({ cell: emptyCell(), running: [], events: [], t: 0 });
+      showJoints();
+      showHud([]);
+    }
+    ctx.showIdle = showIdle;
 
     // ---- painting -------------------------------------------------------------------------
     const RUN = { on: false, paused: false, t: 0, speed: 4, events: [], total: 0, raf: 0, last: 0, logged: 0, status: new Map(), stepMode: false, until: null };
@@ -358,8 +426,8 @@ defineDemo({
           for (const it of lane.items) {
             if (want.has(it.id)) continue;
             const w = it.loop ? 140 : Math.max(30, durationOf(it) * ADV.PPS - 4);
-            want.set(it.id, { x, y: ADV.RULER + li * ADV.LANE_H + 34, w, h: ADV.H, kind: it.loop ? 'loop' : 'step', lane: lane.id, loop: null });
-            if (it.loop) it.steps.forEach((s, j) => want.set(s.id, { x: x + 8 + j * 34, y: ADV.RULER + li * ADV.LANE_H + 34, w: 30, h: ADV.H, kind: 'step', lane: lane.id, loop: it.id }));
+            want.set(it.id, { x, y: ADV.RULER + li * ADV.LANE_H + ADV.LANE_TOP, w, h: ADV.H, kind: it.loop ? 'loop' : 'step', lane: lane.id, loop: null });
+            if (it.loop) it.steps.forEach((s, j) => want.set(s.id, { x: x + 8 + j * 34, y: ADV.RULER + li * ADV.LANE_H + ADV.LANE_TOP, w: 30, h: ADV.H, kind: 'step', lane: lane.id, loop: it.id }));
             x += w + 12;
           }
         });
@@ -398,7 +466,7 @@ defineDemo({
       const p = prog(), L = S.L;
       const parts = [], top = [];
       if (p.mode === 'advanced') {
-        const left = -ADV.HEAD_W - 20, width = L.width - left + 40;
+        const left = -ADV.HEAD_W - 2000, width = L.width + 6000;
         L.lanes.forEach((ln) => parts.push(`<div class="rt-lane" data-lane="${ln.id}" style="left:${left}px;top:${ln.y}px;width:${width}px;height:${ln.h}px"></div>`));
         // ruler
         const ticks = [];
@@ -417,11 +485,27 @@ defineDemo({
         top.push(`<div class="rt-playhead" id="rt-playhead" hidden style="left:0;top:${ADV.RULER - 6}px;height:${L.height - ADV.RULER + 6}px"><span>0.0 s</span></div>`);
       } else {
         const ln = L.lanes[0];
-        parts.push(`<div class="rt-lane" data-lane="${ln.id}" style="left:${-30}px;top:${ln.y}px;width:${L.width + 60}px;height:${ln.h}px;border-radius:18px;border:1px solid var(--rt-line)"></div>`);
-        const ar = L.arrows.map((a) => `<path d="M${a.x1} ${a.y1} H${a.x2 - 6}" /><path d="M${a.x2 - 7} ${a.y2 - 4.5} L${a.x2} ${a.y2} L${a.x2 - 7} ${a.y2 + 4.5}" class="rt-ah"/>`).join('');
+        const ar = L.arrows.map((a) => `<path d="M${a.x1 + 5} ${a.y1} H${a.x2 - 6}" /><path d="M${a.x2 - 12} ${a.y2 - 4.5} L${a.x2 - 5} ${a.y2} L${a.x2 - 12} ${a.y2 + 4.5}" class="rt-ah"/>`).join('');
         parts.push(`<svg style="position:absolute;left:0;top:0;overflow:visible" width="1" height="1"><g fill="none" stroke="var(--rt-faint)" stroke-width="1.8" stroke-linecap="round">${ar}</g></svg>`);
-        top.push(`<div style="position:absolute;left:${SIMPLE.X0}px;top:${ln.y - 26}px;font:600 12px system-ui,sans-serif;color:var(--rt-mut);display:flex;gap:8px;align-items:center;white-space:nowrap">${icon('arm', 15)} Robot arm — one line, steps run left to right</div>`);
       }
+      // A loop's way back: out of its LAST step's port (the right side, at the card's vertical
+      // middle), under the row, and into its FIRST step's port (the left side) — port to port,
+      // like the arrows between steps. Simple and Advanced draw it the same way.
+      const dots = [];
+      const ways = (L.loops ?? []).map((lp) => {
+        const f = L.boxes.get(lp.first), l = L.boxes.get(lp.last);
+        if (!f || !l) return '';
+        const y = f.y + f.h / 2, x0 = f.x, x1 = l.x + l.w, b = lp.below, o = p.mode === 'advanced' ? 5 : 12, r = p.mode === 'advanced' ? 4 : 8;
+        dots.push([x1, y], [x0, y]);
+        const d = `M${x1} ${y} H${x1 + o - r} Q${x1 + o} ${y} ${x1 + o} ${y + r} V${b - r} Q${x1 + o} ${b} ${x1 + o - r} ${b} H${x0 - o + r} Q${x0 - o} ${b} ${x0 - o} ${b - r} V${y + r} Q${x0 - o} ${y} ${x0 - o + r} ${y} H${x0 - 6}`;
+        const head = `M${x0 - 7} ${y - 4.5} L${x0} ${y} L${x0 - 7} ${y + 4.5}`;
+        const label = p.mode === 'advanced' ? `↺ ×${lp.times}` : `↺ back to the first step · ${lp.times} passes`;
+        top.push(`<div class="rt-wayback${p.mode === 'advanced' ? ' rt-wb-compact' : ''}" data-wayback="${lp.loop}" style="left:${(x0 + x1) / 2}px;top:${b}px">${esc(label)}</div>`);
+        return `<path class="rt-wb" data-wayback-path="${lp.loop}" d="${d}"/><path class="rt-wb rt-wbh" d="${head}"/>`;
+      }).join('');
+      if (p.mode === 'simple') for (const a of L.arrows) dots.push([a.x1, a.y1], [a.x2, a.y2]);
+      parts.push(`<svg class="rt-wbsvg" style="position:absolute;left:0;top:0;overflow:visible" width="1" height="1"><g fill="none" stroke-linecap="round" stroke-linejoin="round">${ways}</g></svg>`);
+      top.push(`<svg style="position:absolute;left:0;top:0;overflow:visible" width="1" height="1">${dots.map(([x, y]) => `<circle class="rt-port" cx="${x}" cy="${y}" r="${p.mode === 'advanced' ? 3.5 : 4.5}"/>`).join('')}</svg>`);
       under.innerHTML = parts.join('');
       over.innerHTML = top.join('') + '<div class="rt-caret" id="rt-caret" hidden></div><div class="rt-wraptarget" id="rt-wraptarget" hidden></div>';
       syncLayers();
@@ -430,6 +514,7 @@ defineDemo({
     // ---- chrome: mode, job, palette, status, stats --------------------------------------------
     function renderChrome() {
       const p = prog();
+      stage.classList.toggle('rt-mode-advanced', p.mode === 'advanced');
       $('rt-simple').setAttribute('aria-selected', String(p.mode === 'simple'));
       $('rt-adv').setAttribute('aria-selected', String(p.mode === 'advanced'));
       $('rt-job').innerHTML = p.mode === 'simple'
@@ -456,7 +541,8 @@ defineDemo({
       const hint = S.mode === 'simple'
         ? 'Drag a command onto the line. Drop Repeat on a step outside a loop to loop it.'
         : 'Drag a command into a lane its device can run. Drag from a card\'s right dot to a card in another lane to make it wait.';
-      $('rt-palette').innerHTML = groups.map(([t, cmds]) => `<section class="rt-pgroup"><h3>${t}</h3><div class="rt-plist">${cmds.map(chipHtml).join('')}</div></section>`).join('') + `<p class="rt-phint">${hint}</p>`;
+      $('rt-palette').innerHTML = groups.map(([t, cmds]) => `<section class="rt-pgroup"><h3>${t}</h3><div class="rt-plist">${cmds.map(chipHtml).join('')}</div></section>`).join('');
+      $('rt-libhint').textContent = hint;
     }
     function renderStatus() {
       const p = prog(), sched = S.sched;
@@ -871,6 +957,11 @@ defineDemo({
       b.classList.toggle('rt-stop', RUN.on); b.classList.toggle('rt-primary', !RUN.on);
       $('rt-step').textContent = RUN.on && RUN.paused ? 'Next step' : 'Step';
       for (const id of ['rt-undo', 'rt-redo', 'rt-reset', 'rt-simple', 'rt-adv']) $(id).disabled = RUN.on || (id === 'rt-undo' && !cm.canUndo()) || (id === 'rt-redo' && !cm.canRedo());
+      // the status line says what the cell is doing, not that the program is ready
+      if (!S.sched) return;
+      if (!RUN.on) { renderStatus(); return; }
+      const el = document.querySelector('#rt-status .rt-probs');
+      if (el) { el.className = 'rt-probs rt-clean'; el.textContent = RUN.paused ? '⏸ Paused, press Next step' : '▶ Running'; }
     }
     function startRun({ paused = false } = {}) {
       const errs = [...S.problems].filter(([, v]) => v.level === 'error');
@@ -882,6 +973,7 @@ defineDemo({
         return false;
       }
       select(null);
+      ctx.setLibrary?.(false);
       const p = prog();
       RUN.events = runEvents(p, S.sched);
       RUN.total = RUN.events.reduce((m, e) => Math.max(m, e.end), 0);
@@ -890,7 +982,7 @@ defineDemo({
       $('rt-log').innerHTML = '';
       log(`Started: ${p.mode === 'simple' ? 'one arm, one line' : `${p.cycles} cycle${p.cycles > 1 ? 's' : ''} of the two-arm cell`}`, 'rt-lok', 0);
       setRunButtons();
-      cellView.update({ hold: {}, work: null, outfeed: [], belt: false, rejects: 0 }, []);
+      cellView.update(emptyCell(), []);
       const ph = $('rt-playhead'); if (ph) ph.hidden = false;
       RUN.last = performance.now();
       cancelAnimationFrame(RUN.raf);
@@ -920,8 +1012,11 @@ defineDemo({
     }
     function showRun() {
       const p = prog(), t = RUN.t;
-      const { cell, running } = cellAt(p, RUN.events, t);
+      const { cell, running } = visualAt(t);
       cellView.update(cell, running);
+      cell3d?.update({ cell, running, events: RUN.events, t });
+      showJoints();
+      showHud(running);
       const cycleLen = p.mode === 'advanced' ? S.sched.seconds : Infinity;
       const cycle = p.mode === 'advanced' ? Math.min((p.cycles || 1) - 1, Math.floor(t / cycleLen)) : 0;
       const status = new Map();
@@ -984,6 +1079,7 @@ defineDemo({
       RUN.on = false;
       cancelAnimationFrame(RUN.raf);
       log(`Done: ${n} box${n === 1 ? '' : 'es'} in ${clock(RUN.total)}`, 'rt-lok');
+      $('rt-hud').innerHTML = `<div class="rt-hudrow"><b>Done</b> · ${n} box${n === 1 ? '' : 'es'} in ${esc(clock(RUN.total))} · press ▶ Run to go again</div><span class="rt-hudhint">Drag to turn the view · wheel to zoom</span>`;
       setRunButtons();
       ctx.lastRun = { boxes: n, seconds: RUN.total };
     }
@@ -995,6 +1091,7 @@ defineDemo({
       RUN.status = new Map();
       for (const id of ids) paint(id);
       const ph = $('rt-playhead'); if (ph) ph.hidden = true;
+      showIdle();                                    // stopped: the arms go home, the cell is cleared
       if (!silent) log('Stopped', 'rt-lerr');
       setRunButtons();
       renderStatus();
@@ -1019,54 +1116,145 @@ defineDemo({
       // Each mode keeps its own program; the engine's own steps (a wait drawn, a link
       // deleted) name the canvas they were made on, so a switch starts a fresh history.
       cm.clear();
-      cellView = drawCell($('rt-cell'), prog());
+      ctx.applyDock?.();
+      buildCells();
       $('rt-log').innerHTML = '';
       renderChrome();
+      showIdle();
     };
     ctx.setMode = setMode;
     $('rt-simple').addEventListener('click', () => setMode('simple'));
     $('rt-adv').addEventListener('click', () => setMode('advanced'));
 
-    // ---- framing ------------------------------------------------------------------------------
-    function frame() {
-      const L = S.L, r = host.getBoundingClientRect();
-      if (!L || !r.width) return;
-      const simple = prog().mode === 'simple';
-      const left = simple ? 0 : -ADV.HEAD_W - 20;
-      const top = simple ? L.lanes[0].y - 40 : -20;
-      const w = L.width - left + 20, h = simple ? L.lanes[0].h + 60 : L.height + 20;
-      const z = simple ? Math.max(0.6, Math.min(1, (r.height - 40) / h)) : Math.max(0.72, Math.min(1, (r.width - 40) / w, (r.height - 40) / h));
-      api.viewport.setZoom(z);
-      const vb = viewBox();
-      if (w <= vb.width - 10) panTo(left + w / 2, top + h / 2);
-      else panTo(left - 10, top + h / 2, 0, 0.5);
+    // ---- framing: the timeline IS the dock ------------------------------------------------------
+    // Not a window onto a canvas: the timeline fills the dock's height exactly (the zoom is what
+    // fits), never drifts up or down, starts flush left, and the wheel scrolls it sideways like any
+    // timeline. "Fit" toggles an overview of the whole program; a resize keeps your place.
+    const PAD = 10;
+    function extent() {
+      const L = S.L;
+      if (!L) return null;
+      if (prog().mode === 'advanced') return { x0: -ADV.HEAD_W - 24, x1: L.width + 24, y0: 0, y1: L.height + 4 };
+      let y0 = Infinity, y1 = -Infinity, x1 = SIMPLE.X0 + SIMPLE.W;
+      for (const b of L.boxes.values()) { y0 = Math.min(y0, b.y); y1 = Math.max(y1, b.y + b.h); x1 = Math.max(x1, b.x + b.w); }
+      for (const lp of L.loops ?? []) y1 = Math.max(y1, lp.below + 10);
+      if (!Number.isFinite(y0)) { y0 = SIMPLE.LANE_Y; y1 = SIMPLE.LANE_Y + SIMPLE.H; }
+      return { x0: SIMPLE.X0 - 24, x1: x1 + 24, y0: y0 - 6, y1: y1 + 6 };
+    }
+    let overview = false, clamping = false;
+    /** Keep the program centred top to bottom and the view on it left to right. */
+    function clampView() {
+      const e = extent();
+      if (!e || clamping) return;
+      const vb = viewBox(), v = api.viewport.getViewport(), w = e.x1 - e.x0;
+      const dy = (e.y0 + e.y1) / 2 - (vb.y + vb.height / 2);
+      const nx = w <= vb.width ? (overview ? e.x0 - (vb.width - w) / 2 : e.x0) : Math.max(e.x0, Math.min(e.x1 - vb.width, vb.x));
+      const dx = nx - vb.x;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+      clamping = true;
+      try { api.viewport.setViewport({ ...v, x: v.x + dx, y: v.y + dy }); } finally { clamping = false; }
       syncLayers();
+    }
+    ctx.clampView = clampView;
+    ctx.extent = extent;
+    /** The slim scrollbar under the timeline, and a fade at whichever edge has more to see. */
+    function showScroll() {
+      const e = extent(), bar = $('rt-hscroll'), wrap = bar?.parentElement;
+      if (!e || !bar) return;
+      const vb = viewBox(), w = e.x1 - e.x0, ratio = vb.width / w;
+      const more = ratio < 0.995;
+      bar.hidden = !more;
+      wrap.classList.toggle('rt-more-left', more && vb.x > e.x0 + 1);
+      wrap.classList.toggle('rt-more-right', more && vb.x + vb.width < e.x1 - 1);
+      if (!more) return;
+      const th = $('rt-hthumb');
+      th.style.left = `${Math.max(0, Math.min(1 - ratio, (vb.x - e.x0) / w)) * 100}%`;
+      th.style.width = `${ratio * 100}%`;
+    }
+    ctx.showScroll = showScroll;
+    $('rt-hscroll').addEventListener('pointerdown', (ev) => {
+      const e = extent(), bar = $('rt-hscroll'), r = bar.getBoundingClientRect();
+      if (!e) return;
+      ev.preventDefault();
+      const perPx = (e.x1 - e.x0) / r.width;
+      const onThumb = ev.target.id === 'rt-hthumb';
+      if (!onThumb) {                                   // a click on the track pages towards it
+        const vb = viewBox(), v = api.viewport.getViewport(), at = e.x0 + (ev.clientX - r.left) * perPx;
+        api.viewport.setViewport({ ...v, x: v.x + (at < vb.x ? -vb.width : vb.width) * 0.9 });
+        clampView(); syncLayers(); api.renderNow();
+        return;
+      }
+      bar.setPointerCapture(ev.pointerId);
+      let lastX = ev.clientX;
+      const move = (m) => { const v = api.viewport.getViewport(); api.viewport.setViewport({ ...v, x: v.x + (m.clientX - lastX) * perPx }); lastX = m.clientX; clampView(); syncLayers(); api.renderNow(); };
+      const up = () => { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); };
+      bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up);
+    });
+    /** The dock fit: the zoom that fills the dock's height (readable: 0.45–1). */
+    function frame({ keepX = false } = {}) {
+      overview = false;
+      const e = extent(), r = host.getBoundingClientRect();
+      if (!e || !r.height) return;
+      const left = keepX ? viewBox().x : e.x0;
+      api.viewport.setZoom(Math.max(0.45, Math.min(1, (r.height - 2 * PAD) / (e.y1 - e.y0))));
+      panTo(left, (e.y0 + e.y1) / 2, 0, 0.5);
+      clampView();
+      syncLayers();
+      showScroll();
       api.renderNow();
     }
     ctx.frame = frame;
-    /** The whole program in view, at whatever zoom that takes. */
+    /** The overview: the whole program in view, at whatever zoom that takes. */
     function fitAll() {
-      const L = S.L, r = host.getBoundingClientRect();
-      if (!L || !r.width) return;
-      const adv = prog().mode === 'advanced';
-      const left = adv ? -ADV.HEAD_W - 20 : 0, top = adv ? -20 : L.lanes[0].y - 40;
-      const w = L.width - left + 40, h = adv ? L.height + 30 : L.lanes[0].h + 60;
-      api.viewport.setZoom(Math.min(1, (r.width - 30) / w, (r.height - 30) / h));
-      panTo(left + w / 2, top + h / 2);
+      overview = true;
+      const e = extent(), r = host.getBoundingClientRect();
+      if (!e || !r.width) return;
+      api.viewport.setZoom(Math.min(1, (r.width - 2 * PAD) / (e.x1 - e.x0), (r.height - 2 * PAD) / (e.y1 - e.y0)));
+      panTo((e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2);
+      clampView();
       syncLayers();
       api.renderNow();
     }
     ctx.fitAll = fitAll;
-    let fitted = false;
-    $('rt-fit').addEventListener('click', () => { fitted = !fitted; if (fitted) fitAll(); else frame(); });
+    // the wheel scrolls the timeline sideways (and never zooms it out of the dock's fit)
+    host.addEventListener('wheel', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const v = api.viewport.getViewport();
+      api.viewport.setViewport({ ...v, x: v.x + d / api.viewport.getZoom() });
+      clampView(); syncLayers(); api.renderNow();
+    }, { capture: true, passive: false });
+    // the dock resized (its grip, the window, a mode switch): fit its new height, keep the place
+    new ResizeObserver(() => { if (S.L) (overview ? fitAll() : frame({ keepX: true })); }).observe(host);
+    $('rt-fit').addEventListener('click', () => (overview ? frame() : fitAll()));
+
+    // ---- the library drawer ---------------------------------------------------------------------
+    const setLibrary = (open) => { $('rt-library').hidden = !open; $('rt-lib-toggle').setAttribute('aria-expanded', String(open)); };
+    $('rt-lib-toggle').addEventListener('click', () => setLibrary($('rt-library').hidden));
+    $('rt-lib-close').addEventListener('click', () => setLibrary(false));
+    ctx.setLibrary = setLibrary;
+    // The dock's top edge resizes the timeline (each mode keeps its own height).
+    const dockH = { simple: null, advanced: null };
+    const applyDock = () => { const h = dockH[S.mode]; if (h) stage.style.setProperty('--rt-dock-h', `${h}px`); else stage.style.removeProperty('--rt-dock-h'); };
+    ctx.applyDock = applyDock;
+    $('rt-dockgrip').addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const grip = e.currentTarget; grip.setPointerCapture(e.pointerId);
+      const sr = stage.getBoundingClientRect();
+      const move = (ev) => { dockH[S.mode] = Math.round(Math.max(170, Math.min(sr.height - 220, sr.bottom - ev.clientY))); applyDock(); };
+      const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); api.renderNow(); };
+      grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up);
+    });
+    $('rt-viewreset').addEventListener('click', () => cell3d?.resetView?.());
+    matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', (e) => cell3d?.setTheme(e.matches));
 
     // ---- boot ---------------------------------------------------------------------------------
-    cellView = drawCell($('rt-cell'), prog());
+    buildCells();
     await redraw({ animate: false });
+    showIdle();
     frame();
     setRunButtons();
     keysReady = true;
-    window.addEventListener('resize', () => frame());
   },
 
   async showcase(ctx) {
@@ -1117,6 +1305,32 @@ defineDemo({
     check(/Ready to run/.test(document.getElementById('rt-status').textContent), `the sample is ready to run: "${document.getElementById('rt-status').textContent.trim().slice(0, 80)}"`);
     check(/one box every/.test(document.getElementById('rt-status').textContent) && /boxes an hour/.test(document.getElementById('rt-status').textContent), 'the status bar gives the time per box and boxes an hour');
     check(!!document.querySelector('#rt-cell svg .cs-arm'), 'the cell view draws the arm');
+    // the loop's way back runs PORT TO PORT: out of the last step's right side, into the first step's left side
+    {
+      const lp = S.L.loops.find((x) => x.loop === 'cycle'), f = box(lp.first), l = box(lp.last), y = f.y + f.h / 2;
+      const d = document.querySelector('[data-wayback-path="cycle"]')?.getAttribute('d') ?? '';
+      check(d.startsWith(`M${l.x + l.w} ${y} `) && d.endsWith(`H${f.x - 6}`), `the loop's way back leaves the LAST step's port and enters the FIRST step's port (${d.slice(0, 24)}… ${d.slice(-12)})`);
+      const dots = [...document.querySelectorAll('.rt-over circle.rt-port')].map((c) => `${c.getAttribute('cx')},${c.getAttribute('cy')}`);
+      check(dots.includes(`${l.x + l.w},${y}`) && dots.includes(`${f.x},${y}`), 'both ends of the way back sit on a port dot');
+      check(/back to the first step · 6 passes/.test(document.querySelector('[data-wayback="cycle"]')?.textContent ?? ''), 'the way back says how many passes');
+    }
+    // the 3D cell
+    check(ctx.cell3d?.ok === true && ctx.cell3d.canvas.clientWidth > 200 && ctx.cell3d.canvas.clientHeight > 150, 'the 3D cell is drawn in the centre');
+    check(/Joints/.test(document.getElementById('rt-joints').textContent) && /A6/.test(document.getElementById('rt-joints').textContent), 'the joint panel lists A1 to A6');
+    {
+      const cv = ctx.cell3d.canvas, r = cv.getBoundingClientRect(), vr = document.getElementById('rt-viewreset');
+      check(vr.hidden, '"Reset view" is hidden while the camera is where it started');
+      fire('pointerdown', r.left + r.width / 2, r.top + r.height / 2, cv);
+      fire('pointermove', r.left + r.width / 2 + 60, r.top + r.height / 2 + 10, cv);
+      fire('pointerup', r.left + r.width / 2 + 60, r.top + r.height / 2 + 10, cv);
+      check(!vr.hidden, 'dragging the 3D view turns it, and "Reset view" appears');
+      vr.click();
+      check(vr.hidden && !ctx.cell3d.moved(), '"Reset view" puts the camera back and hides again');
+    }
+    // the library: a drawer that starts closed; the + opens it
+    check(document.getElementById('rt-library').hidden, 'the library starts closed, so the 3D cell is in full view');
+    document.getElementById('rt-lib-toggle').click(); await raf();
+    check(!document.getElementById('rt-library').hidden && !!document.querySelector('#rt-library .rt-chip[data-chip="pick"]'), 'the + opens the library with its commands');
     check(cardEl('p1').textContent.includes('from Infeed A') && cardEl('p7').textContent.includes('LOT'), 'cards say what they do (from Infeed A, the stamp text)');
 
     // ② drag a palette chip into the loop, between the insert's Pick and the Insert
@@ -1198,6 +1412,19 @@ defineDemo({
     // ⑧ Run: cards light up, the arm moves, six boxes reach the outfeed
     check(ctx.startRun() === true && ctx.RUN.on, 'Run starts on a clean program');
     ctx.RUN.paused = true;
+    check(document.getElementById('rt-library').hidden, 'Run closes the library, so the cell is in full view');
+    check(/Running/.test(document.getElementById('rt-status').textContent), `the status line says the cell is running ("${document.getElementById('rt-status').textContent.trim().slice(0, 30)}")`);
+    // the arm goes where the step says: 60 % into the first Pick its finger tips are down at Infeed A
+    const p1 = ctx.RUN.events.find((e) => e.step.id === 'p1');
+    ctx.seek(p1.start + 0.6 * (p1.end - p1.start)); await raf();
+    {
+      const tip = ctx.cell3d.tip('arm'), stn = ctx.cell3d.station('infeedA');
+      const off = Math.hypot(tip.x - stn.x, tip.z - stn.z), dy = Math.abs(tip.y - (stn.y + 0.012));
+      check(off < 0.03 && dy < 0.03, `60 % into "Pick from Infeed A" the finger tips are at the stack (${(off * 100).toFixed(1)} cm across, ${(dy * 100).toFixed(1)} cm up)`);
+      check(/Pick/.test(document.getElementById('rt-hud').textContent) && /Infeed A/.test(document.getElementById('rt-hud').textContent), 'the HUD names the running step');
+    }
+    ctx.seek(p1.end + 0.05); await raf();
+    check(ctx.cell3d.held('arm') === 'base' && ctx.cell3d.joints().arm.grip < 0.3, `after the Pick the gripper is closed on a box base (holds ${ctx.cell3d.held('arm')}, grip ${ctx.cell3d.joints().arm.grip})`);
     ctx.seek(3.5);
     await raf();
     check(!!host.querySelector('.rt-card.rt-running'), 'a running step lights up');
@@ -1214,9 +1441,34 @@ defineDemo({
     await new Promise((r) => setTimeout(r, 160));
     check(!ctx.RUN.on && /Done: 6 boxes/.test(document.getElementById('rt-log').textContent), 'the run finishes and the log says "Done: 6 boxes"');
 
+    // ⑧½ the timeline IS the dock: it fits the dock's height, the wheel scrolls it sideways, it stops at the ends
+    {
+      ctx.frame(); await raf();
+      const vp = ctx.instance.viewport, e = ctx.extent();
+      let vb = vp.getViewBox();
+      check(e.y0 >= vb.y - 0.5 && e.y1 <= vb.y + vb.height + 0.5, `the dock shows the whole program top to bottom (program ${Math.round(e.y0)}–${Math.round(e.y1)}, view ${Math.round(vb.y)}–${Math.round(vb.y + vb.height)})`);
+      check(Math.abs(vb.x - e.x0) < 1, 'it starts flush with the program\'s left end');
+      const z0 = vp.getZoom(), y0 = vb.y, x0 = vb.x;
+      const wheel = (dy) => host.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, clientX: host.getBoundingClientRect().left + 200, clientY: host.getBoundingClientRect().top + 60, bubbles: true, cancelable: true }));
+      wheel(240); await raf();
+      vb = vp.getViewBox();
+      check(vb.x > x0 + 50 && Math.abs(vb.y - y0) < 0.5 && vp.getZoom() === z0, `the wheel scrolls the timeline sideways, never up/down or zoom (x ${Math.round(x0)}→${Math.round(vb.x)}, y ${Math.round(y0)}→${Math.round(vb.y)}, zoom ${z0}→${vp.getZoom()})`);
+      check(!document.getElementById('rt-hscroll').hidden && parseFloat(document.getElementById('rt-hthumb').style.left) > 0, 'the scrollbar shows, and its thumb moved along');
+      wheel(1e6); await raf();
+      vb = vp.getViewBox();
+      check(Math.abs(vb.x + vb.width - e.x1) < 1, 'scrolling stops at the program\'s right end');
+      document.getElementById('stage').style.setProperty('--rt-dock-h', '420px');
+      await new Promise((r) => setTimeout(r, 120)); await raf();
+      vb = vp.getViewBox();
+      check(e.y0 >= vb.y - 0.5 && e.y1 <= vb.y + vb.height + 0.5, 'a taller dock still fits the program top to bottom');
+      document.getElementById('stage').style.removeProperty('--rt-dock-h');
+      await new Promise((r) => setTimeout(r, 120)); ctx.fitAll(); await raf();
+    }
+
     // ⑨ Advanced: four lanes on a time ruler, waits as links
     ctx.setMode('advanced'); await settle();
     ctx.fitAll(); await raf();
+    check(Object.keys(ctx.cell3d.joints()).sort().join() === 'armA,armB', 'Advanced builds two arms in the 3D cell');
     checkEqual(document.querySelectorAll('.rt-under .rt-lane').length, 4, 'Advanced draws four lanes');
     check(/Conveyor/.test(document.querySelector('.rt-over').textContent) && /Vision camera/.test(document.querySelector('.rt-over').textContent), 'each lane is named for its device');
     checkEqual(m.getLinks().filter((l) => l.data?.sync).length, 5, 'the five waits are links');
@@ -1229,6 +1481,7 @@ defineDemo({
     check(/Ready to run/.test(document.getElementById('rt-status').textContent) && /cycle time/.test(document.getElementById('rt-status').textContent), 'the Advanced sample is ready and gives its cycle time');
 
     // ⑩ a lane only takes what its device can run
+    ctx.setLibrary(true); await raf();   // Run (⑧) closed the library
     const pick = centre('.rt-chip[data-chip="pick"]');
     const camLane = { x: cardRect('v1').right + 30, y: cardRect('v1').top + cardRect('v1').height / 2 };
     const before = JSON.stringify(prog());

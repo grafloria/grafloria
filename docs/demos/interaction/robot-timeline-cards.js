@@ -54,7 +54,7 @@ export const kindOfCmd = (cmd) => (cmd === 'repeat' || cmd === 'wait' ? 'flow' :
 
 // ---- geometry ---------------------------------------------------------------------
 export const SIMPLE = { W: 156, H: 96, GAP: 44, LANE_Y: 60, FRAME_PAD: 18, FRAME_HEAD: 34, FRAME_FOOT: 30, X0: 40 };
-export const ADV = { PPS: 50, MIN_W: 66, H: 64, LANE_H: 112, X0: 0, HEAD_W: 170, RULER: 40, FRAME_HEAD: 24, FRAME_PAD: 8 };
+export const ADV = { PPS: 50, MIN_W: 66, H: 56, LANE_H: 114, LANE_TOP: 30, X0: 0, HEAD_W: 170, RULER: 30, FRAME_HEAD: 24, FRAME_PAD: 8, FRAME_FOOT: 14 };
 
 const tool = (act, name, title) => h('span', `rt-tb rt-act-${act}`, [iconNode(name, 12)], { attrs: { title } });
 
@@ -87,7 +87,6 @@ export function frameTree(loop, opts = {}) {
   const kids = [h('div', 'rt-fhead', head, { attrs: { title: 'Repeat settings' } })];
   if (opts.empty) kids.push(h('div', 'rt-fdrop', 'Drop steps here'));
   if (opts.problem) kids.push(h('div', 'rt-fprob', opts.problem.msg));
-  if (opts.mode !== 'advanced') kids.push(h('div', 'rt-fback', [h('span', 'rt-fback-line'), h('span', 'rt-fback-label', `back to the first step · ${times} passes`)]));
   return h('div', cls, kids);
 }
 
