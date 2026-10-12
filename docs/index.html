@@ -336,6 +336,25 @@
 
       <div class="story wide">
         <div class="story-text">
+          <span class="chip">Robotics · cobot programming</span>
+          <h3>Program a robot on a timeline</h3>
+          <p><b>Drag the steps, press Run, watch the arm do it.</b> Pick, Place, Insert into, Close lid and
+            Stamp go onto a timeline docked under a 3D cell; loop a run of them, set each one in a popup, and a
+            six-axis cobot reaches, grips, presses and stamps while its cards light up in turn.</p>
+          <p>The program is checked as you edit: an empty gripper or a full pallet is flagged on its card
+            before the robot moves. Advanced mode runs two arms, a conveyor and a camera in lanes that wait for
+            each other. The timeline below is a live Grafloria canvas; the cobot is three.js, driven by the same run.</p>
+          <a class="go" href="demos/interaction/robot-timeline.html">Open the robot cell programmer →</a>
+        </div>
+        <div class="story-stage">
+          <div class="story-canvas" data-demo="robot"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
+        </div>
+      </div>
+
+      <div class="connector" aria-hidden="true"><svg viewBox="0 0 84 96"><path class="wire" d="M42 6 C 24 34, 60 62, 42 90"/><path class="flow" d="M42 6 C 24 34, 60 62, 42 90"/><circle class="handle-ring" cx="42" cy="6" r="8"/><circle class="handle" cx="42" cy="6" r="4"/><circle class="handle-ring" cx="42" cy="90" r="8"/><circle class="handle" cx="42" cy="90" r="4"/></svg></div>
+
+      <div class="story wide">
+        <div class="story-text">
           <span class="chip">Dashboards</span>
           <h3>Dashboards from pure data</h3>
           <p><b>Declare views as data; the kit packs the grid.</b> KPI cards, line, bar and donut
@@ -706,6 +725,16 @@
     const skel = frame.querySelector('.skel');
     let k;
     try { k = await loadBundle(); } catch { skel.textContent = 'demo bundle unavailable'; return; }
+    if (kind === 'robot') {
+      // The robot story is the demo's own modules: a Grafloria timeline under a 3D cell, on a loop.
+      try {
+        const m = await import('./demos/interaction/robot-timeline-mini.js');
+        await m.mountRobotStory(host, k);
+        frame.classList.add('ready');
+        if (skel) { skel.style.opacity = '0'; skel.style.pointerEvents = 'none'; }
+      } catch (e) { if (skel) skel.textContent = 'render error'; }
+      return;
+    }
     try {
       const spec = DEMOS[kind](k);
       const api = k.render(spec, host);
@@ -729,7 +758,7 @@
     } catch (e) { if (skel) skel.textContent = 'render error'; }
   }
 
-  // Lazy-mount every canvas (the hero frame + the four story frames) as it nears the viewport.
+  // Lazy-mount every canvas (the hero frame + the story frames) as it nears the viewport.
   const frames = [
     (() => { const f = document.getElementById('hero-frame'); f.dataset.demo = 'workflow'; f.querySelector('#hero-canvas').classList.add('cv'); f.querySelector('#hero-skeleton').classList.add('skel'); return f; })(),
     ...document.querySelectorAll('.story-canvas'),

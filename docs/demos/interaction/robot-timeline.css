@@ -1,5 +1,6 @@
-/* Robot cell programmer — page styles. Tokens on #stage (light), redefined for dark. */
-#stage {
+/* Robot cell programmer — page styles. Tokens on #stage and .rt-scope (light), redefined for dark;
+   .rt-scope lets another page (the landing story) wear the same cards. */
+#stage, .rt-scope {
   --rt-bg: #f3f4f7; --rt-grid: #e2e5ec; --rt-panel: #ffffff; --rt-line: #e1e4eb; --rt-field: #d5dae4;
   --rt-ink: #1b2130; --rt-mut: #626b7f; --rt-faint: #98a0b1;
   --rt-accent: #3654d1; --rt-accent-wash: #edf0fd; --rt-on-accent: #ffffff;
@@ -11,12 +12,14 @@
   --rt-run: #3654d1; --rt-lane-a: #f7f8fb; --rt-lane-b: #eff1f6;
   --rt-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 14px rgba(16, 24, 40, .07);
   --rt-cell-floor: #eef0f5; --rt-cell-pad: #ffffff; --rt-cell-stroke: #c5cbd8;
+}
+#stage {
   --rt-dock-h: 236px;
   display: grid; grid-template-rows: auto minmax(0, 1fr) var(--rt-dock-h); height: calc(100vh - 96px); min-height: 700px; container-type: inline-size;
   color: var(--rt-ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--rt-bg);
 }
 @media (prefers-color-scheme: dark) {
-  #stage {
+  #stage, .rt-scope:not(.rt-light) {
     --rt-bg: #13161d; --rt-grid: #232834; --rt-panel: #1a1e27; --rt-line: #2b313e; --rt-field: #394050;
     --rt-ink: #e7eaf1; --rt-mut: #a0a8ba; --rt-faint: #6d7588;
     --rt-accent: #8ea0f5; --rt-accent-wash: #232a45; --rt-on-accent: #0f1428;
@@ -294,3 +297,18 @@
   color: var(--rt-flow); font: 600 11px system-ui, sans-serif; }
 .rt-wayback.rt-wb-compact { font-size: 10px; padding: 0 5px; }
 .rt-port { fill: var(--rt-panel); stroke: var(--rt-faint); stroke-width: 1.6; }
+
+/* ---- the landing page's live story: the 3D cell over a docked mini timeline ------------------ */
+.rt-mini { position: absolute; inset: 0; display: grid; grid-template-rows: minmax(0, 1fr) 156px; overflow: hidden; border-radius: inherit;
+  background: var(--rt-bg); color: var(--rt-ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.rt-mini-3d { position: relative; min-height: 0; }
+.rt-mini-tl { position: relative; min-height: 0; background: var(--rt-panel); border-top: 1px solid var(--rt-line); }
+.rt-mini-cv { position: absolute; inset: 0; }
+.rt-mini-cv foreignObject { overflow: visible; }
+.rt-mini-cv rect.diagram-node, .rt-mini-cv rect.diagram-node.selected { fill: transparent !important; stroke: transparent !important; }
+.rt-mini-hud { position: absolute; left: 12px; top: 10px; z-index: 3; display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 9px;
+  background: color-mix(in srgb, var(--rt-panel) 90%, transparent); box-shadow: var(--rt-shadow); font-size: 12.5px; pointer-events: none; }
+.rt-mini-hud b { font-weight: 650; }
+.rt-mini-play { position: absolute; right: 12px; bottom: 168px; z-index: 3; border: 0; border-radius: 18px; padding: 7px 14px; cursor: pointer;
+  background: var(--rt-accent); color: var(--rt-on-accent); font: 700 12.5px system-ui, sans-serif; box-shadow: var(--rt-shadow); }
+.rt-mini-play[hidden] { display: none; }
