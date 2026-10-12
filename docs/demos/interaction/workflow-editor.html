@@ -71,6 +71,11 @@
   .we-rule { font: 500 11.5px/1 system-ui, sans-serif; color: var(--we-mut); background: var(--we-row); border: 0; border-radius: 6px; padding: 5px 8px; cursor: pointer; }
   .we-rule:hover { color: var(--we-ink); }
   [data-readonly] .we-rule-tools { visibility: hidden; }
+  /* a connection drag snapping to a card: accept or refuse */
+  .grafloria-node-host[data-connect-snap="accept"] > :first-child { box-shadow: 0 0 0 3px color-mix(in srgb, var(--we-indigo) 45%, transparent), var(--we-shadow); }
+  .grafloria-node-host[data-connect-snap="refuse"] > :first-child { box-shadow: 0 0 0 3px color-mix(in srgb, #dc2626 45%, transparent), var(--we-shadow); }
+  /* a step dragged over a wire: drop to insert */
+  #canvas .link-drop-target .diagram-link, #canvas path.link-drop-target { stroke: var(--we-indigo) !important; stroke-width: 4px !important; stroke-dasharray: 6 5; }
   /* agent: a tinted header band, typed slots along the bottom */
   .we-agent .we-head { background: linear-gradient(90deg, color-mix(in srgb, var(--we-indigo) 12%, transparent), transparent 80%); border-bottom: 1px solid var(--we-row); }
   .we-slots { display: flex; justify-content: space-around; padding: 10px 8px 0; }
@@ -115,7 +120,7 @@
 </div>
 <div id="we"><div id="canvas"></div><aside id="details" hidden></aside></div>
 <script type="module">
-import { render, SetNodeDataCommand, registerConnectionValidator, AddNodeCommand, AddLinkCommand, MacroCommand, LinkModel, buildNode } from '../shell/grafloria.js';
+import { render, SetNodeDataCommand, registerConnectionValidator, AddNodeCommand, AddLinkCommand, RemoveLinkCommand, MacroCommand, LinkModel, buildNode } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 import { TEMPLATES, KINDS, MENU, SLOT_OF } from './workflow-editor-steps.js';
 
@@ -175,10 +180,13 @@ defineDemo({
     const api = render(SPEC, ctx.host, {
       nodeTemplates: TEMPLATES,
       compactBelow: 0.6,
-      affordances: { portAdd: true, linkAdd: true, linkDelete: true },
+      affordances: { portAdd: true, linkAdd: true, linkDelete: true, linkButtons: 'hover-and-selected' },
       connectionReasons: true,
+      connection: { snapToNode: true, snapRadius: 40 }, // release on a card connects to its first accepting input
+      nodeDropOnLink: true, // drop a step on a wire to put it in between
       keyboard: {
         beforeKey(event, action) {
+          (window.__we.keys ??= []).push(action);
           if ((action === 'delete' || action === 'cut') && api.getModel().getSelectedNodes().some((n) => n.type === 'trigger')) {
             readout('the trigger stays — every workflow starts there');
             return false;
@@ -196,12 +204,27 @@ defineDemo({
 
     // Slots take only their own kind; the library shows the reason beside the slot.
     const SLOT_NAME = { model: 'Model', memory: 'Memory', tool: 'Tool' };
+    /** Every step a node comes after (walking its incoming wires back). */
+    const upstreamOf = (id) => {
+      const m = api.getModel(), seen = new Set(), todo = [id];
+      while (todo.length) {
+        const cur = todo.pop();
+        for (const l of m.getLinks()) {
+          if (m.getNodeByPortId(l.targetPortId)?.id !== cur) continue;
+          const up = m.getNodeByPortId(l.sourcePortId)?.id;
+          if (up && !seen.has(up)) { seen.add(up); todo.push(up); }
+        }
+      }
+      return seen;
+    };
     ctx.disposeRule = registerConnectionValidator(({ sourceNode, targetNode, targetPort }) => {
       const slot = targetPort?.id?.split(':')[1];
       if (targetNode.type === 'agent' && SLOT_NAME[slot]) {
         if (SLOT_OF[sourceNode.type] !== slot) return `Only a ${KINDS[slot].title.toLowerCase()} plugs into the ${SLOT_NAME[slot]} slot`;
       }
       if (SLOT_OF[sourceNode.type] && !(targetNode.type === 'agent' && SLOT_NAME[slot])) return 'A sub-node plugs into an AI step\'s slot';
+      // No loops: a wire may not run back into a step the source already comes after.
+      if (upstreamOf(sourceNode.id).has(targetNode.id)) return 'That would loop back to an earlier step';
       return true;
     });
 
@@ -245,6 +268,39 @@ defineDemo({
     api.on('port:add-request', ({ nodeId, portId, clientPoint }) => openMenu(clientPoint, 'Add the next step', (kind) => ctx.addAfter(nodeId, portId, kind)));
     api.on('link:add-request', ({ linkId, clientPoint }) => openMenu(clientPoint, 'Insert a step', (kind) => ctx.insertOn(linkId, kind)));
     api.on('link:delete-request', ({ linkId }) => { void engine.removeLink(linkId); readout('connection removed — ⌘Z brings it back'); });
+
+    // A connection dropped on empty canvas: offer the next step THERE, already wired.
+    ctx.addAt = async (portId, world, kind) => {
+      const id = `${kind}${++seq}`;
+      const node = buildNode({ id, type: kind, position: { x: world.x, y: world.y - 32 } }, 0);
+      const macro = new MacroCommand('Add step');
+      macro.addStep(new AddNodeCommand(node));
+      macro.addStep(new AddLinkCommand(new LinkModel(portId, `${id}:in`)));
+      await engine.commandManager.execute(macro);
+      readout(`added ${KINDS[kind].title} where the wire was dropped`);
+      return id;
+    };
+    api.on('connect:drop-empty', ({ portId, world, clientPoint }) => {
+      window.__we.lastDrop = { portId, world };
+      openMenu(clientPoint, 'Add a step here', (kind) => ctx.addAt(portId, world, kind));
+    });
+
+    // A step dropped on a wire: A→X→B, one undo step (X keeps its other wires).
+    ctx.dropOnLink = async (linkId, nodeId) => {
+      const m = api.getModel(), link = m.getLink(linkId), x = m.getNode(nodeId);
+      if (!link || !x) return false;
+      const outs = [...x.ports.values()].filter((p) => p.type === 'output');
+      const inPort = x.getPort(`${nodeId}:in`), outPort = outs.find((p) => !m.getLinksForPort(p.id).length) ?? outs[0];
+      if (!inPort || !outPort) { readout('that step has no way in or out'); return false; }
+      const macro = new MacroCommand('Insert step on wire');
+      macro.addStep(new RemoveLinkCommand(linkId));
+      macro.addStep(new AddLinkCommand(new LinkModel(link.sourcePortId, inPort.id)));
+      macro.addStep(new AddLinkCommand(new LinkModel(outPort.id, link.targetPortId)));
+      await engine.commandManager.execute(macro);
+      readout(`put ${x.getData('title') ?? KINDS[x.type].title} on the wire — ⌘Z takes it out`);
+      return true;
+    };
+    api.on('link:insert-request', ({ linkId, nodeId }) => void ctx.dropOnLink(linkId, nodeId));
 
     // -- the Switch's rule buttons: a data edit, one undo step --------------------
     ctx.setRules = async (nodeId, rules) => {

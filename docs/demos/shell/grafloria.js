@@ -36,9 +36,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// ../kanban-form/node_modules/eventemitter3/index.js
+// node_modules/eventemitter3/index.js
 var require_eventemitter3 = __commonJS({
-  "../kanban-form/node_modules/eventemitter3/index.js"(exports, module) {
+  "node_modules/eventemitter3/index.js"(exports, module) {
     "use strict";
     var has = Object.prototype.hasOwnProperty;
     var prefix = "~";
@@ -198,9 +198,9 @@ var require_eventemitter3 = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/graph.js
+// node_modules/@dagrejs/graphlib/lib/graph.js
 var require_graph = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/graph.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/graph.js"(exports, module) {
     "use strict";
     var DEFAULT_EDGE_NAME = "\0";
     var GRAPH_NODE = "\0";
@@ -791,16 +791,16 @@ var require_graph = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/version.js
+// node_modules/@dagrejs/graphlib/lib/version.js
 var require_version = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/version.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/version.js"(exports, module) {
     module.exports = "2.2.4";
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/index.js
+// node_modules/@dagrejs/graphlib/lib/index.js
 var require_lib = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/index.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/index.js"(exports, module) {
     module.exports = {
       Graph: require_graph(),
       version: require_version()
@@ -808,9 +808,9 @@ var require_lib = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/json.js
+// node_modules/@dagrejs/graphlib/lib/json.js
 var require_json = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/json.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/json.js"(exports, module) {
     var Graph = require_graph();
     module.exports = {
       write,
@@ -874,9 +874,9 @@ var require_json = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/components.js
+// node_modules/@dagrejs/graphlib/lib/alg/components.js
 var require_components = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/components.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/components.js"(exports, module) {
     module.exports = components;
     function components(g) {
       var visited = {};
@@ -901,9 +901,9 @@ var require_components = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/data/priority-queue.js
+// node_modules/@dagrejs/graphlib/lib/data/priority-queue.js
 var require_priority_queue = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/data/priority-queue.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/data/priority-queue.js"(exports, module) {
     var PriorityQueue4 = class {
       constructor() {
         __publicField(this, "_arr", []);
@@ -1041,9 +1041,9 @@ var require_priority_queue = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js
+// node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js
 var require_dijkstra = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js"(exports, module) {
     var PriorityQueue4 = require_priority_queue();
     module.exports = dijkstra;
     var DEFAULT_WEIGHT_FUNC = () => 1;
@@ -1093,9 +1093,9 @@ var require_dijkstra = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js
+// node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js
 var require_dijkstra_all = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js"(exports, module) {
     var dijkstra = require_dijkstra();
     module.exports = dijkstraAll;
     function dijkstraAll(g, weightFunc, edgeFunc) {
@@ -1107,9 +1107,9 @@ var require_dijkstra_all = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/tarjan.js
+// node_modules/@dagrejs/graphlib/lib/alg/tarjan.js
 var require_tarjan = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/tarjan.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/tarjan.js"(exports, module) {
     module.exports = tarjan;
     function tarjan(g) {
       var index = 0;
@@ -1152,9 +1152,9 @@ var require_tarjan = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js
+// node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js
 var require_find_cycles = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js"(exports, module) {
     var tarjan = require_tarjan();
     module.exports = findCycles2;
     function findCycles2(g) {
@@ -1165,9 +1165,9 @@ var require_find_cycles = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js
+// node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js
 var require_floyd_warshall = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js"(exports, module) {
     module.exports = floydWarshall;
     var DEFAULT_WEIGHT_FUNC = () => 1;
     function floydWarshall(g, weightFn, edgeFn) {
@@ -1217,9 +1217,9 @@ var require_floyd_warshall = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/topsort.js
+// node_modules/@dagrejs/graphlib/lib/alg/topsort.js
 var require_topsort = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/topsort.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/topsort.js"(exports, module) {
     function topsort(g) {
       var visited = {};
       var stack = {};
@@ -1252,9 +1252,9 @@ var require_topsort = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js
+// node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js
 var require_is_acyclic = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js"(exports, module) {
     var topsort = require_topsort();
     module.exports = isAcyclic2;
     function isAcyclic2(g) {
@@ -1271,9 +1271,9 @@ var require_is_acyclic = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dfs.js
+// node_modules/@dagrejs/graphlib/lib/alg/dfs.js
 var require_dfs = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dfs.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/dfs.js"(exports, module) {
     module.exports = dfs;
     function dfs(g, vs, order) {
       if (!Array.isArray(vs)) {
@@ -1327,9 +1327,9 @@ var require_dfs = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/postorder.js
+// node_modules/@dagrejs/graphlib/lib/alg/postorder.js
 var require_postorder = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/postorder.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/postorder.js"(exports, module) {
     var dfs = require_dfs();
     module.exports = postorder;
     function postorder(g, vs) {
@@ -1338,9 +1338,9 @@ var require_postorder = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/preorder.js
+// node_modules/@dagrejs/graphlib/lib/alg/preorder.js
 var require_preorder = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/preorder.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/preorder.js"(exports, module) {
     var dfs = require_dfs();
     module.exports = preorder;
     function preorder(g, vs) {
@@ -1349,9 +1349,9 @@ var require_preorder = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/prim.js
+// node_modules/@dagrejs/graphlib/lib/alg/prim.js
 var require_prim = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/prim.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/prim.js"(exports, module) {
     var Graph = require_graph();
     var PriorityQueue4 = require_priority_queue();
     module.exports = prim;
@@ -1396,9 +1396,9 @@ var require_prim = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/index.js
+// node_modules/@dagrejs/graphlib/lib/alg/index.js
 var require_alg = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/index.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/lib/alg/index.js"(exports, module) {
     module.exports = {
       components: require_components(),
       dijkstra: require_dijkstra(),
@@ -1415,9 +1415,9 @@ var require_alg = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/graphlib/index.js
+// node_modules/@dagrejs/graphlib/index.js
 var require_graphlib = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/graphlib/index.js"(exports, module) {
+  "node_modules/@dagrejs/graphlib/index.js"(exports, module) {
     var lib = require_lib();
     module.exports = {
       Graph: lib.Graph,
@@ -1428,9 +1428,9 @@ var require_graphlib = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/data/list.js
+// node_modules/@dagrejs/dagre/lib/data/list.js
 var require_list = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/data/list.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/data/list.js"(exports, module) {
     var List = class {
       constructor() {
         let sentinel = {};
@@ -1481,9 +1481,9 @@ var require_list = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/greedy-fas.js
+// node_modules/@dagrejs/dagre/lib/greedy-fas.js
 var require_greedy_fas = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/greedy-fas.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/greedy-fas.js"(exports, module) {
     var Graph = require_graphlib().Graph;
     var List = require_list();
     module.exports = greedyFAS;
@@ -1582,9 +1582,9 @@ var require_greedy_fas = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/util.js
+// node_modules/@dagrejs/dagre/lib/util.js
 var require_util = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/util.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/util.js"(exports, module) {
     "use strict";
     var Graph = require_graphlib().Graph;
     module.exports = {
@@ -1846,9 +1846,9 @@ var require_util = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/acyclic.js
+// node_modules/@dagrejs/dagre/lib/acyclic.js
 var require_acyclic = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/acyclic.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/acyclic.js"(exports, module) {
     "use strict";
     var greedyFAS = require_greedy_fas();
     var uniqueId = require_util().uniqueId;
@@ -1908,9 +1908,9 @@ var require_acyclic = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/normalize.js
+// node_modules/@dagrejs/dagre/lib/normalize.js
 var require_normalize = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/normalize.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/normalize.js"(exports, module) {
     "use strict";
     var util = require_util();
     module.exports = {
@@ -1980,9 +1980,9 @@ var require_normalize = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/rank/util.js
+// node_modules/@dagrejs/dagre/lib/rank/util.js
 var require_util2 = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/rank/util.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/rank/util.js"(exports, module) {
     "use strict";
     var { applyWithChunking } = require_util();
     module.exports = {
@@ -2017,9 +2017,9 @@ var require_util2 = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js
+// node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js
 var require_feasible_tree = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js"(exports, module) {
     "use strict";
     var Graph = require_graphlib().Graph;
     var slack = require_util2().slack;
@@ -2070,9 +2070,9 @@ var require_feasible_tree = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/rank/network-simplex.js
+// node_modules/@dagrejs/dagre/lib/rank/network-simplex.js
 var require_network_simplex = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/rank/network-simplex.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/rank/network-simplex.js"(exports, module) {
     "use strict";
     var feasibleTree = require_feasible_tree();
     var slack = require_util2().slack;
@@ -2216,9 +2216,9 @@ var require_network_simplex = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/rank/index.js
+// node_modules/@dagrejs/dagre/lib/rank/index.js
 var require_rank = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/rank/index.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/rank/index.js"(exports, module) {
     "use strict";
     var rankUtil = require_util2();
     var longestPath = rankUtil.longestPath;
@@ -2257,9 +2257,9 @@ var require_rank = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js
+// node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js
 var require_parent_dummy_chains = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js"(exports, module) {
     module.exports = parentDummyChains;
     function parentDummyChains(g) {
       let postorderNums = postorder(g);
@@ -2326,9 +2326,9 @@ var require_parent_dummy_chains = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/nesting-graph.js
+// node_modules/@dagrejs/dagre/lib/nesting-graph.js
 var require_nesting_graph = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/nesting-graph.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/nesting-graph.js"(exports, module) {
     var util = require_util();
     module.exports = {
       run,
@@ -2412,9 +2412,9 @@ var require_nesting_graph = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/add-border-segments.js
+// node_modules/@dagrejs/dagre/lib/add-border-segments.js
 var require_add_border_segments = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/add-border-segments.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/add-border-segments.js"(exports, module) {
     var util = require_util();
     module.exports = addBorderSegments;
     function addBorderSegments(g) {
@@ -2448,9 +2448,9 @@ var require_add_border_segments = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/coordinate-system.js
+// node_modules/@dagrejs/dagre/lib/coordinate-system.js
 var require_coordinate_system = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/coordinate-system.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/coordinate-system.js"(exports, module) {
     "use strict";
     module.exports = {
       adjust,
@@ -2512,9 +2512,9 @@ var require_coordinate_system = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/init-order.js
+// node_modules/@dagrejs/dagre/lib/order/init-order.js
 var require_init_order = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/init-order.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/order/init-order.js"(exports, module) {
     "use strict";
     var util = require_util();
     module.exports = initOrder;
@@ -2538,9 +2538,9 @@ var require_init_order = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/cross-count.js
+// node_modules/@dagrejs/dagre/lib/order/cross-count.js
 var require_cross_count = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/cross-count.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/order/cross-count.js"(exports, module) {
     "use strict";
     var zipObject = require_util().zipObject;
     module.exports = crossCount;
@@ -2582,9 +2582,9 @@ var require_cross_count = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/barycenter.js
+// node_modules/@dagrejs/dagre/lib/order/barycenter.js
 var require_barycenter = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/barycenter.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/order/barycenter.js"(exports, module) {
     module.exports = barycenter;
     function barycenter(g, movable = []) {
       return movable.map((v) => {
@@ -2610,9 +2610,9 @@ var require_barycenter = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js
+// node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js
 var require_resolve_conflicts = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js"(exports, module) {
     "use strict";
     var util = require_util();
     module.exports = resolveConflicts;
@@ -2692,9 +2692,9 @@ var require_resolve_conflicts = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/sort.js
+// node_modules/@dagrejs/dagre/lib/order/sort.js
 var require_sort = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/sort.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/order/sort.js"(exports, module) {
     var util = require_util();
     module.exports = sort;
     function sort(entries, biasRight) {
@@ -2740,9 +2740,9 @@ var require_sort = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js
+// node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js
 var require_sort_subgraph = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js"(exports, module) {
     var barycenter = require_barycenter();
     var resolveConflicts = require_resolve_conflicts();
     var sort = require_sort();
@@ -2805,9 +2805,9 @@ var require_sort_subgraph = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js
+// node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js
 var require_build_layer_graph = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js"(exports, module) {
     var Graph = require_graphlib().Graph;
     var util = require_util();
     module.exports = buildLayerGraph;
@@ -2840,9 +2840,9 @@ var require_build_layer_graph = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js
+// node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js
 var require_add_subgraph_constraints = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js"(exports, module) {
     module.exports = addSubgraphConstraints;
     function addSubgraphConstraints(g, cg, vs) {
       let prev = {}, rootPrev;
@@ -2868,9 +2868,9 @@ var require_add_subgraph_constraints = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/index.js
+// node_modules/@dagrejs/dagre/lib/order/index.js
 var require_order = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/index.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/order/index.js"(exports, module) {
     "use strict";
     var initOrder = require_init_order();
     var crossCount = require_cross_count();
@@ -2924,9 +2924,9 @@ var require_order = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/position/bk.js
+// node_modules/@dagrejs/dagre/lib/position/bk.js
 var require_bk = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/position/bk.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/position/bk.js"(exports, module) {
     "use strict";
     var Graph = require_graphlib().Graph;
     var util = require_util();
@@ -3232,9 +3232,9 @@ var require_bk = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/position/index.js
+// node_modules/@dagrejs/dagre/lib/position/index.js
 var require_position = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/position/index.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/position/index.js"(exports, module) {
     "use strict";
     var util = require_util();
     var positionX = require_bk().positionX;
@@ -3264,9 +3264,9 @@ var require_position = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/layout.js
+// node_modules/@dagrejs/dagre/lib/layout.js
 var require_layout = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/layout.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/layout.js"(exports, module) {
     "use strict";
     var acyclic = require_acyclic();
     var normalize = require_normalize();
@@ -3624,9 +3624,9 @@ var require_layout = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/debug.js
+// node_modules/@dagrejs/dagre/lib/debug.js
 var require_debug = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/debug.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/debug.js"(exports, module) {
     var util = require_util();
     var Graph = require_graphlib().Graph;
     module.exports = {
@@ -3653,16 +3653,16 @@ var require_debug = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/lib/version.js
+// node_modules/@dagrejs/dagre/lib/version.js
 var require_version2 = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/lib/version.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/lib/version.js"(exports, module) {
     module.exports = "1.1.5";
   }
 });
 
-// ../kanban-form/node_modules/@dagrejs/dagre/index.js
+// node_modules/@dagrejs/dagre/index.js
 var require_dagre = __commonJS({
-  "../kanban-form/node_modules/@dagrejs/dagre/index.js"(exports, module) {
+  "node_modules/@dagrejs/dagre/index.js"(exports, module) {
     module.exports = {
       graphlib: require_graphlib(),
       layout: require_layout(),
@@ -3676,9 +3676,9 @@ var require_dagre = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/elkjs/lib/elk.bundled.js
+// node_modules/elkjs/lib/elk.bundled.js
 var require_elk_bundled = __commonJS({
-  "../kanban-form/node_modules/elkjs/lib/elk.bundled.js"(exports, module) {
+  "node_modules/elkjs/lib/elk.bundled.js"(exports, module) {
     (function(f) {
       if (typeof exports === "object" && typeof module !== "undefined") {
         module.exports = f();
@@ -96673,9 +96673,9 @@ var require_elk_bundled = __commonJS({
   }
 });
 
-// ../kanban-form/node_modules/lemonadejs/dist/lemonade.js
+// node_modules/lemonadejs/dist/lemonade.js
 var require_lemonade = __commonJS({
-  "../kanban-form/node_modules/lemonadejs/dist/lemonade.js"(exports, module) {
+  "node_modules/lemonadejs/dist/lemonade.js"(exports, module) {
     (function(global3, factory) {
       typeof exports === "object" && typeof module !== "undefined" ? module.exports = factory() : typeof define === "function" && define.amd ? define(factory) : global3.lemonade = factory();
     })(exports, function() {
@@ -102680,7 +102680,7 @@ function createDefaultLODConfig() {
   };
 }
 
-// ../kanban-form/node_modules/eventemitter3/index.mjs
+// node_modules/eventemitter3/index.mjs
 var import_index = __toESM(require_eventemitter3(), 1);
 
 // libs/engine/src/utils/geometry.ts
@@ -102826,10 +102826,10 @@ function isPointInPolygon(px2, py, vertices) {
   return inside;
 }
 
-// ../kanban-form/node_modules/nanoid/url-alphabet/index.js
+// node_modules/nanoid/url-alphabet/index.js
 var urlAlphabet = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
 
-// ../kanban-form/node_modules/nanoid/index.browser.js
+// node_modules/nanoid/index.browser.js
 var nanoid = (size = 21) => {
   let id = "";
   let bytes = crypto.getRandomValues(new Uint8Array(size |= 0));
@@ -102839,7 +102839,7 @@ var nanoid = (size = 21) => {
   return id;
 };
 
-// ../kanban-form/node_modules/uuid/dist/stringify.js
+// node_modules/uuid/dist/stringify.js
 var byteToHex = [];
 for (let i = 0; i < 256; ++i) {
   byteToHex.push((i + 256).toString(16).slice(1));
@@ -102848,7 +102848,7 @@ function unsafeStringify(arr, offset = 0) {
   return (byteToHex[arr[offset + 0]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + "-" + byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + "-" + byteToHex[arr[offset + 6]] + byteToHex[arr[offset + 7]] + "-" + byteToHex[arr[offset + 8]] + byteToHex[arr[offset + 9]] + "-" + byteToHex[arr[offset + 10]] + byteToHex[arr[offset + 11]] + byteToHex[arr[offset + 12]] + byteToHex[arr[offset + 13]] + byteToHex[arr[offset + 14]] + byteToHex[arr[offset + 15]]).toLowerCase();
 }
 
-// ../kanban-form/node_modules/uuid/dist/rng.js
+// node_modules/uuid/dist/rng.js
 var getRandomValues;
 var rnds8 = new Uint8Array(16);
 function rng() {
@@ -102861,11 +102861,11 @@ function rng() {
   return getRandomValues(rnds8);
 }
 
-// ../kanban-form/node_modules/uuid/dist/native.js
+// node_modules/uuid/dist/native.js
 var randomUUID = typeof crypto !== "undefined" && crypto.randomUUID && crypto.randomUUID.bind(crypto);
 var native_default = { randomUUID };
 
-// ../kanban-form/node_modules/uuid/dist/v4.js
+// node_modules/uuid/dist/v4.js
 function _v4(options, buf, offset) {
   options = options || {};
   const rnds = options.random ?? options.rng?.() ?? rng();
@@ -102894,14 +102894,44 @@ function v4(options, buf, offset) {
 }
 var v4_default = v4;
 
+// libs/engine/src/utils/deterministic.ts
+var active2 = null;
+function runDeterministic(fn, options = {}) {
+  if (active2) return fn();
+  active2 = { now: options.now ?? 0, seq: 0, prefix: options.idPrefix ?? "d" };
+  try {
+    return fn();
+  } finally {
+    active2 = null;
+  }
+}
+function isDeterministic() {
+  return active2 !== null;
+}
+function engineNow() {
+  return active2 ? active2.now : Date.now();
+}
+function nextDeterministicSeq() {
+  return active2 ? active2.seq++ : null;
+}
+function deterministicPrefix() {
+  return active2?.prefix ?? "d";
+}
+
 // libs/engine/src/utils/id.ts
 function generateId() {
+  const seq2 = nextDeterministicSeq();
+  if (seq2 !== null) return `${deterministicPrefix()}${seq2.toString(36).padStart(11, "0")}`;
   return nanoid(12);
 }
 function generateUUID() {
+  const seq2 = nextDeterministicSeq();
+  if (seq2 !== null) return `00000000-0000-4000-8000-${seq2.toString(16).padStart(12, "0")}`;
   return v4_default();
 }
 function generatePrefixedId(prefix) {
+  const seq2 = nextDeterministicSeq();
+  if (seq2 !== null) return `${prefix}_${seq2.toString(36).padStart(8, "0")}`;
   return `${prefix}_${nanoid(8)}`;
 }
 function isValidId(id) {
@@ -103033,7 +103063,7 @@ var DiagramEntity = class {
     this.uuid = uuid || generateUUID();
     this.metadata = /* @__PURE__ */ new Map();
     this.emitter = new import_index.default();
-    this._dirtyTimestamp = Date.now();
+    this._dirtyTimestamp = engineNow();
   }
   /**
    * Check if entity has been modified since last render
@@ -103049,7 +103079,7 @@ var DiagramEntity = class {
     const wasDirty = this._isDirty;
     mutationEpoch++;
     this._isDirty = true;
-    this._dirtyTimestamp = Date.now();
+    this._dirtyTimestamp = engineNow();
     if (reason) {
       this._dirtyReasons.add(reason);
     }
@@ -103130,7 +103160,7 @@ var DiagramEntity = class {
     this.assertNotDisposed();
     if (oldValue === newValue) return;
     const entry = {
-      timestamp: Date.now(),
+      timestamp: engineNow(),
       property,
       oldValue: this.cloneValue(oldValue),
       newValue: this.cloneValue(newValue)
@@ -106058,6 +106088,28 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     for (let i = 0; i < segs.length; i++) if (!same(segs[i].to, pts[i + 1])) return false;
     return true;
   }
+  /** The point of the `points` polyline nearest `query`, with its arc-length `t`. */
+  closestOnPolyline(query) {
+    const pts = this.points;
+    let total = 0;
+    for (let i = 0; i < pts.length - 1; i++) total += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+    let best = { point: { ...pts[0] }, distance: Infinity, t: 0 };
+    let along = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lenSq = dx * dx + dy * dy;
+      const len2 = Math.sqrt(lenSq);
+      const s = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((query.x - a.x) * dx + (query.y - a.y) * dy) / lenSq));
+      const c = { x: a.x + s * dx, y: a.y + s * dy };
+      const distance2 = Math.hypot(query.x - c.x, query.y - c.y);
+      if (distance2 < best.distance) best = { point: c, distance: distance2, t: total > 0 ? (along + s * len2) / total : 0 };
+      along += len2;
+    }
+    return best;
+  }
   /**
    * The point `t` of the way along the `points` polyline (by arc length), and
    * the direction of the run it lands on. `points` is the painted geometry the
@@ -106202,6 +106254,9 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
    * Returns the closest point, distance, and normalized position (t)
    */
   getClosestPoint(point) {
+    if (this.points.length >= 2 && (this.pathType === "direct" || !this.segmentsTracePoints())) {
+      return this.closestOnPolyline(point);
+    }
     if (this.segments.length === 0) {
       return null;
     }
@@ -106341,23 +106396,6 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     this.zIndex = 0;
     this.fitMode = "exact";
     this.constrainChildren = false;
-    // ---------------------------------------------------------------------------
-    // A — PUSH-DRIVEN LAYOUT
-    //
-    // `applyLayout` has always been a real layout engine. It was just never CALLED:
-    // it was pulled by hand, plus a one-shot on `addMember` behind an opt-IN metadata
-    // flag. Resize a container, delete a widget, or grow a child, and nothing
-    // reflowed. Everything below turns those three events into pushes, following the
-    // precedent already set by `NodeModel.setPosition` (which propagates) and
-    // `SwimlaneService.reflow` (the one place that already did this correctly).
-    // ---------------------------------------------------------------------------
-    /**
-     * Re-entrancy guard. The cycle this closes is real and one hop long: layout
-     * writes a child's size → the child notifies its containers → the container lays
-     * out again → it writes the child's size… Held for the duration of one pass;
-     * every push that arrives DURING a pass is dropped, because that pass is already
-     * producing the answer the push would ask for.
-     */
     this.layoutInFlight = false;
     this.name = config.name;
   }
@@ -107060,6 +107098,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
       return;
     }
     this.layoutInFlight = true;
+    this.layoutDiagram = diagramToUse;
     try {
       if (this.layoutType === "flexbox") {
         this.applyFlexboxLayout(entities);
@@ -107068,6 +107107,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
       }
     } finally {
       this.layoutInFlight = false;
+      this.layoutDiagram = void 0;
     }
   }
   // ---------------------------------------------------------------------------
@@ -107100,12 +107140,44 @@ var GroupModel = class _GroupModel extends DiagramEntity {
       return;
     }
     const group = entity;
+    this.translateGroupContents(group, x - group.position.x, y - group.position.y);
     if (group.size) {
       group.setFrame({ x, y, width: group.size.width, height: group.size.height });
       return;
     }
     group.position = { x, y };
     group.requestLayout();
+  }
+  /**
+   * Move every member node of `group` (recursively, through nested groups) and
+   * every nested group frame by (dx, dy) — the frame of `group` itself excepted,
+   * the caller places that. Cycle-guarded; pinned (locked) nodes stay put.
+   */
+  translateGroupContents(group, dx, dy) {
+    const diagram = this.layoutDiagram ?? this.resolveDiagram();
+    if (!diagram || dx === 0 && dy === 0) return;
+    const seen = /* @__PURE__ */ new Set([group.id]);
+    const stack = [group];
+    while (stack.length) {
+      const g = stack.pop();
+      for (const id of g.members) {
+        const node = diagram.getNode(id);
+        if (node) {
+          if (!this.isPinned(node)) node.setPosition(node.position.x + dx, node.position.y + dy);
+          continue;
+        }
+        const child = diagram.getGroup(id);
+        if (!child || seen.has(child.id)) continue;
+        seen.add(child.id);
+        const b = child.getOuterBounds();
+        if (child.size) {
+          child.setFrame({ x: b.x + dx, y: b.y + dy, width: child.size.width, height: child.size.height });
+        } else {
+          child.position = { x: child.position.x + dx, y: child.position.y + dy };
+        }
+        if (!(child.size && child.isAutoLayoutEnabled())) stack.push(child);
+      }
+    }
   }
   /**
    * Resize a member along one or both axes. `undefined` leaves that axis alone.
@@ -107174,14 +107246,15 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     const crossGap = typeof config.gap === "number" ? config.gap : isColumn ? config.gap.column : config.gap.row;
     const ordered = this.orderFlexEntities(entities);
     const directed = isReverse ? ordered.slice().reverse() : ordered;
-    const startX = this.position.x + padding.left;
-    const startY = this.position.y + padding.top;
+    const box = this.layoutContentBox(padding);
+    const startX = box.x;
+    const startY = box.y;
     if (!isColumn && config.columns !== void 0 && config.columns > 0 && this.size) {
-      this.applyColumnBasedLayout(directed, config, padding, startX, startY);
+      this.applyColumnBasedLayout(directed, config, box.width ?? 0, startX, startY);
       return;
     }
-    const contentWidth = this.size ? this.size.width - padding.left - padding.right : void 0;
-    const contentHeight = this.size ? this.size.height - padding.top - padding.bottom : void 0;
+    const contentWidth = box.width;
+    const contentHeight = box.height;
     const mainAvail = isColumn ? contentHeight : contentWidth;
     const crossAvail = isColumn ? contentWidth : contentHeight;
     const mainOf = (e) => (isColumn ? e.size?.height : e.size?.width) ?? (isColumn ? 50 : 100);
@@ -107312,11 +107385,10 @@ var GroupModel = class _GroupModel extends DiagramEntity {
   /**
    * Apply column-based layout (like Bootstrap 12-column grid)
    */
-  applyColumnBasedLayout(entities, config, padding, startX, startY) {
+  applyColumnBasedLayout(entities, config, availableWidth, startX, startY) {
     if (!this.size || !config.columns) return;
     const totalColumns = config.columns;
     const gap = typeof config.gap === "number" ? config.gap : config.gap.column || 0;
-    const availableWidth = this.size.width - padding.left - padding.right;
     const totalGaps = (totalColumns - 1) * gap;
     const columnWidth = (availableWidth - totalGaps) / totalColumns;
     let currentX = startX;
@@ -107362,20 +107434,43 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     const columnGap = config.columnGap || 0;
     const rowGap = config.rowGap || 0;
     const padding = this.normalizePadding(config.padding);
-    const startX = this.position.x + padding.left;
-    const startY = this.position.y + padding.top;
+    const box = this.layoutContentBox(padding);
+    const startX = box.x;
+    const startY = box.y;
     const templateRowCount = config.templateRows ? this.parseGridColumns(config.templateRows) : 0;
     const rowLimit = templateRowCount > 0 ? templateRowCount : Math.max(1, entities.length);
     const placements = this.resolveGridPlacements(entities, columns, config.autoFlow, rowLimit);
     const rowCount = placements.reduce((m, p) => Math.max(m, p.row + p.rowSpan), 1);
-    const contentWidth = this.size ? this.size.width - padding.left - padding.right : void 0;
-    const contentHeight = this.size ? this.size.height - padding.top - padding.bottom : void 0;
+    const contentWidth = box.width;
+    const contentHeight = box.height;
     const rowTracks = Math.max(rowCount, templateRowCount || 0, 1);
-    const columnWidth = contentWidth !== void 0 ? (contentWidth - columnGap * (columns - 1)) / columns : entities.reduce((m, e) => Math.max(m, e.size?.width ?? 0), 0) || 100;
-    const rowHeight = contentHeight !== void 0 ? (contentHeight - rowGap * (rowTracks - 1)) / rowTracks : entities.reduce((m, e) => Math.max(m, e.size?.height ?? 0), 0) || 100;
+    const columnSizes = this.resolveGridTracks(
+      config.templateColumns,
+      columns,
+      columnGap,
+      contentWidth,
+      entities.reduce((m, e) => Math.max(m, e.size?.width ?? 0), 0) || 100
+    );
+    const rowSizes = this.resolveGridTracks(
+      config.templateRows ?? "",
+      rowTracks,
+      rowGap,
+      contentHeight,
+      entities.reduce((m, e) => Math.max(m, e.size?.height ?? 0), 0) || 100
+    );
+    const offsetOf = (sizes, gap, index) => {
+      let at = 0;
+      for (let i = 0; i < index; i++) at += sizes[i] + gap;
+      return at;
+    };
+    const spanOf = (sizes, gap, index, span) => {
+      let total = 0;
+      for (let i = index; i < index + span; i++) total += sizes[i] ?? sizes[sizes.length - 1];
+      return total + gap * (span - 1);
+    };
     for (const { entity, row, column, rowSpan, columnSpan } of placements) {
-      const x = startX + column * (columnWidth + columnGap);
-      const y = startY + row * (rowHeight + rowGap);
+      const x = startX + offsetOf(columnSizes, columnGap, column);
+      const y = startY + offsetOf(rowSizes, rowGap, row);
       const item = this.gridItemOf(entity);
       const justify = item?.justifySelf ?? config.justifyItems;
       const alignSelf = item?.alignSelf ?? config.alignItems;
@@ -107384,8 +107479,8 @@ var GroupModel = class _GroupModel extends DiagramEntity {
       if (stretchW || stretchH) {
         this.resizeEntity(
           entity,
-          stretchW ? columnWidth * columnSpan + columnGap * (columnSpan - 1) : void 0,
-          stretchH ? rowHeight * rowSpan + rowGap * (rowSpan - 1) : void 0
+          stretchW ? spanOf(columnSizes, columnGap, column, columnSpan) : void 0,
+          stretchH ? spanOf(rowSizes, rowGap, row, rowSpan) : void 0
         );
       }
       this.placeEntity(entity, x, y);
@@ -107509,6 +107604,57 @@ var GroupModel = class _GroupModel extends DiagramEntity {
   /**
    * Parse grid template columns to get column count
    */
+  /**
+   * The box a layout places members in: the frame's CONTENT box — inside its
+   * padding and below its title band ({@link getInnerBounds}) — inset by the
+   * layout's own padding. Width/height only when the frame has a size.
+   *
+   * Layouts used to start at the frame's OUTER corner, so members slid over the
+   * title band, and every fitToContents (which adds padding + header around the
+   * members) moved the frame up by that much and the layout followed it — the
+   * group climbed on each fit (S2, docs review v4).
+   */
+  layoutContentBox(pad) {
+    const inner = this.getInnerBounds();
+    return {
+      x: inner.x + pad.left,
+      y: inner.y + pad.top,
+      width: this.size ? Math.max(0, inner.width - pad.left - pad.right) : void 0,
+      height: this.size ? Math.max(0, inner.height - pad.top - pad.bottom) : void 0
+    };
+  }
+  /**
+   * Resolve `count` track sizes from a template (`"120px 1fr auto"`,
+   * `"repeat(3, 1fr)"`). Fixed `px` tracks keep their size; `fr` (and `auto`,
+   * as 1fr) share the rest of `available`, or take `fallback` each when there is
+   * no available extent. Tracks past the template's end are flexible.
+   */
+  resolveGridTracks(template, count2, gap, available, fallback) {
+    const tokens = [];
+    const text = (template ?? "").trim();
+    const repeat = text.match(/^repeat\(\s*(\d+)\s*,\s*(.+)\)$/);
+    if (repeat) {
+      const inner = repeat[2].trim().split(/\s+/);
+      for (let i = 0; i < parseInt(repeat[1], 10); i++) tokens.push(...inner);
+    } else if (text) {
+      tokens.push(...text.split(/\s+/));
+    }
+    const tracks = Array.from({ length: count2 }, (_, i) => {
+      const t = tokens[i] ?? "1fr";
+      const px2 = t.match(/^(\d+(?:\.\d+)?)px$/);
+      if (px2) return { fixed: parseFloat(px2[1]), fr: 0 };
+      const fr = t.match(/^(\d+(?:\.\d+)?)fr$/);
+      return { fixed: 0, fr: fr ? parseFloat(fr[1]) : 1 };
+    });
+    const totalFr = tracks.reduce((m, t) => m + t.fr, 0);
+    const fixedSum = tracks.reduce((m, t) => m + t.fixed, 0);
+    const free = available !== void 0 ? available - fixedSum - gap * (count2 - 1) : void 0;
+    return tracks.map((t) => {
+      if (t.fr === 0) return t.fixed;
+      if (free === void 0) return fallback * t.fr;
+      return totalFr > 0 ? Math.max(0, free) * t.fr / totalFr : 0;
+    });
+  }
   parseGridColumns(templateColumns) {
     const repeatMatch = templateColumns.match(/repeat\((\d+),/);
     if (repeatMatch) {
@@ -110526,6 +110672,7 @@ var PORT_OFFSET_PAD = 64;
 var DiagramModel = class _DiagramModel extends DiagramEntity {
   constructor(name, options) {
     super(options?.id, options?.uuid);
+    this.historyOwner = null;
     this.name = "Untitled Diagram";
     this.nodes = /* @__PURE__ */ new Map();
     this.links = /* @__PURE__ */ new Map();
@@ -110794,6 +110941,29 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     if (this.readonlyLock.isReadonly() === value) return;
     this.readonlyLock.setReadonly(value);
     this.emitOrQueue("readonly:change", value);
+  }
+  /**
+   * Hand undo to an owner other than the engine's command stack — a collaborative Replica
+   * does this, so undo is per actor. Pass null to give it back. See commands/history-owner.ts.
+   */
+  setHistoryOwner(owner) {
+    this.historyOwner = owner;
+  }
+  /**
+   * Say that this diagram's content was just REPLACED by a loaded document (a
+   * text import, a saved document reconciled into the live diagram). Commands
+   * recorded before refer to a document that no longer exists, so the engine
+   * attached to this diagram clears its own undo history on this signal
+   * (`document:replaced`). A history owner (a sync Replica) keeps its stack: a load
+   * into a shared diagram is an edit every peer received, and its undo is
+   * supersession-aware.
+   */
+  markDocumentReplaced() {
+    this.emitter.emit("document:replaced", { diagram: this });
+  }
+  /** The owner of undo set by {@link setHistoryOwner}, or null for the engine's own stack. */
+  getHistoryOwner() {
+    return this.historyOwner;
   }
   /** True when a document mutation must be refused right now. */
   blocksDocumentWrite() {
@@ -112012,7 +112182,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    */
   findNearestPort(point, options) {
     const radius = options?.radius ?? DEFAULT_PORT_SNAP_RADIUS;
-    const positionOf = options?.portPosition ?? ((port, node) => port.getAbsolutePosition(node.getBoundingBox()));
+    const positionOf2 = options?.portPosition ?? ((port, node) => port.getAbsolutePosition(node.getBoundingBox()));
     const candidates = this.nodeSpatialIndex.queryNear(
       point,
       radius + PORT_OFFSET_PAD,
@@ -112022,7 +112192,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     for (const node of candidates) {
       for (const port of node.getPorts()) {
         if (options?.filter && !options.filter(port, node)) continue;
-        const p = positionOf(port, node);
+        const p = positionOf2(port, node);
         const dx = point.x - p.x;
         const dy = point.y - p.y;
         const distance2 = Math.sqrt(dx * dx + dy * dy);
@@ -112857,7 +113027,7 @@ var EventBus = class {
   onThrottled(event, delay, handler) {
     let lastCall = 0;
     const wrappedHandler = (data2) => {
-      const now3 = Date.now();
+      const now3 = engineNow();
       if (now3 - lastCall >= delay) {
         lastCall = now3;
         handler(data2);
@@ -112948,7 +113118,7 @@ var EventBus = class {
    */
   logEvent(event, data2, parsed) {
     this.eventLog.push({
-      timestamp: Date.now(),
+      timestamp: engineNow(),
       event,
       data: data2,
       namespace: parsed.namespace,
@@ -112977,7 +113147,7 @@ var Command = class {
   constructor(name) {
     this.id = generateId();
     this.name = name;
-    this.timestamp = Date.now();
+    this.timestamp = engineNow();
   }
   /**
    * Redo the command (default: re-execute)
@@ -113109,9 +113279,29 @@ var CommandManager = class {
     return this.context?.diagram?.blocksDocumentWrite?.() === true;
   }
   /**
-   * Execute a command
+   * Who owns undo when it isn't this stack — a collaborative Replica (see
+   * history-owner.ts). `context.diagram` is typed `any`, hence the probe.
+   */
+  historyOwner() {
+    return this.context?.diagram?.getHistoryOwner?.() ?? null;
+  }
+  /**
+   * Execute a command. Under a history owner the whole command — every op it
+   * makes, across its awaits — is ONE step on the owner's stack. The step opens
+   * synchronously, before the first await, so a caller's enclosing step (a canvas
+   * press) still contains it.
    */
   async execute(command) {
+    const owner = this.historyOwner();
+    if (!owner) return this.executeUnframed(command);
+    owner.beginStep();
+    try {
+      await this.executeUnframed(command);
+    } finally {
+      owner.endStep();
+    }
+  }
+  async executeUnframed(command) {
     if (this.isReadonly()) {
       this.eventBus.emit("command:refused", { command, reason: "readonly" });
       return;
@@ -113146,7 +113336,7 @@ var CommandManager = class {
     if (command.isUndoable()) {
       this.addToHistory({
         command,
-        timestamp: Date.now(),
+        timestamp: engineNow(),
         duration,
         success: true
       });
@@ -113193,7 +113383,7 @@ var CommandManager = class {
       throw e;
     }
     lastEntry.command = merged;
-    lastEntry.timestamp = Date.now();
+    lastEntry.timestamp = engineNow();
     this.eventBus.emit(DiagramEventTypes.COMMAND_MERGED, { command: merged });
   }
   /**
@@ -113226,6 +113416,11 @@ var CommandManager = class {
       this.eventBus.emit("command:refused", { reason: "readonly", phase: "undo" });
       return;
     }
+    const owner = this.historyOwner();
+    if (owner) {
+      owner.undo();
+      return;
+    }
     if (!this.canUndo()) {
       return;
     }
@@ -113233,7 +113428,8 @@ var CommandManager = class {
     if (!entry) return;
     const command = entry.command;
     if (!command.canUndo(this.context)) {
-      throw new Error(`Cannot undo command: ${command.name}`);
+      this.dropStale("undo", command);
+      return;
     }
     const startTime = performance.now();
     try {
@@ -113250,7 +113446,7 @@ var CommandManager = class {
         action: "undo",
         error
       });
-      throw error;
+      this.dropStale("undo", command);
     }
   }
   /**
@@ -113259,6 +113455,11 @@ var CommandManager = class {
   async redo() {
     if (this.isReadonly()) {
       this.eventBus.emit("command:refused", { reason: "readonly", phase: "redo" });
+      return;
+    }
+    const owner = this.historyOwner();
+    if (owner) {
+      owner.redo();
       return;
     }
     if (!this.canRedo()) {
@@ -113283,7 +113484,7 @@ var CommandManager = class {
         action: "redo",
         error
       });
-      throw error;
+      this.dropStale("redo", command);
     }
   }
   /**
@@ -113334,15 +113535,36 @@ var CommandManager = class {
     this.eventBus.emit(DiagramEventTypes.COMMAND_HISTORY_CLEARED);
   }
   /**
+   * Forget the part of history a stale command sits on: for undo, that entry and
+   * every older one; for redo, the whole redo branch. Announced as
+   * `command:history-stale` so a host can tell the user why Ctrl+Z went quiet.
+   */
+  dropStale(phase, command) {
+    let dropped;
+    if (phase === "undo") {
+      dropped = this.currentIndex + 1;
+      this.history = this.history.slice(this.currentIndex + 1);
+      this.currentIndex = -1;
+    } else {
+      dropped = this.history.length - (this.currentIndex + 1);
+      this.history = this.history.slice(0, this.currentIndex + 1);
+    }
+    this.eventBus.emit("command:history-stale", { command, phase, dropped });
+  }
+  /**
    * Can undo
    */
   canUndo() {
+    const owner = this.historyOwner();
+    if (owner) return owner.canUndo;
     return this.currentIndex >= 0;
   }
   /**
    * Can redo
    */
   canRedo() {
+    const owner = this.historyOwner();
+    if (owner) return owner.canRedo;
     return this.currentIndex < this.history.length - 1;
   }
   /**
@@ -113425,7 +113647,7 @@ var CommandManager = class {
     const lastEntry = this.history[this.currentIndex];
     if (!lastEntry) return false;
     const lastCommand = lastEntry.command;
-    const timeDiff = Date.now() - lastEntry.timestamp;
+    const timeDiff = engineNow() - lastEntry.timestamp;
     if (timeDiff > this.mergingWindow) {
       return false;
     }
@@ -115801,6 +116023,28 @@ var RotateNodeCommand = class _RotateNodeCommand extends Command {
   }
 };
 
+// libs/engine/src/commands/basic/label-slots.ts
+function dataBag(entity) {
+  return entity.data;
+}
+function captureLabelSlots(entity) {
+  const meta = entity.getMetadata("label");
+  const data2 = dataBag(entity);
+  return {
+    meta: { present: meta !== void 0, value: meta },
+    data: data2 ? { present: "label" in data2, value: data2["label"] } : null
+  };
+}
+function restoreLabelSlots(entity, slots) {
+  if (slots.meta.present) entity.setMetadata("label", slots.meta.value);
+  else if (entity.getMetadata("label") !== void 0) entity.deleteMetadata("label");
+  const data2 = dataBag(entity);
+  if (data2 && slots.data) {
+    if (slots.data.present) data2["label"] = slots.data.value;
+    else delete data2["label"];
+  }
+}
+
 // libs/engine/src/commands/basic/SetNodeLabelCommand.ts
 var SetNodeLabelCommand = class extends Command {
   constructor(nodeId, newLabel, oldLabel) {
@@ -115821,7 +116065,8 @@ var SetNodeLabelCommand = class extends Command {
       throw new Error(`Node ${this.nodeId} not found`);
     }
     if (this.oldLabel === void 0) {
-      this.oldLabel = node.getMetadata("label") ?? "";
+      this.oldSlots = captureLabelSlots(node);
+      this.oldLabel = node.getLabel() ?? "";
     }
     node.setLabel(this.newLabel);
     node.markDirty("label-edited");
@@ -115835,7 +116080,8 @@ var SetNodeLabelCommand = class extends Command {
     if (!node) {
       throw new Error(`Node ${this.nodeId} not found`);
     }
-    node.setLabel(this.oldLabel);
+    if (this.oldSlots) restoreLabelSlots(node, this.oldSlots);
+    else node.setLabel(this.oldLabel);
     node.markDirty("label-edited");
   }
   canExecute(context) {
@@ -116192,6 +116438,7 @@ var SetLinkDisplayLabelCommand = class extends Command {
   execute(context) {
     const link = this.resolve(context);
     if (this.oldLabel === void 0) {
+      this.oldSlots = captureLabelSlots(link);
       this.oldLabel = String(link.getLabel() ?? "");
     }
     link.setLabel(this.newLabel);
@@ -116202,7 +116449,8 @@ var SetLinkDisplayLabelCommand = class extends Command {
       throw new Error("Cannot undo: missing old label text");
     }
     const link = this.resolve(context);
-    link.setLabel(this.oldLabel);
+    if (this.oldSlots) restoreLabelSlots(link, this.oldSlots);
+    else link.setLabel(this.oldLabel);
     link.markDirty("label-edited");
   }
   canExecute(context) {
@@ -118615,7 +118863,7 @@ var DiagramStore = class {
    */
   createSnapshot() {
     return {
-      timestamp: Date.now(),
+      timestamp: engineNow(),
       state: this.deepClone(this.state),
       version: "1.0.0"
     };
@@ -120133,7 +120381,7 @@ var DiagramSerializer = class {
     }
     const diagramData = {
       ...data2,
-      version: data2.diagramVersion || Number(data2.version) || 1
+      version: ("diagramVersion" in data2 ? data2.diagramVersion : void 0) || Number(data2.version) || 1
     };
     return DiagramModel.fromJSON(diagramData, options);
   }
@@ -120344,7 +120592,7 @@ var ModeManager = class {
     // For push/pop operations
     this.historyIndex = -1;
     // For previous/next navigation
-    this.modeStartTime = Date.now();
+    this.modeStartTime = engineNow();
     // Priority 3c: Before/After Hooks
     this.beforeHooks = [];
     this.afterHooks = [];
@@ -120391,7 +120639,7 @@ var ModeManager = class {
     this.updateHistory(mode);
     this.historyIndex = this.history.length - 1;
     this.currentMode = mode;
-    this.modeStartTime = Date.now();
+    this.modeStartTime = engineNow();
     this.eventBus.emit("mode-changed", { previousMode, currentMode: mode });
     this.applyViewportSettings(mode);
     this.runAfterHooks(previousMode, mode);
@@ -120520,7 +120768,7 @@ var ModeManager = class {
    * Update history when mode changes
    */
   updateHistory(newMode) {
-    const now3 = Date.now();
+    const now3 = engineNow();
     const duration = now3 - this.modeStartTime;
     if (this.history.length > 0) {
       const lastEntry = this.history[this.history.length - 1];
@@ -120673,7 +120921,7 @@ var ModeManager = class {
   restore(mode) {
     if (mode && isValidDiagramMode(mode)) {
       this.currentMode = mode;
-      this.modeStartTime = Date.now();
+      this.modeStartTime = engineNow();
       this.history = [{
         mode,
         timestamp: this.modeStartTime,
@@ -127292,20 +127540,20 @@ function removeOverlaps(nodes, positions, options = {}) {
   }
   if (boxes.length < 2) return positions;
   boxes.sort((a, b) => a.x - b.x || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const active2 = [];
+  const active3 = [];
   for (const box of boxes) {
     const frontier = box.x;
-    for (let i = active2.length - 1; i >= 0; i--) {
-      if (active2[i].x + active2[i].width + spacing <= frontier) {
-        active2.splice(i, 1);
+    for (let i = active3.length - 1; i >= 0; i--) {
+      if (active3[i].x + active3[i].width + spacing <= frontier) {
+        active3.splice(i, 1);
       }
     }
-    for (let guard = 0; guard <= active2.length; guard++) {
-      const hit = active2.find((other) => intersects(box, other));
+    for (let guard = 0; guard <= active3.length; guard++) {
+      const hit = active3.find((other) => intersects(box, other));
       if (!hit) break;
       box.x = hit.x + hit.width + spacing;
     }
-    active2.push(box);
+    active3.push(box);
   }
   for (const box of boxes) {
     positions.set(box.id, { x: box.x, y: box.y });
@@ -127987,17 +128235,17 @@ var ForceLayoutAdapter = class {
     const overlappingPairs = () => {
       const sorted = [...boxes].sort((a, b) => a.x - b.x || (a.id < b.id ? -1 : 1));
       const pairs = [];
-      const active2 = [];
+      const active3 = [];
       for (const box of sorted) {
-        for (let i = active2.length - 1; i >= 0; i--) {
-          if (active2[i].x + active2[i].width + margin <= box.x) active2.splice(i, 1);
+        for (let i = active3.length - 1; i >= 0; i--) {
+          if (active3[i].x + active3[i].width + margin <= box.x) active3.splice(i, 1);
         }
-        for (const other of active2) {
+        for (const other of active3) {
           if (box.x < other.x + other.width + margin && other.x < box.x + box.width + margin && box.y < other.y + other.height + margin && other.y < box.y + box.height + margin) {
             pairs.push([other, box]);
           }
         }
-        active2.push(box);
+        active3.push(box);
       }
       return pairs;
     };
@@ -132724,6 +132972,7 @@ var DiagramEngine = class {
       this.detachDiagram(oldDiagram);
     }
     this.diagram = diagram;
+    if (diagram !== oldDiagram) this.commandManager.clear();
     if (diagram) {
       this.attachDiagram(diagram);
       this.syncReadonlyLock();
@@ -133408,7 +133657,7 @@ var DiagramEngine = class {
   deserialize(data2, options) {
     const diagram = this.serializer.deserialize(data2, options);
     this.setDiagram(diagram);
-    this.modeManager.restore(data2.mode);
+    this.modeManager.restore("mode" in data2 ? data2.mode : void 0);
     return diagram;
   }
   /**
@@ -133828,6 +134077,9 @@ var DiagramEngine = class {
    */
   attachDiagram(diagram) {
     this.diagramDisposers.push(
+      diagram.on("document:replaced", () => this.commandManager.clear())
+    );
+    this.diagramDisposers.push(
       diagram.on("node:added", (node) => {
         this.eventBus.emit("node:added", node);
         this.registerNodeAsObstacle(node);
@@ -134121,15 +134373,15 @@ var DiagramEngine = class {
     if (!this.diagram) {
       throw new Error("No diagram loaded");
     }
-    const registered = this.getLayoutRegistry().get(name);
-    if (!registered) {
+    const registered2 = this.getLayoutRegistry().get(name);
+    if (!registered2) {
       const available = this.getLayoutRegistry().names().join(", ");
       throw new Error(`Unknown layout '${name}'. Registered layouts: ${available}`);
     }
     const seed = options.seed ?? DEFAULT_LAYOUT_SEED;
     const positionsBeforeLayout = this.snapshotNodePositions();
     const hasGroups = this.diagram.getGroups().length > 0;
-    if ((options.nested ?? hasGroups) && hasGroups && !registered.handlesContainers) {
+    if ((options.nested ?? hasGroups) && hasGroups && !registered2.handlesContainers) {
       const result2 = await new CompoundLayoutService(this.diagram, {
         defaultAlgorithm: name,
         adapters: this.getLayoutRegistry().adapters(),
@@ -134161,8 +134413,8 @@ var DiagramEngine = class {
         totalIterations: 1
       };
     }
-    if (!registered.adapter) {
-      const result2 = await registered.apply(this.diagram, { ...options, seed });
+    if (!registered2.adapter) {
+      const result2 = await registered2.apply(this.diagram, { ...options, seed });
       this.commitLayoutPositions(result2.nodePositions);
       this.invalidateStaleLinkRoutes(positionsBeforeLayout);
       return {
@@ -134330,7 +134582,7 @@ var DiagramEngine = class {
    *
    *     const worker = new Worker(new URL('./layout.worker', import.meta.url),
    *                               { type: 'module' });
-   *     engine.setLayoutPort(worker as unknown as LayoutPort);
+   *     engine.setLayoutPort(worker);
    *
    * Pass `undefined` to go back to running inline.
    */
@@ -138997,12 +139249,35 @@ function stateModelToDiagram(model) {
     const source = nodes.get(transition.from);
     const target = nodes.get(transition.to);
     if (!source || !target) continue;
-    const link = diagram.createSmartLink(source, target, "orthogonal");
+    const link = reverseRoute(diagram, source, target) ?? diagram.createSmartLink(source, target, "orthogonal");
     if (!link) continue;
     if (transition.label) link.setLabel(transition.label);
     link.setMetadata("stateTransition", transition);
   }
   return diagram;
+}
+function reverseRoute(diagram, source, target) {
+  const reverse = diagram.getLinks().find((l) => l.sourceNodeId === target.id && l.targetNodeId === source.id);
+  if (!reverse) return void 0;
+  const sideOf = (portId) => diagram.getPortById(portId)?.side;
+  const vertical = /* @__PURE__ */ new Set([sideOf(reverse.sourcePortId), sideOf(reverse.targetPortId)]);
+  const around = vertical.has("top") || vertical.has("bottom") ? "right" : "bottom";
+  const sp = source.getPortBySide(around);
+  const tp = target.getPortBySide(around);
+  if (!sp || !tp || !sp.canConnectTo(tp)) return void 0;
+  const link = new LinkModel(sp.id, tp.id, "orthogonal");
+  link.sourceNodeId = source.id;
+  link.targetNodeId = target.id;
+  sp.addConnection(link.id, "source");
+  tp.addConnection(link.id, "target");
+  link.generatePath(
+    sp.getAbsolutePosition(source.getBoundingBox()),
+    tp.getAbsolutePosition(target.getBoundingBox()),
+    around,
+    around
+  );
+  diagram.addLink(link);
+  return link;
 }
 function stateModelFromDiagram(diagram) {
   const states = [];
@@ -143349,11 +143624,11 @@ var GridPackEngine = class _GridPackEngine {
    * Loops until stable so one restore can cascade further restores; this is
    * exactly why gridstack's E1 restore is emergent rather than special-cased.
    */
-  settle(active2) {
+  settle(active3) {
     for (let guard = 0; guard < 4 * this.items.length + 8; guard++) {
       let changed = false;
       for (const n3 of this.ordered()) {
-        if (n3.locked || n3 === active2 && !this.packActive) continue;
+        if (n3.locked || n3 === active3 && !this.packActive) continue;
         const mem = this.memory.get(n3.id);
         if (mem && (n3.x !== mem.x || n3.y !== mem.y)) {
           const home = { ...n3, x: mem.x, y: mem.y };
@@ -143751,10 +144026,24 @@ var SwimlaneService = class {
       const lc = lane.laneConfig;
       const size = lc.fixedSize !== void 0 ? lc.fixedSize : flexSpace * (lc.weight ?? 1) / totalWeight;
       const frame = horizontal ? { x: mainStart, y: cross3, width: mainSpan, height: size } : { x: cross3, y: mainStart, width: size, height: mainSpan };
+      const previous = lane.getOuterBounds();
       lane.setFrame(frame);
       lane.constrainChildren = true;
+      this.carryMembers(lane, previous, frame);
       lane.laneConfig = { ...lc, orientation: cfg.orientation };
       cross3 += size;
+    }
+  }
+  /** Move a lane's member nodes from its previous band to `next`, then clamp them in. */
+  carryMembers(lane, previous, next) {
+    const hadBand = previous.width > 0 && previous.height > 0;
+    const dx = hadBand ? next.x - previous.x : 0;
+    const dy = hadBand ? next.y - previous.y : 0;
+    for (const id of lane.members) {
+      const node = this.diagram.getNode(id);
+      if (!node) continue;
+      if (dx !== 0 || dy !== 0) node.setPosition(node.position.x + dx, node.position.y + dy);
+      lane.clampChildToExtent(id, this.diagram);
     }
   }
   buildLane(pool, spec, laneHeader) {
@@ -159848,6 +160137,8 @@ var UndoStack = class {
     this.machinery = /* @__PURE__ */ new Set();
     /** Open transaction: ops land here instead of becoming one entry each. */
     this.txn = null;
+    /** Open begin() calls; the step closes when this returns to 0. */
+    this.openSteps = 0;
     /** True while we are applying an undo/redo, so the ops it emits are not recorded anew. */
     this.replaying = false;
   }
@@ -159884,15 +160175,29 @@ var UndoStack = class {
    * is on the wire, and two peers may group differently without diverging.
    */
   transact(fn) {
-    if (this.txn) return fn();
-    const records = [];
-    this.txn = records;
+    this.begin();
     try {
       return fn();
     } finally {
-      this.txn = null;
-      if (records.length > 0) this.undoable.push({ records });
+      this.end();
     }
+  }
+  /**
+   * Open a step that spans events — a canvas drag is a press, many moves and a release, so
+   * it cannot be one synchronous `transact`. Pairs with {@link end}; nested pairs flatten
+   * into the outermost, exactly as nested `transact` calls do.
+   */
+  begin() {
+    if (this.openSteps++ > 0) return;
+    this.txn = [];
+  }
+  /** Close the step {@link begin} opened. Unpaired calls are ignored. */
+  end() {
+    if (this.openSteps === 0) return;
+    if (--this.openSteps > 0) return;
+    const records = this.txn ?? [];
+    this.txn = null;
+    if (records.length > 0) this.undoable.push({ records });
   }
   /**
    * Undo my last step. Returns the ops it emitted — empty if every part of it was already
@@ -160066,6 +160371,7 @@ var Replica = class {
       this.basePorts.set(n3.id, new Set(n3.getPorts().map((p) => p.id)));
     }
     this.undoStack = new UndoStack(this.log, options.actor, (op) => this.applyLocalInverse(op));
+    diagram.setHistoryOwner(this);
     this.capture = new OpCapture(diagram, {
       actor: options.actor,
       startClock: options.startClock,
@@ -160144,6 +160450,19 @@ var Replica = class {
     this.capture.silently(() => this.integrity.reconcile());
     return result;
   }
+  /**
+   * Open a step that spans events (a canvas press: down, moves, up). Everything I edit until
+   * the matching {@link endStep} is ONE undo step. Nested pairs flatten into the outermost.
+   * The canvas and the engine's CommandManager call these once this replica owns the
+   * diagram's undo — see `DiagramModel.setHistoryOwner`.
+   */
+  beginStep() {
+    this.undoStack.begin();
+  }
+  endStep() {
+    this.undoStack.end();
+    this.capture.silently(() => this.integrity.reconcile());
+  }
   /** Everything we know, in total order — the catch-up payload for a joining peer. */
   history() {
     return this.log.toArray();
@@ -160171,6 +160490,7 @@ var Replica = class {
     }
   }
   dispose() {
+    if (this.diagram.getHistoryOwner() === this) this.diagram.setHistoryOwner(null);
     this.capture.stop();
   }
   // -------------------------------------------------------------------------
@@ -160474,6 +160794,25 @@ var ReadState = class _ReadState {
 };
 
 // libs/engine/src/comments/comment-store.ts
+function adoptComments(diagram, tree, options = {}) {
+  const loaded = tree ?? {};
+  const current = diagram.comments ?? {};
+  let next;
+  if (options.replace) {
+    if (Object.keys(loaded).length === 0 && Object.keys(current).length === 0) return false;
+    next = deepCloneTree(loaded);
+  } else {
+    const missing = Object.keys(loaded).filter((tid) => !(tid in current));
+    if (missing.length === 0) return false;
+    next = { ...current };
+    for (const tid of missing) next[tid] = deepCloneTree({ [tid]: loaded[tid] })[tid];
+  }
+  diagram.comments = next;
+  return true;
+}
+function deepCloneTree(tree) {
+  return JSON.parse(JSON.stringify(tree));
+}
 var CommentStore = class {
   constructor(diagram, options) {
     this.diagram = diagram;
@@ -160505,10 +160844,29 @@ var CommentStore = class {
     for (const [tid, t] of Object.entries(this.tree())) {
       for (const mid of Object.keys(t.messages ?? {})) this.notified.add(mentionKey(tid, mid));
     }
-    this.unsubscribe = this.diagram.on("change", (entry) => {
+    const offChange = this.diagram.on("change", (entry) => {
       if (entry.property !== "comments" && !entry.property.startsWith("comments.")) return;
       this.onCommentsChanged();
     });
+    const entityEvent = (kind) => (entity) => {
+      if (entity?.id && this.isAnchorOf(kind, entity.id)) this.emit();
+    };
+    const offs = [
+      offChange,
+      this.diagram.on("node:removed", entityEvent("node")),
+      this.diagram.on("node:added", entityEvent("node")),
+      this.diagram.on("link:removed", entityEvent("link")),
+      this.diagram.on("link:added", entityEvent("link"))
+    ];
+    this.unsubscribe = () => offs.forEach((off) => off?.());
+  }
+  /** Is any thread anchored to this entity? */
+  isAnchorOf(kind, id) {
+    for (const t of Object.values(this.tree())) {
+      const anchor = t.anchor;
+      if (anchor && anchor.kind === kind && anchor.id === id) return true;
+    }
+    return false;
   }
   // ==========================================================================
   // AUTHORING — every one of these ends in exactly one register write per fact.
@@ -160887,6 +161245,17 @@ var CommentStore = class {
     this.emit();
   }
   // ==========================================================================
+  /**
+   * Bring a LOADED document's threads into this store's diagram — see
+   * {@link adoptComments}. Everything adopted is history, not news: its @mentions
+   * are marked notified first, so reopening a file never notifies anyone.
+   */
+  adopt(tree, options = {}) {
+    for (const [tid, t] of Object.entries(tree ?? {})) {
+      for (const mid of Object.keys(t?.messages ?? {})) this.notified.add(mentionKey(tid, mid));
+    }
+    return adoptComments(this.diagram, tree, options);
+  }
   /** Fired whenever the comment DATA or this viewer's READ STATE changes. */
   onChange(cb) {
     this.subs.add(cb);
@@ -162528,6 +162897,25 @@ function distToSegmentSq(px2, py, a, b) {
   const cy = a.y + t * aby;
   return (px2 - cx) * (px2 - cx) + (py - cy) * (py - cy);
 }
+function isSampledCurve(link) {
+  return (link.pathType === "smooth" || link.pathType === "bezier") && link.getMetadata("hasManualWaypoints") !== true;
+}
+function polylineMidpoint(points) {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  let remaining = total / 2;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const len2 = Math.hypot(b.x - a.x, b.y - a.y);
+    if (remaining <= len2) {
+      const t = len2 > 0 ? remaining / len2 : 0;
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    remaining -= len2;
+  }
+  return { ...points[0] };
+}
 var HALO_ORDER = ["connect", "clone", "fork", "delete"];
 var HALO_LABELS = {
   connect: "Connect",
@@ -162814,7 +163202,19 @@ var SelectionToolsController = class {
         cursor: "move",
         label: "Reconnect target"
       });
-      for (let i = 0; i < points.length - 1; i++) {
+      if (isSampledCurve(link)) {
+        handles.push({
+          id: `vertex-add-${link.id}-0`,
+          kind: "vertex-add",
+          index: 0,
+          linkId: link.id,
+          world: polylineMidpoint(points),
+          hitRadius: hitRadius * 0.9,
+          cursor: "copy",
+          label: "Add vertex on segment 1"
+        });
+      }
+      for (let i = 0; !isSampledCurve(link) && i < points.length - 1; i++) {
         const a = points[i];
         const b = points[i + 1];
         handles.push({
@@ -162828,7 +163228,7 @@ var SelectionToolsController = class {
           label: `Add vertex on segment ${i + 1}`
         });
       }
-      for (let i = 1; i < points.length - 1; i++) {
+      for (let i = 1; !isSampledCurve(link) && i < points.length - 1; i++) {
         handles.push({
           id: `vertex-remove-${link.id}-${i}`,
           kind: "vertex-remove",
@@ -163153,6 +163553,9 @@ var SelectionToolsController = class {
     if (!link || handle.index === void 0) return null;
     const points = link.points.map((p) => ({ ...p }));
     if (handle.index < 0 || handle.index >= points.length - 1) return null;
+    if (isSampledCurve(link)) {
+      return new SetLinkPointsCommand(link.id, [points[0], { ...handle.world }, points[points.length - 1]], points);
+    }
     const next = [...points];
     next.splice(handle.index + 1, 0, { ...handle.world });
     return new SetLinkPointsCommand(link.id, next, points);
@@ -167397,7 +167800,11 @@ function printDocument(html) {
     frame.style.width = "0";
     frame.style.height = "0";
     frame.style.border = "0";
+    let written = false;
+    let printed = false;
     frame.onload = () => {
+      if (!written || printed) return;
+      printed = true;
       const view = frame.contentWindow;
       if (view) {
         view.focus();
@@ -167415,6 +167822,7 @@ function printDocument(html) {
       resolve2();
       return;
     }
+    written = true;
     frameDoc.open();
     frameDoc.write(html);
     frameDoc.close();
@@ -174392,6 +174800,16 @@ function fitFontSize(text, maxWidth, base) {
   const needed = maxWidth / (longest * 0.6);
   return needed >= base ? base : Math.max(MIN_LABEL_FONT_PX, Math.floor(needed));
 }
+var END_GLYPH_MARKERS = /* @__PURE__ */ new Set([
+  "crow-foot",
+  "one",
+  "zero-or-one",
+  "zero-or-many",
+  "one-or-many",
+  "hollow-diamond",
+  "filled-diamond",
+  "generalization"
+]);
 var _SVGRenderer = class _SVGRenderer {
   constructor(engine, config = {}, theme) {
     this.engine = engine;
@@ -174439,6 +174857,8 @@ var _SVGRenderer = class _SVGRenderer {
     this.containerIds = /* @__PURE__ */ new Map();
     // nodeId -> containerId mapping
     this.foreignObjectNodes = /* @__PURE__ */ new Set();
+    /** Per link, this frame: the inside port point each routed-from-the-edge end leads back to. */
+    this.framePortLeads = /* @__PURE__ */ new Map();
     // wave6/a11y (card 1): which entity the keyboard controller has focused. Drives
     // the ROVING TABINDEX — exactly one element in the diagram carries tabindex=0.
     //
@@ -174499,6 +174919,12 @@ var _SVGRenderer = class _SVGRenderer {
      * nest (a paged export renders per page inside one export).
      */
     this.exportDepth = 0;
+    /**
+     * Entities whose transient view state is masked for the export in progress
+     * (`node:<id>` / `link:<id>`). Their cached VNodes were built WITH the chrome,
+     * so the export must neither read nor write the cache for them.
+     */
+    this.exportMasked = null;
     /**
      * Did the frame being built move any link's FINAL geometry? If so it has not
      * reached a fixed point and must not arm the gate.
@@ -174678,6 +175104,10 @@ var _SVGRenderer = class _SVGRenderer {
     this.registryFacade = new DiagramRegistry(this.registryScope);
     /** The host's read-only VIEW switch (not the document lock): no editing chrome. */
     this.viewReadonly = false;
+    /** The node a connection drag is snapping to, and whether it accepts (`connection.snapToNode`). */
+    this.connectSnap = null;
+    /** The link a dragged node would be dropped onto (`nodeDropOnLink`). */
+    this.dropTargetLinkId = null;
     /**
      * Every VNode-cache key an entity currently occupies — one per LOD tier it
      * has been rendered at since its last change.
@@ -174820,11 +175250,95 @@ var _SVGRenderer = class _SVGRenderer {
    */
   renderForExport(viewport, zoom) {
     this.exportDepth++;
+    const restore = this.exportDepth === 1 ? this.maskEditorChrome() : null;
     try {
       return this.render(viewport, zoom);
     } finally {
+      restore?.();
       this.exportDepth--;
     }
+  }
+  /**
+   * AN EXPORT IS A PICTURE OF THE DIAGRAM, NOT OF THE EDITOR.
+   *
+   * After any drag the node is still selected and still hovered, so every export
+   * used to carry the dashed selection ring, the resize dots, the hover-only port
+   * circles, a selected line's casing and endpoint/waypoint handles, and the focus
+   * ring. All of it is VIEW state (selection, hover, focus, port highlight, the
+   * connect-snap and drop-target marks), so for the length of the export pass it
+   * is set to "nothing is going on" — directly on the fields, emitting no events
+   * and touching no history — and put back afterwards. The interaction layers
+   * (connection preview, snap guides, resize tools) are simply not built while
+   * exporting; see `renderInScope`.
+   *
+   * `highlighted`, `error`, `locked` and `enabled` are DOCUMENT state an app sets on
+   * purpose and stay in the picture, as do ports whose visibility is `always`.
+   */
+  maskEditorChrome() {
+    const diagram = this.engine.getDiagram();
+    const masked = /* @__PURE__ */ new Set();
+    const undo = [];
+    const focus = this.a11yFocus;
+    const snap = this.connectSnap;
+    const drop = this.dropTargetLinkId;
+    if (focus) masked.add(`${focus.type}:${focus.id}`);
+    if (snap) masked.add(`node:${snap.nodeId}`);
+    if (drop) masked.add(`link:${drop}`);
+    this.a11yFocus = null;
+    this.connectSnap = null;
+    this.dropTargetLinkId = null;
+    undo.push(() => {
+      this.a11yFocus = focus;
+      this.connectSnap = snap;
+      this.dropTargetLinkId = drop;
+    });
+    for (const node of diagram?.getNodes() ?? []) {
+      const state = node.state;
+      if (state && (state.selected || state.hovered || state.focused)) {
+        node.state = { ...state, selected: false, hovered: false, focused: false };
+        masked.add(`node:${node.id}`);
+        undo.push(() => {
+          node.state = state;
+        });
+      }
+      for (const port of node.getPorts?.() ?? []) {
+        const { isHovered, isHighlighted, isValidTarget } = port;
+        if (!isHovered && !isHighlighted && !isValidTarget) continue;
+        port.isHovered = false;
+        port.isHighlighted = false;
+        port.isValidTarget = false;
+        masked.add(`node:${node.id}`);
+        undo.push(() => {
+          port.isHovered = isHovered;
+          port.isHighlighted = isHighlighted;
+          port.isValidTarget = isValidTarget;
+        });
+      }
+    }
+    for (const link of diagram?.getLinks() ?? []) {
+      const state = link.state;
+      const src = link.isSourceEndpointSelected;
+      const tgt = link.isTargetEndpointSelected;
+      if (state !== "selected" && state !== "hovered" && !src && !tgt) continue;
+      if (state === "selected" || state === "hovered") link.state = "default";
+      link.isSourceEndpointSelected = false;
+      link.isTargetEndpointSelected = false;
+      masked.add(`link:${link.id}`);
+      undo.push(() => {
+        link.state = state;
+        link.isSourceEndpointSelected = src;
+        link.isTargetEndpointSelected = tgt;
+      });
+    }
+    this.exportMasked = masked;
+    return () => {
+      this.exportMasked = null;
+      for (let i = undo.length - 1; i >= 0; i--) undo[i]();
+    };
+  }
+  /** May this entity's VNode come from / go into the cache on the current pass? */
+  cacheableThisPass(kind, id) {
+    return !this.exportMasked?.has(`${kind}:${id}`);
   }
   /**
    * Register shapes / styles / markers / link-pipeline stages for THIS renderer
@@ -174833,6 +175347,19 @@ var _SVGRenderer = class _SVGRenderer {
    */
   getRegistry() {
     return this.registryFacade;
+  }
+  /** Mark (or clear) the node a connection drag snaps to: class `connect-snap-accept|refuse`. */
+  setConnectSnap(nodeId, verdict = "accept") {
+    const next = nodeId ? { nodeId, verdict } : null;
+    if (next?.nodeId === this.connectSnap?.nodeId && next?.verdict === this.connectSnap?.verdict) return;
+    this.connectSnap = next;
+    this.invalidateFrame();
+  }
+  /** Mark (or clear) the link a dragged node would land on: class `link-drop-target`. */
+  setDropTargetLink(linkId) {
+    if (linkId === this.dropTargetLinkId) return;
+    this.dropTargetLinkId = linkId;
+    this.invalidateFrame();
   }
   /** Set by `createDiagram` from `readonly` / `setReadonly()`. */
   setViewReadonly(readonly) {
@@ -174912,9 +175439,9 @@ var _SVGRenderer = class _SVGRenderer {
     this.computeFrameConnections(diagram);
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
-    const connectionPreviewLayer = this.renderConnectionPreviewLayer();
-    const snapGuidesLayer = this.renderSnapGuidesLayer();
-    const resizeHandlesLayer = this.renderResizeToolsLayer(lod, zoom);
+    const connectionPreviewLayer = this.exporting ? null : this.renderConnectionPreviewLayer();
+    const snapGuidesLayer = this.exporting ? null : this.renderSnapGuidesLayer();
+    const resizeHandlesLayer = this.exporting ? null : this.renderResizeToolsLayer(lod, zoom);
     const commentsLayer = this.renderCommentsLayer(cullRect, zoom);
     const strokesLayer = diagram.strokes.size > 0 ? renderStrokesLayer(diagram.getVisibleStrokes(cullRect)) : null;
     const groupsLayer = this.renderGroupsLayer(diagram, cullRect);
@@ -177230,7 +177757,17 @@ var _SVGRenderer = class _SVGRenderer {
       }
       return depth;
     };
-    const ordered = groups.map((g, i) => ({ g, i, depth: depthOf2(g) })).sort((a, b) => a.depth - b.depth || a.g.zIndex - b.g.zIndex || a.i - b.i);
+    const hiddenByCollapse = (g) => {
+      const seen = /* @__PURE__ */ new Set([g.id]);
+      let cur = g.parentGroupId ? byId2.get(g.parentGroupId) : void 0;
+      while (cur && !seen.has(cur.id)) {
+        if (cur.isCollapsed) return true;
+        seen.add(cur.id);
+        cur = cur.parentGroupId ? byId2.get(cur.parentGroupId) : void 0;
+      }
+      return false;
+    };
+    const ordered = groups.filter((g) => !hiddenByCollapse(g)).map((g, i) => ({ g, i, depth: depthOf2(g) })).sort((a, b) => a.depth - b.depth || a.g.zIndex - b.g.zIndex || a.i - b.i);
     const frames = [];
     for (const { g } of ordered) {
       if (!g.isCollapsed && g.getMetadata?.("frameChrome") === "none") continue;
@@ -177655,9 +178192,9 @@ var _SVGRenderer = class _SVGRenderer {
     if (this.shouldUseForeignObject(node)) {
       return this.renderNodeWithForeignObject(node, lod);
     }
-    const cacheKey = `node-${node.id}-${lod}`;
+    const cacheKey = `node-${node.id}-${lod}${this.connectSnap?.nodeId === node.id ? `~snap-${this.connectSnap.verdict}` : ""}`;
     const usesPaintServer = this.nodeUsesPaintServer(node);
-    if (this.config.enableCaching && !node.isDirty && !usesPaintServer) {
+    if (this.config.enableCaching && !node.isDirty && !usesPaintServer && this.cacheableThisPass("node", node.id)) {
       const cached = this.vnodeCache.get(cacheKey);
       if (cached) {
         return cached;
@@ -177765,6 +178302,7 @@ var _SVGRenderer = class _SVGRenderer {
     return vnode;
   }
   cacheEntityVNode(kind, id, cacheKey, vnode, entity) {
+    if (!this.cacheableThisPass(kind, id)) return;
     const entityKey = `${kind}-${id}`;
     if (entity.isDirty) {
       for (const stale of this.entityCacheKeys.get(entityKey) ?? []) {
@@ -178038,12 +178576,32 @@ var _SVGRenderer = class _SVGRenderer {
   shouldRenderPort(port, node, config) {
     if (node.behavior?.connectable === false) return false;
     if (!this.shouldRenderPortByMode(port, node, config)) return false;
+    if (!port.isHighlighted && !port.isValidTarget && this.portUnderEndGlyph(port)) return false;
     const diagram = this.engine.getDiagram();
     if (diagram && typeof diagram.isPointCoveredAbove === "function") {
       const anchor = portWorldPosition(port, node);
       if (diagram.isPointCoveredAbove(anchor.x, anchor.y, node.id)) return false;
     }
     return true;
+  }
+  /**
+   * Does a link end that lands on `port` carry a marker whose glyph SITS AT the
+   * end (the ERD cardinalities, UML diamonds, the generalization triangle)? A
+   * dot drawn there hides it. Plain arrows are left alone: their tip only meets
+   * the port, and the flowchart look is unchanged.
+   */
+  portUnderEndGlyph(port) {
+    const connections = port.currentConnections;
+    if (!connections || connections.size === 0) return false;
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return false;
+    for (const linkId of connections) {
+      const link = diagram.getLink(linkId);
+      if (!link) continue;
+      const marker = link.targetPortId === port.id ? link.style?.arrowHead : link.sourcePortId === port.id ? link.style?.arrowTail : void 0;
+      if (marker && END_GLYPH_MARKERS.has(marker.type)) return true;
+    }
+    return false;
   }
   shouldRenderPortByMode(port, node, config) {
     if (port.visible === false) {
@@ -178696,12 +179254,50 @@ var _SVGRenderer = class _SVGRenderer {
     const targetAnchored = applyAnchor("target");
     const source = sourceAnchored ? { point: sourceAnchored.point, direction: sourceAnchored.side ?? defaults.sourceDirection } : this.portAttachment(link, sourcePort, sourceNode, defaults.start, "source");
     const target = targetAnchored ? { point: targetAnchored.point, direction: targetAnchored.side ?? defaults.targetDirection } : this.portAttachment(link, targetPort, targetNode, defaults.end, "target");
+    const sourceLead = this.insideLead(source.point, sourceRect, source.direction);
+    const targetLead = this.insideLead(target.point, targetRect, target.direction);
+    if (sourceLead || targetLead) {
+      this.framePortLeads.set(link.id, { source: sourceLead ? source.point : void 0, target: targetLead ? target.point : void 0 });
+    } else {
+      this.framePortLeads.delete(link.id);
+    }
     return {
-      start: source.point,
-      end: target.point,
+      start: sourceLead ?? source.point,
+      end: targetLead ?? target.point,
       sourceDirection: source.direction,
       targetDirection: target.direction
     };
+  }
+  /** Where a point strictly inside `rect` meets the edge on its `side` (level with it), or null. */
+  insideLead(point, rect, side) {
+    const EPS3 = 0.5;
+    const insideX = point.x > rect.x + EPS3 && point.x < rect.x + rect.w - EPS3;
+    const insideY = point.y > rect.y + EPS3 && point.y < rect.y + rect.h - EPS3;
+    if (!insideX || !insideY) return null;
+    switch (side) {
+      case "right":
+        return { x: rect.x + rect.w, y: point.y };
+      case "left":
+        return { x: rect.x, y: point.y };
+      case "bottom":
+        return { x: point.x, y: rect.y + rect.h };
+      case "top":
+        return { x: point.x, y: rect.y };
+      default:
+        return null;
+    }
+  }
+  /** A route from the box edge, with the lead back to an inside port put back on (a copy). */
+  withPortLeads(linkId, routed) {
+    const lead = this.framePortLeads.get(linkId);
+    if (!lead || routed.points.length === 0) return routed;
+    const same = (a, b) => Math.abs(a.x - b.x) <= 0.5 && Math.abs(a.y - b.y) <= 0.5;
+    const first = routed.points[0], last = routed.points[routed.points.length - 1];
+    const addSource = !!lead.source && !same(first, lead.source);
+    const addTarget = !!lead.target && !same(last, lead.target);
+    if (!addSource && !addTarget) return routed;
+    const points = [...addSource ? [lead.source] : [], ...routed.points, ...addTarget ? [lead.target] : []];
+    return { ...routed, points, segments: void 0 };
   }
   /**
    * Wave 6 (ports, Card 5): resolve where `link` attaches to `port`, and which way
@@ -179137,6 +179733,7 @@ var _SVGRenderer = class _SVGRenderer {
    */
   syncPaintedLinkPoints(link, routePoints, endpoints) {
     const eps = endpoints ?? this.getLinkEndpoints(link);
+    routePoints = this.withPortLeads(link.id, { points: routePoints }).points;
     if (!eps) {
       this.syncLinkPoints(link, routePoints);
       return;
@@ -179229,9 +179826,9 @@ var _SVGRenderer = class _SVGRenderer {
   renderLink(link, lod) {
     const connection = this.frameConnections.get(link.id);
     const crossing = this.frameCrossings.has(link.id);
-    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ""}${crossing ? "~x" : ""}`;
+    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ""}${crossing ? "~x" : ""}${this.dropTargetLinkId === link.id ? "~drop" : ""}`;
     const usesPaintServer = this.linkUsesPaintServer(link);
-    if (this.config.enableCaching && !link.isDirty && !usesPaintServer) {
+    if (this.config.enableCaching && !link.isDirty && !usesPaintServer && this.cacheableThisPass("link", link.id)) {
       const cached = this.vnodeCache.get(cacheKey);
       if (cached) {
         return cached;
@@ -179243,7 +179840,8 @@ var _SVGRenderer = class _SVGRenderer {
     let points;
     const hasManualWaypoints = this.linkHasManualWaypoints(link);
     if (endpoints && !hasManualWaypoints) {
-      const routedPath = this.frameRoutes.get(link.id) ?? this.routeForLOD(link, endpoints, this.lodAllows("routing", lod));
+      const rawRoute = this.frameRoutes.get(link.id) ?? this.routeForLOD(link, endpoints, this.lodAllows("routing", lod));
+      const routedPath = rawRoute ? this.withPortLeads(link.id, rawRoute) : rawRoute;
       if (routedPath) {
         points = routedPath.points;
         const drawPath = this.pathForLOD(routedPath, lod);
@@ -179269,13 +179867,17 @@ var _SVGRenderer = class _SVGRenderer {
       }
     } else {
       points = link.points;
+      const lead = this.framePortLeads.get(link.id);
       if (endpoints && points.length >= 2) {
+        const near = (a, b) => !!b && Math.abs(a.x - b.x) <= 0.5 && Math.abs(a.y - b.y) <= 0.5;
+        const interior = points.slice(1, -1).filter((p) => !lead || !(near(p, endpoints.start) || near(p, endpoints.end) || near(p, lead.source) || near(p, lead.target)));
         points = [
           { ...endpoints.start },
-          ...points.slice(1, -1).map((p) => ({ ...p })),
+          ...interior.map((p) => ({ ...p })),
           { ...endpoints.end }
         ];
         this.syncLinkPoints(link, points);
+        if (lead) points = this.withPortLeads(link.id, { points }).points;
       }
       if (this.isOrthogonalRouting(link) && hasManualWaypoints) {
         const routingEngine = this.engine.getRoutingEngine();
@@ -179368,17 +179970,10 @@ var _SVGRenderer = class _SVGRenderer {
     }
     const linkLiterals = this.linkPaintLiterals(link);
     const arrowLiteral = linkLiterals.stroke || this.theme.colors.link.default;
-    const arrowHeadStyle = link.style.arrowHead || {
-      type: "arrow",
-      size: 10,
-      filled: true,
-      // The line's OWN colour when it has one (its style, a classDef, a state,
-      // the selection's ink): the theme variable first meant a green line kept
-      // a grey head, because `var(--link-stroke, green)` always resolves the
-      // variable. The variable only when the colour IS the theme's.
-      color: this.config.useCSSMode && !linkLiterals.stroke ? `var(${THEME_VARS["link.stroke"].cssVar}, ${arrowLiteral})` : arrowLiteral
-    };
-    const arrowTailStyle = link.style.arrowTail;
+    const lineColour = this.config.useCSSMode && !linkLiterals.stroke ? `var(${THEME_VARS["link.stroke"].cssVar}, ${arrowLiteral})` : arrowLiteral;
+    const withLineColour = (marker) => marker.color ? marker : { ...marker, color: lineColour };
+    const arrowHeadStyle = link.style.arrowHead ? withLineColour(link.style.arrowHead) : { type: "arrow", size: 10, filled: true, color: lineColour };
+    const arrowTailStyle = link.style.arrowTail && withLineColour(link.style.arrowTail);
     const arrowData = this.calculateArrowPositionAndAngle(
       link,
       points,
@@ -179517,6 +180112,7 @@ var _SVGRenderer = class _SVGRenderer {
         // Phase 1.2: Multiple labels using LabelRenderer
         ...this.lodAllows("labels", lod) ? (() => {
           const labelVNodes = [];
+          const chipsOnly = !!link.labels && link.labels.length > 0 && link.labels.every((l) => l.slot === "start" || l.slot === "end");
           if (link.labels && link.labels.length > 0) {
             link.labels.forEach((label2) => {
               const placed = this.onLongestRun(link, label2, points);
@@ -179530,7 +180126,8 @@ var _SVGRenderer = class _SVGRenderer {
                 labelVNodes.push(labelVNode);
               }
             });
-          } else if (label) {
+          }
+          if (label && (chipsOnly || !link.labels || link.labels.length === 0)) {
             const legacyLabel = {
               id: "legacy-label",
               text: label,
@@ -179776,6 +180373,7 @@ var _SVGRenderer = class _SVGRenderer {
     }
     if (node.state.highlighted) classes.push("highlighted");
     if (node.state.hovered) classes.push("hovered");
+    if (this.connectSnap?.nodeId === node.id) classes.push(`connect-snap-${this.connectSnap.verdict}`);
     if (!node.state.enabled) classes.push("disabled");
     if (node.state.error) classes.push("error");
     classes.push(...styleClassTokens(node.style.styleClass));
@@ -179836,6 +180434,7 @@ var _SVGRenderer = class _SVGRenderer {
     if (link.state === "selected") classes.push("selected");
     if (link.state === "highlighted") classes.push("highlighted");
     if (link.state === "hovered") classes.push("hovered");
+    if (this.dropTargetLinkId === link.id) classes.push("link-drop-target");
     classes.push(...styleClassTokens(link.style.styleClass));
     if (link.style.className) classes.push(link.style.className);
     const animationClasses = this.animationService.getEdgeAnimationClass(link);
@@ -184737,9 +185336,9 @@ var DiagramRenderBackend = class {
    * immediately returns the diagram to SVG rather than waiting for the next frame. A
    * screen reader that arrives mid-session gets its semantics back at once.
    */
-  setAccessibilityActive(active2) {
-    this.a11yActive = active2;
-    if (active2 && this.guardCanvas && this.mode === "canvas") {
+  setAccessibilityActive(active3) {
+    this.a11yActive = active3;
+    if (active3 && this.guardCanvas && this.mode === "canvas") {
       this.unmount();
       this.mode = "svg";
       this.mount();
@@ -184763,9 +185362,9 @@ var DiagramRenderBackend = class {
   /** Does DOM focus currently sit inside the diagram? */
   isFocusInside() {
     const doc = this.container.ownerDocument;
-    const active2 = doc?.activeElement;
-    if (!active2 || active2 === doc?.body) return false;
-    return this.container.contains(active2);
+    const active3 = doc?.activeElement;
+    if (!active3 || active3 === doc?.body) return false;
+    return this.container.contains(active3);
   }
   /**
    * Does the scene contain nodes the canvas backend cannot paint?
@@ -185015,6 +185614,13 @@ var InteractionController = class {
      */
     this.hoveredNode = null;
     this.hoveredPort = null;
+    /**
+     * A connection drag's SNAP target (`connection.snapToNode`): the input port of
+     * the node under or near the pointer that the drag would connect to. Shown
+     * like a hovered port while dragging; used on release only when it `accepts`
+     * (a refused one is shown so its reason can be read, never connected).
+     */
+    this.snap = null;
     this.hoveredLink = null;
     /**
      * Connection drag state
@@ -185029,6 +185635,8 @@ var InteractionController = class {
     this.reconnectingEndpoint = null;
     /** Current cursor position while dragging a reconnecting endpoint. */
     this.reconnectingMousePoint = null;
+    /** Where the last {@link handleMouseMove} put the cursor — what a release resolves against. */
+    this.lastHoverPoint = null;
     /**
      * Inline label drag-reposition state. While active,
      * mouse moves remap the cursor to a (position 0-1, offset) pair on the model
@@ -185159,6 +185767,14 @@ var InteractionController = class {
   setLinkHitAreaWidth(width) {
     this.linkHitAreaWidthConfig = Math.max(0, width);
   }
+  /** Set (or clear) the connection drag's snap target. The binder's `snapToNode` drives it. */
+  setConnectionSnap(snap) {
+    this.snap = snap;
+  }
+  /** The port a release would connect to now: the hovered port, else an accepting snap. */
+  getConnectionTarget() {
+    return this.hoveredPort ?? (this.snap?.accepts ? this.snap.port : null);
+  }
   /**
    * Dispose and cleanup resources
    */
@@ -185217,6 +185833,7 @@ var InteractionController = class {
     }
     const diagram = engine.getDiagram();
     if (!diagram) return false;
+    this.lastHoverPoint = { x: worldX, y: worldY };
     const startTime = performance.now();
     const config = engine.getInteractionConfig();
     let needsRender = false;
@@ -185295,7 +185912,7 @@ var InteractionController = class {
     const startTime = performance.now();
     try {
       const connectionStateManager = engine.getConnectionStateManager();
-      const hoveredPort = this.hoveredPort ?? this.findMagnetPort(worldX, worldY, engine);
+      const hoveredPort = this.hoveredPort ?? this.snap?.port ?? this.findMagnetPort(worldX, worldY, engine);
       connectionStateManager.updateConnection(
         { x: worldX, y: worldY },
         hoveredPort || void 0
@@ -185383,7 +186000,11 @@ var InteractionController = class {
     try {
       const config = engine.getInteractionConfig();
       const connectionStateManager = engine.getConnectionStateManager();
-      let targetPort = this.hoveredPort;
+      let targetPort = this.hoveredPort ?? (this.snap?.accepts ? this.snap.port : null);
+      if (!targetPort) {
+        const at = connectionStateManager.getState().currentMousePosition;
+        if (at) targetPort = this.findMagnetPort(at.x, at.y, engine);
+      }
       const smartAutoConnect = config.mode === "smart" && config.enableSmartAutoConnect;
       if (!targetPort && (smartAutoConnect || config.enableEasyConnect)) {
         const diagram = engine.getDiagram();
@@ -185425,6 +186046,7 @@ var InteractionController = class {
           }
           if (!targetPort && smartAutoConnect) {
             const hit = diagram.findNearestPort(pos, {
+              radius: config.snapToPortRadius > 0 ? config.snapToPortRadius : void 0,
               portPosition: (port, node) => portWorldPosition(port, node)
             });
             targetPort = hit?.port ?? null;
@@ -185453,6 +186075,7 @@ var InteractionController = class {
    * Cancel connection
    */
   cancelConnection(engine) {
+    this.snap = null;
     if (!this.isConnecting) {
       return;
     }
@@ -185504,12 +186127,7 @@ var InteractionController = class {
       return false;
     }
     this.reconnectingMousePoint = { x: worldX, y: worldY };
-    const isValid = !!(this.hoveredPort && this.isValidReconnectionTarget(
-      this.reconnectingLink,
-      this.reconnectingEndpoint,
-      this.hoveredPort,
-      engine
-    ));
+    const isValid = this.resolveReconnectTarget(engine, { x: worldX, y: worldY }) !== null;
     engine.setReconnectionPreview({
       linkId: this.reconnectingLink.id,
       endpoint: this.reconnectingEndpoint,
@@ -185518,6 +186136,61 @@ var InteractionController = class {
     });
     this.updateReconnectPortHighlights(engine);
     return true;
+  }
+  /**
+   * Where a reconnect released at `at` lands, or null when it would be refused.
+   *
+   * 1. The port under the cursor, when it is a legal target.
+   * 2. With smart auto-connect (`mode: 'smart'` + `enableSmartAutoConnect`, the
+   *    defaults) or Easy Connect, the node BODY under the cursor: its legal port
+   *    nearest the link's FIXED end, i.e. the side facing it — what
+   *    `InteractionConfig.enableSmartAutoConnect` promises ("dropping on node body
+   *    connects to nearest port"), and the same nearest-pair rule Easy Connect uses
+   *    for a body-to-body wire. A body press otherwise ties the four sides and the
+   *    first in iteration order (top) would win.
+   * 3. The MAGNET: the nearest legal port within `snapToPortRadius` — the same reach
+   *    a new connection's drag has (C1/C2: a port you can snap a new wire to is a
+   *    port you can snap a dragged endpoint to).
+   */
+  resolveReconnectTarget(engine, at) {
+    const link = this.reconnectingLink;
+    const endpoint = this.reconnectingEndpoint;
+    const diagram = engine.getDiagram();
+    if (!link || !endpoint || !diagram) return null;
+    const legal = (port) => this.isValidReconnectionTarget(link, endpoint, port, engine);
+    if (this.hoveredPort && legal(this.hoveredPort)) return this.hoveredPort;
+    if (!at) return null;
+    const config = engine.getInteractionConfig();
+    const bodyDrop = config.mode === "smart" && config.enableSmartAutoConnect || config.enableEasyConnect;
+    const over = diagram.getNodeAtPosition(at.x, at.y);
+    if (bodyDrop && over) {
+      const fixedPortId = endpoint === "source" ? link.targetPortId : link.sourcePortId;
+      const fixedPort = diagram.getPortById(fixedPortId);
+      const fixedNode = diagram.getNodeByPortId(fixedPortId);
+      const anchor = fixedPort && fixedNode ? portWorldPosition(fixedPort, fixedNode) : at;
+      let best = null;
+      let bestDistance = Infinity;
+      for (const port of over.getPorts()) {
+        if (!legal(port)) continue;
+        const p = portWorldPosition(port, over);
+        const d = Math.hypot(anchor.x - p.x, anchor.y - p.y);
+        if (d < bestDistance) {
+          bestDistance = d;
+          best = port;
+        }
+      }
+      if (best) return best;
+    }
+    const radius = config.snapToPortRadius;
+    if (radius > 0) {
+      const hit = diagram.findNearestPort(at, {
+        radius,
+        filter: (port) => legal(port),
+        portPosition: (port, node) => portWorldPosition(port, node)
+      });
+      if (hit) return hit.port;
+    }
+    return null;
   }
   /**
    * Is `candidatePort` a legal target for reconnecting `endpoint` of
@@ -185552,6 +186225,7 @@ var InteractionController = class {
   updateReconnectPortHighlights(engine) {
     const diagram = engine.getDiagram();
     if (!diagram || !this.reconnectingLink || !this.reconnectingEndpoint) return;
+    const target = this.resolveReconnectTarget(engine, this.reconnectingMousePoint);
     diagram.getNodes().forEach((node) => {
       node.getPorts().forEach((port) => {
         const valid = this.isValidReconnectionTarget(
@@ -185560,7 +186234,7 @@ var InteractionController = class {
           port,
           engine
         );
-        const highlighted = valid && port === this.hoveredPort;
+        const highlighted = valid && port === target;
         if (port.isValidTarget !== valid || port.isHighlighted !== highlighted) {
           node.markDirty("port-highlight");
         }
@@ -185581,8 +186255,8 @@ var InteractionController = class {
     if (!this.isReconnectingLink || !this.reconnectingLink || !this.reconnectingEndpoint) {
       return false;
     }
-    const targetPort = this.hoveredPort;
-    if (!targetPort || !this.isValidReconnectionTarget(this.reconnectingLink, this.reconnectingEndpoint, targetPort, engine)) {
+    const targetPort = this.resolveReconnectTarget(engine, this.lastHoverPoint ?? this.reconnectingMousePoint);
+    if (!targetPort) {
       debugLog("\u{1F6AB} Link reconnection rejected: no valid target port");
       this.cancelLinkReconnection(engine);
       return false;
@@ -188115,7 +188789,7 @@ var KeyboardNavigationController = class {
     this.announce(
       `Connect from ${this.nodeName(node)}, port ${this.portName(
         ports[0]
-      )}. Arrow keys change port, Enter to choose target.`
+      )}. Arrow keys change port, Tab or Enter to choose target.`
     );
     return true;
   }
@@ -188147,11 +188821,17 @@ var KeyboardNavigationController = class {
     );
     return true;
   }
-  /** Cycle the TARGET node (Tab during phase 2). */
+  /**
+   * Cycle the TARGET node (Tab during phase 2). Tab during phase 1 confirms the
+   * source and enters phase 2 on the first candidate — the same step Enter
+   * takes — so "C, Tab to a target, Enter" connects as well as "C, Enter, Tab,
+   * Enter" does.
+   */
   cycleTargetNode(engine, delta) {
     const state = this.connectState;
     const diagram = engine?.getDiagram?.();
-    if (!state || !diagram || state.phase !== "target") return false;
+    if (!state || !diagram) return false;
+    if (state.phase === "source") return this.enterTargetPhase(engine);
     const candidates = this.getFocusOrder(engine).filter((t) => t.type === "node" && t.id !== state.sourceNodeId).map((t) => diagram.getNode(t.id)).filter((n3) => !!n3 && n3.behavior?.connectable !== false);
     if (candidates.length === 0) return false;
     const index = Math.max(
@@ -188167,6 +188847,26 @@ var KeyboardNavigationController = class {
     );
     return true;
   }
+  /** Phase 1 → 2: confirm the source and seed the first candidate target. False when there is none. */
+  enterTargetPhase(engine) {
+    const state = this.connectState;
+    const diagram = engine?.getDiagram?.();
+    if (!state || !diagram || state.phase !== "source") return false;
+    state.phase = "target";
+    const first = this.getFocusOrder(engine).filter((t) => t.type === "node" && t.id !== state.sourceNodeId).map((t) => diagram.getNode(t.id)).find((n3) => !!n3 && n3.behavior?.connectable !== false);
+    if (!first) {
+      this.announce("No other node to connect to", "assertive");
+      this.connectState = null;
+      return false;
+    }
+    state.targetNodeId = first.id;
+    state.targetPortId = this.connectablePorts(first)[0]?.id;
+    this.refreshConnectValidity(engine);
+    this.announce(
+      `Choose target. ${this.nodeName(first)}${state.valid ? ", valid" : ", not a valid target"}. Tab cycles nodes, Enter connects.`
+    );
+    return true;
+  }
   /**
    * Enter: phase 1 → confirm the source and enter phase 2 (seeding the first
    * candidate target); phase 2 → COMMIT, returning the undoable AddLinkCommand
@@ -188177,19 +188877,7 @@ var KeyboardNavigationController = class {
     const diagram = engine?.getDiagram?.();
     if (!state || !diagram) return null;
     if (state.phase === "source") {
-      state.phase = "target";
-      const first = this.getFocusOrder(engine).filter((t) => t.type === "node" && t.id !== state.sourceNodeId).map((t) => diagram.getNode(t.id)).find((n3) => !!n3 && n3.behavior?.connectable !== false);
-      if (!first) {
-        this.announce("No other node to connect to", "assertive");
-        this.connectState = null;
-        return null;
-      }
-      state.targetNodeId = first.id;
-      state.targetPortId = this.connectablePorts(first)[0]?.id;
-      this.refreshConnectValidity(engine);
-      this.announce(
-        `Choose target. ${this.nodeName(first)}${state.valid ? ", valid" : ", not a valid target"}. Tab cycles nodes, Enter connects.`
-      );
+      this.enterTargetPhase(engine);
       return null;
     }
     this.refreshConnectValidity(engine);
@@ -188456,6 +189144,10 @@ var HTML_LAYER_CLASS = "grafloria-html-layer";
 var INSTANCE_ATTR = "data-grafloria-instance";
 var ROOT_STYLE = "position:relative;width:100%;height:100%;overflow:hidden";
 var SVG_LAYER_STYLE = "position:absolute;top:0;left:0;width:100%;height:100%";
+var SERVER_ROOT_STYLE = `${ROOT_STYLE};container-type:size`;
+function serverSvgLayerStyle(width, height) {
+  return `position:absolute;top:0;left:0;width:${width}px;height:${height}px;transform:translate(calc(50cqw - ${width / 2}px),calc(50cqh - ${height / 2}px))`;
+}
 function htmlLayerStyle(transform) {
   return `position:absolute;top:0;left:0;transform-origin:0 0;pointer-events:none;transform:${transform}`;
 }
@@ -188473,9 +189165,9 @@ var WhiteboardTool = class {
     this.active = true;
     this.overlayInstance = null;
   }
-  setActive(active2) {
-    this.active = active2;
-    if (!active2) this.overlay().clear();
+  setActive(active3) {
+    this.active = active3;
+    if (!active3) this.overlay().clear();
   }
   isActive() {
     return this.active;
@@ -188589,7 +189281,12 @@ var RectangleTool = class extends WhiteboardTool {
     if (this.opts.strokeWidth !== void 0) style["strokeWidth"] = this.opts.strokeWidth;
     node.setStyle(style);
     if (this.opts.label !== void 0) node.setMetadata("label", this.opts.label);
-    this.commit(() => this.model().addNode(node));
+    const engine = this.host.getEngine?.();
+    if (engine) {
+      void engine.commandManager.execute(new AddNodeCommand(node));
+    } else {
+      this.commit(() => this.model().addNode(node));
+    }
     this.host.render();
   }
 };
@@ -188758,13 +189455,13 @@ var StrokeEditTool = class extends WhiteboardTool {
     this.delta = { x: 0, y: 0 };
     super.onCancel();
   }
-  setActive(active2) {
-    if (!active2) {
+  setActive(active3) {
+    if (!active3) {
       this.selected = null;
       this.startPoints = null;
       this.origin = null;
     }
-    super.setActive(active2);
+    super.setActive(active3);
   }
 };
 function createDrawTool(host, options) {
@@ -189834,14 +190531,15 @@ var ViewportController = class {
    * size for {@link clientToWorld} to be the true inverse of the rendered
    * `viewBox` (see the coordinate contract).
    */
-  setCanvasSize(width, height) {
+  setCanvasSize(width, height, options = {}) {
     if (width === this.viewport.width && height === this.viewport.height) return;
-    this.viewport = { ...this.viewport, width, height };
+    const { x, y, width: w0, height: h0 } = this.viewport;
+    this.viewport = options.anchor === "center" ? { x: x + (w0 - width) / 2, y: y + (h0 - height) / 2, width, height } : { ...this.viewport, width, height };
     this.emit();
   }
   /** Convenience form of {@link setCanvasSize} taking a `getBoundingClientRect()`. */
-  syncCanvasSize(rect) {
-    this.setCanvasSize(rect.width, rect.height);
+  syncCanvasSize(rect, options = {}) {
+    this.setCanvasSize(rect.width, rect.height, options);
   }
   // ==========================================================================
   // Zoom
@@ -190053,6 +190751,15 @@ var ViewportController = class {
     this.listeners.forEach((listener) => listener(state));
   }
 };
+
+// libs/renderer/src/instance/text-kits.ts
+var kits = /* @__PURE__ */ new Map();
+function registerTextKit(diagramType, kit) {
+  kits.set(diagramType, kit);
+}
+function textKitFor(diagramType) {
+  return typeof diagramType === "string" ? kits.get(diagramType) : void 0;
+}
 
 // libs/renderer/src/instance/content-bounds.ts
 function contentBounds(model) {
@@ -190535,9 +191242,15 @@ function resolvePortId(diagram, nodeOrPortId, handle, fallbackSide) {
   }
   return node.getPortBySide(fallbackSide)?.id;
 }
-function buildEdge(diagram, spec, index) {
+function buildEdge(diagram, spec, index, warn) {
   const sourcePortId = resolvePortId(diagram, spec.source, spec.sourceHandle, "right");
   const targetPortId = resolvePortId(diagram, spec.target, spec.targetHandle, "left");
+  if (warn) {
+    const id = edgeSpecId(spec, index);
+    const dropped = !sourcePortId || !targetPortId;
+    warnEnd(diagram, warn, id, "source", spec.source, spec.sourceHandle, "right", sourcePortId, dropped);
+    warnEnd(diagram, warn, id, "target", spec.target, spec.targetHandle, "left", targetPortId, dropped);
+  }
   if (!sourcePortId || !targetPortId) return null;
   const link = new LinkModel(sourcePortId, targetPortId, spec.type ?? "smooth");
   link.id = edgeSpecId(spec, index);
@@ -190585,6 +191298,7 @@ function applyEdgeSpec(link, spec) {
 function applyNodes(diagram, specs) {
   const seen = /* @__PURE__ */ new Set();
   let changed = false;
+  let swapped = false;
   specs.forEach((spec, index) => {
     if (isNodeModel(spec)) {
       seen.add(spec.id);
@@ -190592,6 +191306,7 @@ function applyNodes(diagram, specs) {
       if (current && current !== spec) {
         diagram.replaceNode(spec);
         changed = true;
+        swapped = true;
       } else if (!current) {
         diagram.addNode(spec);
         changed = true;
@@ -190615,6 +191330,7 @@ function applyNodes(diagram, specs) {
       changed = true;
     }
   }
+  if (swapped) markLoaded(diagram);
   return changed;
 }
 function toNodeSpec(node) {
@@ -190653,9 +191369,22 @@ function toEdgeSpec(link) {
   if (link.data && Object.keys(link.data).length > 0) spec.data = { ...link.data };
   return spec;
 }
-function applyEdges(diagram, specs) {
+function warnEnd(diagram, warn, edgeId, end, nodeId, handle, side, resolved2, dropped) {
+  const node = diagram.getNode(nodeId);
+  if (!resolved2) {
+    const reason = !node && !diagram.getPortById(nodeId) ? `there is no node "${nodeId}"` : handle ? `node "${nodeId}" has no port "${handle}", and none on its ${side} side` : `node "${nodeId}" has no port on its ${side} side`;
+    warn({ kind: "edge-dropped", edgeId, end, nodeId, handle, reason });
+    return;
+  }
+  const namesPlace = !!handle && (PORT_SIDES.includes(handle) || handle.includes("@"));
+  if (!dropped && node && handle && !namesPlace && resolved2 !== handle) {
+    warn({ kind: "edge-port-fallback", edgeId, end, nodeId, handle, portId: resolved2, reason: `node "${nodeId}" has no port "${handle}"; attached to "${resolved2}" on its ${side} side instead` });
+  }
+}
+function applyEdges(diagram, specs, warn) {
   const seen = /* @__PURE__ */ new Set();
   let changed = false;
+  let swapped = false;
   specs.forEach((spec, index) => {
     if (isLinkModel(spec)) {
       seen.add(spec.id);
@@ -190664,6 +191393,7 @@ function applyEdges(diagram, specs) {
         diagram.removeLink(current.id);
         diagram.addLink(spec);
         changed = true;
+        swapped = true;
       } else if (!current) {
         diagram.addLink(spec);
         changed = true;
@@ -190677,7 +191407,7 @@ function applyEdges(diagram, specs) {
       applyEdgeSpec(existing, spec);
       changed = true;
     } else {
-      const link = buildEdge(diagram, spec, index);
+      const link = buildEdge(diagram, spec, index, warn);
       if (link) {
         diagram.addLink(link);
         changed = true;
@@ -190690,7 +191420,11 @@ function applyEdges(diagram, specs) {
       changed = true;
     }
   }
+  if (swapped) markLoaded(diagram);
   return changed;
+}
+function markLoaded(diagram) {
+  diagram.markDocumentReplaced?.();
 }
 function isGroupModel(value) {
   return value instanceof GroupModel;
@@ -191073,6 +191807,8 @@ function installNodeTemplates(ctx, templates, config) {
     const scale = w > 0 && hostRect.width > 0 ? hostRect.width / w : ctx.viewport.getZoom() || 1;
     const moved = [];
     const model = ctx.getModel();
+    const template = config.templates[m.node.type];
+    const typeAnchor = template ? defOf(template).portAnchor ?? "edge" : "edge";
     model.runSystemWrite(() => {
       for (const el2 of Array.from(marks)) {
         const port = m.node.getPort(el2.getAttribute("data-port") ?? "");
@@ -191081,8 +191817,9 @@ function installNodeTemplates(ctx, templates, config) {
         const cy = (r.top + r.height / 2 - hostRect.top) / scale;
         const cx = (r.left + r.width / 2 - hostRect.left) / scale;
         const side = port.side ?? "right";
-        const x = side === "left" ? 0 : side === "right" ? w : cx;
-        const y = side === "top" ? 0 : side === "bottom" ? h : cy;
+        const atElement = (el2.getAttribute("data-port-anchor") ?? typeAnchor) === "element";
+        const x = atElement ? cx : side === "left" ? 0 : side === "right" ? w : cx;
+        const y = atElement ? cy : side === "top" ? 0 : side === "bottom" ? h : cy;
         const args = port.layout?.strategy === "absolute" ? port.layout.args : void 0;
         if (args?.units === "px" && Math.abs((args.x ?? 0) - x) <= PX && Math.abs((args.y ?? 0) - y) <= PX) continue;
         port.layout = { strategy: "absolute", args: { units: "px", x, y } };
@@ -191146,10 +191883,10 @@ var AFF_CSS = `
 .grafloria-port-add,.grafloria-link-add,.grafloria-link-delete{position:absolute;box-sizing:border-box;width:22px;height:22px;margin:-11px 0 0 -11px;padding:0;border-radius:6px;display:grid;place-items:center;pointer-events:auto;cursor:pointer;font:600 15px/1 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--grafloria-add-bg,#fff);color:var(--grafloria-add-fg,#4b5563);border:1.5px solid var(--grafloria-add-line,#9aa3b2);transition:transform .12s,background .12s,color .12s}
 .grafloria-port-add:hover,.grafloria-link-add:hover{background:var(--grafloria-add-fg,#4b5563);color:var(--grafloria-add-bg,#fff);transform:scale(1.08)}
 .grafloria-port-add::before{content:"";position:absolute;border-color:var(--grafloria-add-line,#9aa3b2);border-style:solid;border-width:0}
-.grafloria-port-add[data-side="right"]::before{right:100%;top:50%;width:14px;border-top-width:1.5px}
-.grafloria-port-add[data-side="left"]::before{left:100%;top:50%;width:14px;border-top-width:1.5px}
-.grafloria-port-add[data-side="bottom"]::before{bottom:100%;left:50%;height:14px;border-left-width:1.5px}
-.grafloria-port-add[data-side="top"]::before{top:100%;left:50%;height:14px;border-left-width:1.5px}
+.grafloria-port-add[data-side="right"]::before{right:100%;top:50%;width:var(--grafloria-port-add-reach,14px);border-top-width:1.5px}
+.grafloria-port-add[data-side="left"]::before{left:100%;top:50%;width:var(--grafloria-port-add-reach,14px);border-top-width:1.5px}
+.grafloria-port-add[data-side="bottom"]::before{bottom:100%;left:50%;height:var(--grafloria-port-add-reach,14px);border-left-width:1.5px}
+.grafloria-port-add[data-side="top"]::before{top:100%;left:50%;height:var(--grafloria-port-add-reach,14px);border-left-width:1.5px}
 .grafloria-link-delete{font-size:13px;background:var(--grafloria-delete-bg,#fff);color:var(--grafloria-delete-fg,#b42318);border-color:var(--grafloria-delete-fg,#b42318)}
 .grafloria-link-delete:hover{background:var(--grafloria-delete-fg,#b42318);color:var(--grafloria-delete-bg,#fff)}
 @media (prefers-reduced-motion: reduce){.grafloria-port-add,.grafloria-link-add,.grafloria-link-delete{transition:none}}
@@ -191214,14 +191951,43 @@ function installAffordances(ctx, options) {
             b = button("grafloria-port-add", "+", "Add a step");
             const nodeId = node.id;
             const portId = port.id;
-            b.addEventListener("click", (e) => ctx.emit("port:add-request", { nodeId, portId, clientPoint: point(e) }));
+            const plus = b;
+            let dragged = false;
+            plus.addEventListener("mousedown", (e) => {
+              if (e.button !== 0 || ctx.isReadonly()) return;
+              dragged = false;
+              const x0 = e.clientX;
+              const y0 = e.clientY;
+              const move = (m) => {
+                if (Math.hypot(m.clientX - x0, m.clientY - y0) < 4) return;
+                done();
+                dragged = ctx.startConnection(portId, m.clientX, m.clientY);
+              };
+              const done = () => {
+                ctx.doc.removeEventListener("mousemove", move, true);
+                ctx.doc.removeEventListener("mouseup", done, true);
+              };
+              ctx.doc.addEventListener("mousemove", move, true);
+              ctx.doc.addEventListener("mouseup", done, true);
+            });
+            b.addEventListener("click", (e) => {
+              if (dragged) {
+                dragged = false;
+                return;
+              }
+              ctx.emit("port:add-request", { nodeId, portId, clientPoint: point(e) });
+            });
             root.appendChild(b);
             portButtons.set(port.id, b);
           }
           const at = portWorldPosition(port, node);
           const side = port.side ?? "right";
-          const x = at.x + (side === "right" ? OFFSET : side === "left" ? -OFFSET : 0);
-          const y = at.y + (side === "bottom" ? OFFSET : side === "top" ? -OFFSET : 0);
+          const given = options.portAddOffset;
+          const offset = typeof given === "function" ? given(port, node) : given ?? OFFSET;
+          const x = at.x + (side === "right" ? offset : side === "left" ? -offset : 0);
+          const y = at.y + (side === "bottom" ? offset : side === "top" ? -offset : 0);
+          if (offset === OFFSET) b.style.removeProperty("--grafloria-port-add-reach");
+          else b.style.setProperty("--grafloria-port-add-reach", `${Math.max(0, offset - 11)}px`);
           b.setAttribute("data-side", side);
           b.setAttribute("data-port-id", port.id);
           b.style.left = `${x}px`;
@@ -191244,8 +192010,11 @@ function installAffordances(ctx, options) {
   const syncLink = () => {
     if (!options.linkAdd && !options.linkDelete || ctx.isReadonly()) return hideLink();
     const model = ctx.getModel();
-    const hovered = model.getLinks().find((l) => l.state === "hovered");
-    const id = hovered?.id ?? (overButtons ? shownLink : null);
+    const links = model.getLinks();
+    const mode = options.linkButtons ?? "hover";
+    const hovered = mode !== "selected" ? links.find((l) => l.state === "hovered") : void 0;
+    const selected = mode !== "hover" ? links.find((l) => l.state === "selected") : void 0;
+    const id = hovered?.id ?? (overButtons ? shownLink : null) ?? selected?.id ?? null;
     const link = id ? model.getLink(id) : void 0;
     const mid = link ? midpoint3(link.points ?? []) : null;
     if (!link || !mid) return hideLink();
@@ -191436,6 +192205,7 @@ function delegateWheelToScrollable(event) {
 }
 
 // libs/renderer/src/instance/dom-event-binder.ts
+var activeBinder = null;
 var DomEventBinder = class {
   constructor(container, host, options = {}) {
     this.container = container;
@@ -191536,6 +192306,14 @@ var DomEventBinder = class {
     this.boundKeyUp = (e) => this.inSelectionBatch(() => this.onKeyUp(e));
     /** True while a press holds a selection batch open until its release. */
     this.pressHeld = false;
+    /** The history owner (a sync Replica) whose step the held press opened, if any. */
+    this.pressStepOwner = null;
+    /** Focus moving into this diagram makes it the one keys act on. */
+    this.boundFocusIn = () => {
+      activeBinder = this;
+    };
+    /** `nodeDropOnLink`: the link a single dragged node is over (not one of its own). */
+    this.dropLinkId = null;
     /** Did the press that resolveNode just handled land ON a drag handle? */
     this.pressViaDragHandle = false;
     this.options = {
@@ -191544,7 +192322,9 @@ var DomEventBinder = class {
       zoomSensitivity: options.zoomSensitivity ?? 0.1,
       dragThreshold: options.dragThreshold ?? 4,
       readonly: options.readonly ?? false,
-      keyboard: options.keyboard ?? true
+      keyboard: options.keyboard ?? true,
+      connection: options.connection ?? {},
+      nodeDropOnLink: options.nodeDropOnLink ?? false
     };
     this.selectionTools = new SelectionToolsController({
       showHalo: false,
@@ -191602,16 +192382,25 @@ var DomEventBinder = class {
       this.host.endSelectionBatch?.();
     }
   }
-  /** A press opens a batch that lasts until its release (or the pointer leaves). */
+  /**
+   * A press opens a batch that lasts until its release (or the pointer leaves).
+   * Under a history owner it is also ONE undo step: a drag is a press, many moves
+   * and a release, and every op it makes must come back with one Ctrl+Z.
+   */
   holdPress() {
     if (this.pressHeld) return;
     this.pressHeld = true;
     this.host.beginSelectionBatch?.();
+    this.pressStepOwner = this.engine()?.getDiagram()?.getHistoryOwner?.() ?? null;
+    this.pressStepOwner?.beginStep();
   }
   releasePress() {
     if (!this.pressHeld) return;
     this.pressHeld = false;
     this.host.endSelectionBatch?.();
+    const owner = this.pressStepOwner;
+    this.pressStepOwner = null;
+    owner?.endStep();
   }
   /**
    * Wave 9 — Card 7. Is editing forbidden RIGHT NOW?
@@ -191641,6 +192430,70 @@ var DomEventBinder = class {
   readonlyNow() {
     return this.isReadonly();
   }
+  /**
+   * Start a connection drag from `portId` at a client point — what a press on
+   * the port itself does, for a control that stands in for the port (the
+   * affordances' "+"). The rest of the gesture is the binder's as usual: the
+   * preview line, snapping, the reason label, `connect` or `connect:drop-empty`.
+   */
+  startConnectionFromPort(portId, clientX, clientY) {
+    const engine = this.engine();
+    const diagram = engine?.getDiagram();
+    const port = diagram?.getPortById(portId);
+    if (!engine || !port || this.isReadonly()) return false;
+    const rect = this.host.getRect();
+    const { x, y } = this.host.viewport.clientToWorld(clientX, clientY, rect);
+    this.pendingPortClick = null;
+    this.host.interaction.startConnection(port, x, y, engine);
+    this.host.requestRender();
+    return true;
+  }
+  /** The node under or within the snap radius of a world point (never the drag's own source). */
+  snapNodeAt(diagram, x, y, exclude) {
+    const radius = this.options.connection.snapRadius ?? 40;
+    let best = null;
+    let bestD = Infinity;
+    for (const node of diagram.getNodes()) {
+      if (node.id === exclude) continue;
+      const p = node.getWorldPosition();
+      const dx = Math.max(p.x - x, 0, x - (p.x + node.size.width));
+      const dy = Math.max(p.y - y, 0, y - (p.y + node.size.height));
+      const d = Math.hypot(dx, dy);
+      if (d <= radius && d < bestD) {
+        best = node;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+  /** `connection.snapToNode`: pick the snap target for this pointer position (or clear it). */
+  updateConnectionSnap(engine, x, y) {
+    const diagram = engine.getDiagram();
+    const interaction = this.host.interaction;
+    const state = interaction.getState();
+    const clear = () => {
+      interaction.setConnectionSnap(null);
+      this.host.markConnectSnap?.(null);
+    };
+    if (!diagram || state.hoveredPort) return clear();
+    const csm = engine.getConnectionStateManager();
+    const source = csm.getState().sourcePort;
+    const sourceNode = source ? diagram.getNodeByPortId(source.id) : void 0;
+    const node = this.snapNodeAt(diagram, x, y, sourceNode?.id);
+    if (!node) return clear();
+    const inputs = [...node.getPorts().values()].filter((p) => p.type !== "output").sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    if (inputs.length === 0) return clear();
+    let accepted = null;
+    for (const port of inputs) {
+      csm.updateConnection({ x, y }, port);
+      if (csm.getState().isOverValidTarget) {
+        accepted = port;
+        break;
+      }
+    }
+    interaction.setConnectionSnap({ port: accepted ?? inputs[0], accepts: !!accepted });
+    this.host.markConnectSnap?.(node.id, accepted ? "accept" : "refuse");
+  }
   /** Bind DOM listeners. No-op on the server and no-op if already attached. */
   attach() {
     if (this.attached || !isBrowser()) return;
@@ -191658,6 +192511,7 @@ var DomEventBinder = class {
     this.container.addEventListener("mouseup", this.boundMouseUp);
     this.container.addEventListener("mouseleave", this.boundMouseLeave);
     this.container.addEventListener("dblclick", this.boundDblClick);
+    this.container.addEventListener("focusin", this.boundFocusIn);
     window.addEventListener("keydown", this.boundKeyDown);
     window.addEventListener("keyup", this.boundKeyUp);
   }
@@ -191677,6 +192531,8 @@ var DomEventBinder = class {
     this.container.removeEventListener("mouseup", this.boundMouseUp);
     this.container.removeEventListener("mouseleave", this.boundMouseLeave);
     this.container.removeEventListener("dblclick", this.boundDblClick);
+    this.container.removeEventListener("focusin", this.boundFocusIn);
+    if (activeBinder === this) activeBinder = null;
     if (typeof window !== "undefined") {
       window.removeEventListener("keydown", this.boundKeyDown);
       window.removeEventListener("keyup", this.boundKeyUp);
@@ -191852,7 +192708,18 @@ var DomEventBinder = class {
     if (hit.part === "target-endpoint") return { link: hit.link, endpoint: "target" };
     return null;
   }
+  /** Does `link` leave (or enter) `node` through a port that sits strictly inside the node's box? */
+  isOwnLead(link, node) {
+    const portId = link.sourceNodeId === node.id ? link.sourcePortId : link.targetNodeId === node.id ? link.targetPortId : void 0;
+    const port = portId ? node.getPort(portId) : void 0;
+    if (!port) return false;
+    const at = portWorldPosition(port, node);
+    const pos = node.getWorldPosition();
+    const EPS3 = 0.5;
+    return at.x > pos.x + EPS3 && at.x < pos.x + node.size.width - EPS3 && at.y > pos.y + EPS3 && at.y < pos.y + node.size.height - EPS3;
+  }
   onMouseDown(event) {
+    activeBinder = this;
     const engine = this.engine();
     const diagram = engine?.getDiagram();
     if (!engine || !diagram) return;
@@ -191993,7 +192860,9 @@ var DomEventBinder = class {
         }
       }
     }
-    const link = diagram.getNodeAtPosition(worldX, worldY) ? null : state.hoveredLink ?? this.host.interaction.getLinkAtPosition(worldX, worldY, engine);
+    const nodeUnder = diagram.getNodeAtPosition(worldX, worldY);
+    const inkUnder = state.hoveredLink ?? this.host.interaction.getLinkAtPosition(worldX, worldY, engine);
+    const link = !nodeUnder ? inkUnder : inkUnder && this.isOwnLead(inkUnder, nodeUnder) ? inkUnder : null;
     if (link) {
       event.preventDefault();
       this.host.interaction.selectLink(link, engine, event.ctrlKey || event.metaKey);
@@ -192135,6 +193004,7 @@ var DomEventBinder = class {
     if (this.spaceKeyPressed) return;
     let needsRender = this.host.interaction.handleMouseMove(worldX, worldY, engine);
     if (this.host.interaction.getState().isConnecting) {
+      if (this.options.connection.snapToNode) this.updateConnectionSnap(engine, worldX, worldY);
       needsRender = this.host.interaction.handleConnectionDrag(worldX, worldY, engine) || needsRender;
     }
     const config = engine.getInteractionConfig();
@@ -192224,17 +193094,29 @@ var DomEventBinder = class {
       this.pendingPortClick = null;
       if (press && Math.hypot(event.clientX - press.startX, event.clientY - press.startY) < this.options.dragThreshold) {
         this.host.interaction.cancelConnection(engine);
-        const diagram = engine.getDiagram();
-        const node = diagram?.getNode(press.nodeId);
-        if (diagram && node) {
-          if (event.shiftKey) diagram.addToSelection(node);
-          else diagram.selectNode(node);
+        const diagram2 = engine.getDiagram();
+        const node = diagram2?.getNode(press.nodeId);
+        if (diagram2 && node) {
+          if (event.shiftKey) diagram2.addToSelection(node);
+          else diagram2.selectNode(node);
           this.emitSelectionChange();
         }
         this.host.requestRender();
         return;
       }
-      this.host.interaction.completeConnection(engine);
+      const sourcePort = engine.getConnectionStateManager().getState().sourcePort;
+      const world = this.toWorld(event);
+      const connected = this.host.interaction.completeConnection(engine);
+      this.host.markConnectSnap?.(null);
+      const diagram = engine.getDiagram();
+      if (!connected && sourcePort && diagram && !diagram.getNodeAtPosition(world.x, world.y)) {
+        this.host.emit("connect:drop-empty", {
+          nodeId: diagram.getNodeByPortId(sourcePort.id)?.id,
+          portId: sourcePort.id,
+          world: { x: world.x, y: world.y },
+          clientPoint: { x: event.clientX, y: event.clientY }
+        });
+      }
       this.host.requestRender();
       return;
     }
@@ -192261,6 +193143,12 @@ var DomEventBinder = class {
       this.nodeDrag = null;
       if (moved && engine) this.settleIntoLanes(engine, drag);
       if (moved && engine) this.commitDrop(engine, drag);
+      if (this.dropLinkId) {
+        const linkId = this.dropLinkId;
+        this.dropLinkId = null;
+        this.host.markDropLink?.(null);
+        if (moved) this.host.emit("link:insert-request", { linkId, nodeId: drag.nodeIds[0], clientPoint: { x: event.clientX, y: event.clientY } });
+      }
       const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
       if (connected) this.emitEdgesChange();
@@ -192291,6 +193179,10 @@ var DomEventBinder = class {
       this.nodeDrag = null;
       if (moved && engine) this.commitNodeMove(engine, drag);
       this.clearProximityPreview();
+      if (this.dropLinkId) {
+        this.dropLinkId = null;
+        this.host.markDropLink?.(null);
+      }
       if (moved) this.emitNodesChange();
     }
     if (engine && this.host.interaction.getState().isConnecting) {
@@ -192348,6 +193240,7 @@ var DomEventBinder = class {
     const diagram = engine?.getDiagram();
     if (!engine || !diagram) return;
     if (isTextEntryTarget(event.target)) return;
+    if (activeBinder && activeBinder !== this) return;
     const keyboard = this.options.keyboard;
     if (keyboard === false) return;
     if (typeof keyboard === "object" && keyboard.beforeKey) {
@@ -192535,6 +193428,8 @@ var DomEventBinder = class {
     const wasSelected = node.isSelected();
     if (event.ctrlKey || event.metaKey) {
       diagram.toggleNodeSelection(node);
+    } else if (event.shiftKey) {
+      if (!wasSelected) diagram.addToSelection(node);
     } else if (!wasSelected) {
       diagram.selectNode(node);
       diagram.getLinks().forEach((l) => {
@@ -192595,7 +193490,24 @@ var DomEventBinder = class {
     this.confineDraggedNodes(drag, diagram);
     this.host.interaction.invalidatePortHitCache();
     this.updateProximityPreview(drag.nodeIds);
+    if (this.options.nodeDropOnLink) this.updateDropLink(drag, worldX, worldY);
     this.host.requestRender();
+  }
+  updateDropLink(drag, worldX, worldY) {
+    const engine = this.engine();
+    const diagram = engine?.getDiagram();
+    let id = null;
+    if (engine && diagram && drag.nodeIds.length === 1) {
+      const nodeId = drag.nodeIds[0];
+      const hit = this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
+      const link = hit?.link;
+      const own = link && (diagram.getNodeByPortId(link.sourcePortId)?.id === nodeId || diagram.getNodeByPortId(link.targetPortId)?.id === nodeId);
+      if (link && !own) id = link.id;
+    }
+    if (id !== this.dropLinkId) {
+      this.dropLinkId = id;
+      this.host.markDropLink?.(id);
+    }
   }
   // ==========================================================================
   // wave12/connect-ergonomics (gap 2) — Proximity connect on the live node drag.
@@ -192718,6 +193630,7 @@ var DomEventBinder = class {
     let bestArea = Infinity;
     for (const group of diagram.getGroups()) {
       if (group.isCollapsed) continue;
+      if (this.hasCollapsedAncestor(diagram, group)) continue;
       const r = group.getOuterBounds();
       if (r.width <= 0 || r.height <= 0) continue;
       if (worldX < r.x || worldX > r.x + r.width || worldY < r.y || worldY > r.y + r.height) {
@@ -192732,6 +193645,17 @@ var DomEventBinder = class {
       }
     }
     return best;
+  }
+  /** Is any ancestor of `group` collapsed? Cycle-guarded. */
+  hasCollapsedAncestor(diagram, group) {
+    const seen = /* @__PURE__ */ new Set([group.id]);
+    let cur = group.parentGroupId ? diagram.getGroup(group.parentGroupId) : void 0;
+    while (cur && !seen.has(cur.id)) {
+      if (cur.isCollapsed) return true;
+      seen.add(cur.id);
+      cur = cur.parentGroupId ? diagram.getGroup(cur.parentGroupId) : void 0;
+    }
+    return false;
   }
   /**
    * Every member NODE (recursively through nested groups) and every group FRAME
@@ -193239,6 +194163,66 @@ function keyActionOf(event) {
   return null;
 }
 
+// libs/renderer/src/instance/load-text.ts
+function loadTextInto(model, text, options, hooks = {}) {
+  const refuse = (why) => {
+    throw new Error(`loadText: ${why} The canvas was left unchanged.`);
+  };
+  if (typeof text !== "string" || stripGrafloriaSidecar(text).trim() === "") {
+    refuse("the text is empty \u2014 there is no diagram in it. (To clear the canvas, call setNodes([]) and setEdges([]).)");
+  }
+  const result = importDiagramText(text, options);
+  if (result.unsupported) {
+    refuse(
+      `"${result.unsupported}" diagrams cannot be drawn on the canvas. Supported: ${DSL.SUPPORTED_TEXT_TYPES.join(", ")}.`
+    );
+  }
+  if (result.source === "text") {
+    const errors = result.errors ?? new DSL({ autoLayout: false }).validate(stripGrafloriaSidecar(text.replace(/\r\n?/g, "\n"))).errors;
+    if (errors.length > 0) refuse(`the text has errors \u2014 ${errors.join(" ")}`);
+  }
+  textKitFor(result.diagram.getMetadata("diagramType"))?.decorate(result.diagram);
+  const owner = model.getHistoryOwner?.() ?? null;
+  owner?.beginStep();
+  try {
+    reconcileLoaded(model, result, hooks);
+  } finally {
+    owner?.endStep();
+  }
+  model.markDocumentReplaced?.();
+  return result;
+}
+function reconcileLoaded(model, result, hooks) {
+  const before = hooks.beforeNodes?.();
+  applyNodes(model, result.diagram.getNodes());
+  hooks.afterNodes?.(before);
+  applyEdges(model, result.diagram.getLinks(), hooks.warnEdge);
+  const incoming = result.diagram.getGroups();
+  const wanted = new Set(incoming.map((g) => g.id));
+  for (const existing of model.getGroups()) {
+    if (!wanted.has(existing.id)) model.removeGroup(existing.id);
+  }
+  for (const group of incoming) {
+    const current = model.getGroup(group.id);
+    if (current && current !== group) model.removeGroup(current.id);
+    if (model.getGroup(group.id) !== group) model.addGroup(group);
+  }
+  const incomingInk = result.diagram.getStrokes();
+  const wantedInk = new Set(incomingInk.map((stroke) => stroke.id));
+  for (const existing of model.getStrokes()) {
+    if (!wantedInk.has(existing.id)) model.removeStroke(existing.id);
+  }
+  for (const stroke of incomingInk) {
+    const current = model.getStroke(stroke.id);
+    if (current && current !== stroke) model.removeStroke(current.id);
+    if (model.getStroke(stroke.id) !== stroke) model.addStroke(stroke);
+  }
+  const tree = result.diagram.comments ?? {};
+  if (hooks.adoptComments) hooks.adoptComments(tree, { replace: true });
+  else adoptComments(model, tree, { replace: true });
+  adoptTextGrammarMetadata(model, result.diagram);
+}
+
 // libs/renderer/src/lazy/host-culling.ts
 var DEFAULT_MARGIN = 200;
 var DEFAULT_HYSTERESIS = 100;
@@ -193300,19 +194284,13 @@ function intersects2(a, b) {
 var ShapeAwareHighlighterController = class extends HighlighterController {
   refreshValidation(engine) {
     const all = super.refreshValidation(engine);
-    const diagram = engine?.getDiagram?.();
-    if (!diagram) return all;
-    const isShapeTypeWarning = (issue) => {
-      if (issue.code !== "UNREGISTERED_NODE_TYPE" || issue.entity !== "node") return false;
-      const type = diagram.getNode(issue.entityId)?.type;
-      return typeof type === "string" && hasShape(type);
-    };
+    const isUnregisteredType = (issue) => issue.code === "UNREGISTERED_NODE_TYPE" && issue.entity === "node";
     for (const [entityId, list2] of this.issues) {
-      const kept = list2.filter((issue) => !isShapeTypeWarning(issue));
+      const kept = list2.filter((issue) => !isUnregisteredType(issue));
       if (kept.length === 0) this.issues.delete(entityId);
       else if (kept.length !== list2.length) this.issues.set(entityId, kept);
     }
-    return all.filter((issue) => !isShapeTypeWarning(issue));
+    return all.filter((issue) => !isUnregisteredType(issue));
   }
 };
 
@@ -193342,7 +194320,9 @@ function createDiagram(container, options = {}) {
   }
   if (options.nodes) applyNodes(model, options.nodes);
   if (options.groups) applyGroups(model, options.groups);
-  if (options.edges) applyEdges(model, options.edges);
+  const earlyWarnings = [];
+  let warnEdge = (w) => earlyWarnings.push(w);
+  if (options.edges) applyEdges(model, options.edges, (w) => warnEdge(w));
   if (options.layout === "architecture") layoutArchitecture(model, { measureText: canvasTextMeasure() });
   zoomNow = () => viewport.getZoom();
   const rect0 = container.getBoundingClientRect();
@@ -193473,6 +194453,11 @@ function createDiagram(container, options = {}) {
     if (!set) return;
     for (const listener of [...set]) listener(payload);
   };
+  warnEdge = (w) => emit("renderer:warning", w);
+  if (earlyWarnings.length) {
+    const held = earlyWarnings.splice(0);
+    queueMicrotask(() => held.forEach((w) => emit("renderer:warning", w)));
+  }
   let selectionBatchDepth = 0;
   let selectionOwed = false;
   let selectionAtGestureStart = "";
@@ -193512,6 +194497,19 @@ function createDiagram(container, options = {}) {
       // The clipboard keys go through the instance's copy/cut/paste only when the
       // host asked for its hooks or owns the keyboard; otherwise the binder's own
       // engine copy/paste runs, exactly as before.
+      // connection.snapToNode / nodeDropOnLink: the marks the drag shows.
+      markConnectSnap: (nodeId, verdict) => {
+        for (const [id, host] of nodeHosts) {
+          if (id === nodeId) host.setAttribute("data-connect-snap", verdict ?? "accept");
+          else if (host.hasAttribute("data-connect-snap")) host.removeAttribute("data-connect-snap");
+        }
+        renderer.setConnectSnap(nodeId, verdict);
+        scheduler.schedule();
+      },
+      markDropLink: (linkId) => {
+        renderer.setDropTargetLink(linkId);
+        scheduler.schedule();
+      },
       clipboardKey: options.clipboard || typeof options.keyboard === "object" ? (action) => {
         void clipboardApi[action]();
         return true;
@@ -193553,14 +194551,24 @@ function createDiagram(container, options = {}) {
       scheduler.schedule();
     },
     emit: (event, payload) => emit(event, payload),
-    isReadonly: () => binder.readonlyNow()
+    isReadonly: () => binder.readonlyNow(),
+    startConnection: (portId, clientX, clientY) => binder.startConnectionFromPort(portId, clientX, clientY)
   };
+  let viewLockedModel = false;
   const applyReadonly = (readonly) => {
     binder.setReadonly(readonly);
     renderer.setViewReadonly(readonly);
     if (readonly) container.setAttribute("data-readonly", "");
     else container.removeAttribute("data-readonly");
+    if (readonly && !model.isReadonly()) {
+      model.setReadonly(true);
+      viewLockedModel = true;
+    } else if (!readonly && viewLockedModel) {
+      model.setReadonly(false);
+      viewLockedModel = false;
+    }
   };
+  const asInput = (apply) => viewLockedModel ? model.runSystemWrite(apply) : apply();
   if (options.readonly) applyReadonly(true);
   const features = [];
   if (options.connectionReasons) features.push(installConnectReason(featureCtx));
@@ -193907,17 +194915,30 @@ function createDiagram(container, options = {}) {
       emit("viewport:change", state);
     })
   );
+  unsubs.push(engine.eventBus.on("config:interaction-changed", () => scheduler.schedule()));
+  const releaseServerLayer = () => {
+    if (layers.svg.getAttribute("style") !== SVG_LAYER_STYLE) layers.svg.setAttribute("style", SVG_LAYER_STYLE);
+    if (layers.root.getAttribute("style") !== ROOT_STYLE) layers.root.setAttribute("style", ROOT_STYLE);
+  };
   let resizeObserver;
   if (typeof ResizeObserver !== "undefined") {
+    let keepCentre = !!hydration;
     resizeObserver = new ResizeObserver(() => {
       const r = getRect();
-      if (r.width > 0 && r.height > 0) viewport.syncCanvasSize(r);
+      if (!(r.width > 0 && r.height > 0)) return;
+      viewport.syncCanvasSize(r, keepCentre ? { anchor: "center" } : {});
+      if (keepCentre) {
+        releaseServerLayer();
+        scheduler.flush();
+      }
+      keepCentre = false;
     });
     resizeObserver.observe(container);
   }
   binder.attach();
   if (hydration) {
     hydratePaint();
+    if (!resizeObserver) releaseServerLayer();
   } else {
     if (options.fitView) fitView(40);
     scheduler.flush();
@@ -193929,15 +194950,15 @@ function createDiagram(container, options = {}) {
   const instance = {
     setNodes(nodes) {
       const before = templatedData();
-      const changed = applyNodes(model, nodes);
-      rederiveTemplates(before);
+      const changed = asInput(() => applyNodes(model, nodes));
+      asInput(() => rederiveTemplates(before));
       if (changed) scheduler.schedule();
     },
     setEdges(edges) {
-      if (applyEdges(model, edges)) scheduler.schedule();
+      if (asInput(() => applyEdges(model, edges, (w) => warnEdge(w)))) scheduler.schedule();
     },
     setGroups(groups) {
-      if (applyGroups(model, groups)) {
+      if (asInput(() => applyGroups(model, groups))) {
         renderer.invalidateFrame();
         scheduler.schedule();
       }
@@ -193996,51 +195017,23 @@ function createDiagram(container, options = {}) {
     exportSvgString: (exportOptions) => exportPipeline.exportSvgString(exportOptions),
     exportPdf: (exportOptions) => exportPipeline.exportPdf(exportOptions),
     exportText: (textOptions) => exportDiagramText(model, textOptions),
-    loadText: (text, textOptions) => {
-      const refuse = (why) => {
-        throw new Error(`loadText: ${why} The canvas was left unchanged.`);
-      };
-      if (typeof text !== "string" || stripGrafloriaSidecar(text).trim() === "") {
-        refuse("the text is empty \u2014 there is no diagram in it. (To clear the canvas, call setNodes([]) and setEdges([]).)");
-      }
-      const result = importDiagramText(text, textOptions);
-      if (result.unsupported) {
-        refuse(
-          `"${result.unsupported}" diagrams cannot be drawn on the canvas. Supported: ${DSL.SUPPORTED_TEXT_TYPES.join(", ")}.`
-        );
-      }
-      if (result.source === "text") {
-        const errors = result.errors ?? new DSL({ autoLayout: false }).validate(stripGrafloriaSidecar(text.replace(/\r\n?/g, "\n"))).errors;
-        if (errors.length > 0) refuse(`the text has errors \u2014 ${errors.join(" ")}`);
-      }
-      const templatedBefore = templatedData();
-      applyNodes(model, result.diagram.getNodes());
-      rederiveTemplates(templatedBefore);
-      applyEdges(model, result.diagram.getLinks());
-      const incoming = result.diagram.getGroups();
-      const wanted = new Set(incoming.map((g) => g.id));
-      for (const existing of model.getGroups()) {
-        if (!wanted.has(existing.id)) model.removeGroup(existing.id);
-      }
-      for (const group of incoming) {
-        const current = model.getGroup(group.id);
-        if (current && current !== group) model.removeGroup(current.id);
-        if (model.getGroup(group.id) !== group) model.addGroup(group);
-      }
-      const incomingInk = result.diagram.getStrokes();
-      const wantedInk = new Set(incomingInk.map((stroke) => stroke.id));
-      for (const existing of model.getStrokes()) {
-        if (!wantedInk.has(existing.id)) model.removeStroke(existing.id);
-      }
-      for (const stroke of incomingInk) {
-        const current = model.getStroke(stroke.id);
-        if (current && current !== stroke) model.removeStroke(current.id);
-        if (model.getStroke(stroke.id) !== stroke) model.addStroke(stroke);
-      }
-      adoptTextGrammarMetadata(model, result.diagram);
+    loadText: (text, textOptions) => asInput(() => {
+      const result = loadTextInto(model, text, textOptions, {
+        beforeNodes: templatedData,
+        afterNodes: (before) => rederiveTemplates(before),
+        warnEdge: (w) => warnEdge(w),
+        adoptComments: commentStore ? (tree, o) => commentStore?.adopt(tree, o) : void 0
+      });
+      const kit = textKitFor(result.diagram.getMetadata("diagramType"));
       scheduler.schedule();
+      if (kit?.finalize) {
+        try {
+          kit.finalize(instance);
+        } catch {
+        }
+      }
       return result;
-    },
+    }),
     /** The LOD tier actually rendered, and the governor's last verdict. */
     getQualityState: () => renderer.getQualityState(),
     /** Animation policy (global toggle, speed, reduced-motion, battery-saver opt-out). */
@@ -194158,6 +195151,9 @@ function canvasTextMeasure() {
 
 // libs/renderer/src/ssr/render-to-static.ts
 function renderToStaticSVG(options = {}) {
+  return runDeterministic(() => renderStaticNow(options));
+}
+function renderStaticNow(options) {
   const width = options.width ?? 800;
   const height = options.height ?? 600;
   const instanceId = options.instanceId ?? "grafloria-ssr";
@@ -194196,10 +195192,10 @@ function renderToStaticSVG(options = {}) {
     zoom: viewport.getZoom(),
     viewport: { x: viewport.getViewport().x, y: viewport.getViewport().y }
   };
-  return { html: wrapInLayers(live, instanceId), svg, css, snapshot };
+  return { html: wrapInLayers(live, instanceId, width, height), svg, css, snapshot };
 }
-function wrapInLayers(svg, instanceId) {
-  return `<div class="${ROOT_CLASS}" style="${ROOT_STYLE}" data-grafloria-instance="${instanceId}"><div class="${SVG_LAYER_CLASS}" style="${SVG_LAYER_STYLE}">${svg}</div><div class="${HTML_LAYER_CLASS}" style="${htmlLayerStyle(
+function wrapInLayers(svg, instanceId, width, height) {
+  return `<div class="${ROOT_CLASS}" style="${SERVER_ROOT_STYLE}" data-grafloria-instance="${instanceId}"><div class="${SVG_LAYER_CLASS}" style="${serverSvgLayerStyle(width, height)}">${svg}</div><div class="${HTML_LAYER_CLASS}" style="${htmlLayerStyle(
     "translate(0px, 0px) scale(1)"
   )}"></div></div>`;
 }
@@ -194901,7 +195897,7 @@ function ensureScreenLayer(root) {
   layer.className = SCREEN_LAYER_CLASS;
   layer.setAttribute(
     "style",
-    "position:absolute;inset:0;pointer-events:none;overflow:hidden"
+    "position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5"
   );
   root.appendChild(layer);
   return layer;
@@ -198205,60 +199201,143 @@ function defineGrafloriaFlow(tagName = "grafloria-flow") {
   customElements.define(tagName, GrafloriaFlowElement);
 }
 
-// libs/element/src/lib/grafloria.ts
-function render(spec, target, options = {}) {
-  const element = typeof target === "string" ? document.querySelector(target) : target;
-  if (!element) {
-    throw new Error(`Grafloria.render: no element matched ${JSON.stringify(target)}`);
-  }
-  const parsed = typeof spec === "string" ? parseSpec(spec) : spec;
-  const instance = createDiagram(element, {
-    // A kit spec may ask for instance options of its own — a fluid dashboard
-    // pins the zoom range so its layout can never become a scaled picture. The
-    // caller's explicit options still win.
-    ...parsed.renderOptions ?? {},
-    ...options,
-    nodes: parsed.nodes ?? [],
-    edges: parsed.edges ?? [],
-    ...parsed.groups ? { groups: parsed.groups } : {},
-    ...parsed.layout ? { layout: parsed.layout } : {},
-    // Wire the global registry in, so `registerNodeType` works for the tiny API
-    // exactly as it does for `<grafloria-flow>` — unless the caller supplies their
-    // own. A KIT SPEC may also carry its own painter (dashboard() does: every
-    // widget is a custom HTML node), and it must be honoured — otherwise the
-    // documented one-liner `render(dashboard({…}), host)` mounts a board whose
-    // widgets never paint. Precedence: explicit option > spec > registry.
-    renderCustomNode: options.renderCustomNode ?? parsed.renderCustomNode ?? ((node, host) => getNodeType(node.type)?.(node, host))
-  });
-  const maybeFinalize = spec.finalize;
-  if (typeof maybeFinalize === "function") {
-    try {
-      maybeFinalize(instance);
-    } catch {
-    }
-  }
-  return instance;
+// libs/element/src/lib/diagram-kit/styles.ts
+var DIAGRAM_KIT_STYLE_ID = "grafloria-diagram-kit-styles";
+var CSS3 = `
+/* ===== ER entity (table) cards ===== */
+.axk-entity { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #64748b;
+  text-align: start; /* never the host's: React's template centres #root */
+  border-radius: 6px; overflow: hidden; background: #fff;
+  width: 100%; height: 100%; box-sizing: border-box;
+  display: flex; flex-direction: column; }
+.axk-entity-body { flex: 1; min-height: 0; overflow-y: hidden; }
+.axk-entity-body.axk-scroll { overflow-y: auto; scrollbar-width: thin; }
+/* The head is sized by entityAutoWidth, but a title past the auto-width ceiling
+   still has to degrade VISIBLY: this rule used to be absent entirely, so a long
+   table name ran off the card and was cut by .axk-entity's overflow:hidden with
+   nothing to show for it (measured: 305px of name in a 180px head \u2014 125px gone,
+   no ellipsis, no hint). nowrap also keeps the head exactly ER_HEAD_H tall,
+   which entityAutoHeight's row math depends on. */
+.axk-entity-head { background: #334155; color: #fff; font-weight: 600;
+  letter-spacing: .3px; padding: 5px 10px; text-transform: uppercase; font-size: 11px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.axk-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px;
+  border-top: 1px solid #e2e8f0; }
+.axk-key { width: 22px; font-size: 9px; font-weight: 700; color: #b45309; }
+.axk-key.axk-fk { color: #6d28d9; }
+/* ONE LINE PER COLUMN, ALWAYS \u2014 this rule is load-bearing for the card's HEIGHT.
+   entityAutoHeight allocates exactly ER_ROW_H per column, and .axk-entity-body is
+   overflow-y:hidden, so a name that wrapped to a second line pushed the last row
+   past the card's bottom edge and it silently vanished (measured: a 40px row
+   against the 25px the height math had reserved \u2014 14px of the final column gone,
+   with no scrollbar to hint at it). Long identifiers ellipsis instead, so the
+   ROW always survives even when the text does not fit; an author who needs the
+   whole identifier visible sets an explicit width on the entity. (No title
+   attribute: the HTML-node contract deliberately passes text through
+   textContent and no attributes, and a tooltip is not worth widening it.)
+   min-width:0 is what lets a flex child shrink below its content. */
+.axk-col { flex: 1; min-width: 0; color: #0f172a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.axk-ty {
+  color: #64748b; font-size: 11px;
+  /* A new column starts with an EMPTY type, which collapsed the cell to zero
+     width \u2014 there was nothing to double-click, so a type could never be set on
+     a field you just added. Reserve a target and hint that it is editable. */
+  min-width: 52px; text-align: right; cursor: text;
+  /* Same contract as .axk-col: a long type must not wrap the row either.
+     It keeps its reserved width and never shrinks away. */
+  flex: 0 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 45%;
 }
-function renderStatic(options = {}) {
-  return renderToStaticSVG(options);
+.axk-ty:empty::before { content: 'type'; color: #cbd5e1; font-style: italic; }
+.axk-ty:hover { color: #0f172a; }
+.axk-row.axk-pk .axk-col { font-weight: 600; }
+
+/* ===== UML class cards ===== */
+.axk-uml { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #475569;
+  text-align: start; /* never the host's: React's template centres #root */
+  border-radius: 4px; overflow: hidden; background: #fff;
+  width: 100%; height: 100%; box-sizing: border-box;
+  display: flex; flex-direction: column; }
+.axk-uml-body { flex: 1; min-height: 0; overflow-y: hidden; }
+.axk-uml-body.axk-scroll { overflow-y: auto; scrollbar-width: thin; }
+/* Same one-line contract as .axk-entity-head: UML_NAME_H is what
+   classAutoHeight reserves, so a wrapped class name would push the first
+   compartment past the card's bottom edge. */
+.axk-uml-name { text-align: center; font-weight: 700; padding: 5px 10px;
+  background: #eef2ff; color: #1e1b4b;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.axk-uml-name.axk-abstract { font-style: italic; }
+.axk-uml-stereo { display: block; font-size: 10px; font-weight: 500; opacity: .8; }
+.axk-uml-comp { border-top: 1px solid #475569; padding: 3px 0; }
+.axk-uml-comp.axk-empty { min-height: 8px; }
+/* Members already refused to wrap, but with no ellipsis they were cut
+   MID-GLYPH by the card's overflow:hidden \u2014 a method signature needing 487px
+   in a 190px card lost 297px of itself silently, on the one line a class
+   diagram exists to show. classAutoWidth now widens the card to fit; past its
+   ceiling this ellipsis says so. min-width:0 lets the editable flex variant
+   shrink. */
+.axk-member { padding: 1px 10px; font: 11px/1.5 ui-monospace, Menlo, monospace;
+  color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; }
+
+/* ===== Row interactivity (cards are interactive; drag stays geometric) ===== */
+.axk-entity, .axk-uml { user-select: none; -webkit-user-select: none; }
+.axk-row:hover { background: rgba(37, 99, 235, .07); }
+.axk-member:hover { background: rgba(79, 70, 229, .07); }
+.axk-row-selected, .axk-row-selected:hover { background: rgba(37, 99, 235, .16);
+  box-shadow: inset 2px 0 0 #2563eb; }
+.axk-member.axk-row-selected, .axk-member.axk-row-selected:hover {
+  background: rgba(79, 70, 229, .16); box-shadow: inset 2px 0 0 #4f46e5; }
+
+/* ===== Selection: ring the CARD, never a detached rectangle ===== */
+g.node-group:has(.axk-entity) .selection-highlight,
+g.node-group:has(.axk-uml) .selection-highlight { display: none; }
+g.node-group[data-selected="true"] .axk-entity {
+  border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, .45); }
+g.node-group[data-selected="true"] .axk-uml {
+  border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79, 70, 229, .45); }
+g.node-group[data-selected="true"]:has(.axk-entity) rect.diagram-node,
+g.node-group[data-selected="true"]:has(.axk-uml) rect.diagram-node {
+  stroke: transparent !important; fill: none !important; }
+
+/* ===== In-canvas editing chrome (only present when editable) ===== */
+.axk-col-del { width: 14px; text-align: center; color: #94a3b8; cursor: pointer;
+  font-weight: 700; opacity: 0; transition: opacity .1s; flex: 0 0 auto; }
+.axk-row:hover .axk-col-del, .axk-member:hover .axk-col-del { opacity: 1; }
+.axk-col-del:hover { color: #dc2626; }
+/* Only editable members (which wrap their text in .axk-mtext) go flex \u2014 a
+   read-only member stays a plain text div, so its golden never shifts. */
+.axk-member:has(.axk-mtext) { display: flex; align-items: center; }
+.axk-member .axk-mtext { flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.axk-entity-add, .axk-uml-add { padding: 3px 10px; font-size: 11px; font-weight: 600;
+  color: #2563eb; cursor: pointer; border-top: 1px dashed #cbd5e1; user-select: none; }
+.axk-uml-add { color: #4f46e5; border-top: 1px dashed #c7d2fe; text-align: left; }
+.axk-entity-add:hover, .axk-uml-add:hover { background: rgba(37, 99, 235, .08); }
+.axk-edit-input { font: 12px/1.4 system-ui, sans-serif; box-sizing: border-box;
+  border: 1px solid #2563eb; border-radius: 3px; padding: 1px 6px; margin: 0;
+  background: #fff; color: #0f172a; outline: none; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+
+/* ===== Dark mode ===== */
+@media (prefers-color-scheme: dark) {
+  .axk-entity { background: #1e293b; border-color: #475569; }
+  .axk-row { border-top-color: #334155; }
+  .axk-col { color: #e2e8f0; }
+  .axk-uml { background: #1e293b; border-color: #64748b; }
+  .axk-uml-name { background: #312e81; color: #e0e7ff; }
+  .axk-uml-comp { border-top-color: #64748b; }
+  .axk-member { color: #e2e8f0; }
 }
-function parseSpec(spec) {
-  try {
-    return JSON.parse(spec);
-  } catch (error) {
-    throw new Error(
-      `Grafloria.render: spec must be an object or a JSON string (${error.message})`
-    );
-  }
+`;
+function ensureDiagramKitStyles(doc = typeof document !== "undefined" ? document : void 0) {
+  if (!doc) return;
+  if (doc.getElementById(DIAGRAM_KIT_STYLE_ID)) return;
+  const style = doc.createElement("style");
+  style.id = DIAGRAM_KIT_STYLE_ID;
+  style.textContent = CSS3;
+  doc.head.appendChild(style);
 }
-var Grafloria = {
-  render,
-  renderStatic,
-  registerNodeType,
-  registeredNodeTypes,
-  /** Register `<grafloria-flow>` (called for you when you import this package). */
-  define: defineGrafloriaFlow
-};
 
 // libs/element/src/lib/diagram-kit/rows.ts
 var ROW_SELECTOR = ".axk-row, .axk-member";
@@ -199051,141 +200130,400 @@ function bindCardEditing(api) {
   return handle;
 }
 
-// libs/element/src/lib/diagram-kit/styles.ts
-var DIAGRAM_KIT_STYLE_ID = "grafloria-diagram-kit-styles";
-var CSS3 = `
-/* ===== ER entity (table) cards ===== */
-.axk-entity { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #64748b;
-  border-radius: 6px; overflow: hidden; background: #fff;
-  width: 100%; height: 100%; box-sizing: border-box;
-  display: flex; flex-direction: column; }
-.axk-entity-body { flex: 1; min-height: 0; overflow-y: hidden; }
-.axk-entity-body.axk-scroll { overflow-y: auto; scrollbar-width: thin; }
-/* The head is sized by entityAutoWidth, but a title past the auto-width ceiling
-   still has to degrade VISIBLY: this rule used to be absent entirely, so a long
-   table name ran off the card and was cut by .axk-entity's overflow:hidden with
-   nothing to show for it (measured: 305px of name in a 180px head \u2014 125px gone,
-   no ellipsis, no hint). nowrap also keeps the head exactly ER_HEAD_H tall,
-   which entityAutoHeight's row math depends on. */
-.axk-entity-head { background: #334155; color: #fff; font-weight: 600;
-  letter-spacing: .3px; padding: 5px 10px; text-transform: uppercase; font-size: 11px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.axk-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px;
-  border-top: 1px solid #e2e8f0; }
-.axk-key { width: 22px; font-size: 9px; font-weight: 700; color: #b45309; }
-.axk-key.axk-fk { color: #6d28d9; }
-/* ONE LINE PER COLUMN, ALWAYS \u2014 this rule is load-bearing for the card's HEIGHT.
-   entityAutoHeight allocates exactly ER_ROW_H per column, and .axk-entity-body is
-   overflow-y:hidden, so a name that wrapped to a second line pushed the last row
-   past the card's bottom edge and it silently vanished (measured: a 40px row
-   against the 25px the height math had reserved \u2014 14px of the final column gone,
-   with no scrollbar to hint at it). Long identifiers ellipsis instead, so the
-   ROW always survives even when the text does not fit; an author who needs the
-   whole identifier visible sets an explicit width on the entity. (No title
-   attribute: the HTML-node contract deliberately passes text through
-   textContent and no attributes, and a tooltip is not worth widening it.)
-   min-width:0 is what lets a flex child shrink below its content. */
-.axk-col { flex: 1; min-width: 0; color: #0f172a;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.axk-ty {
-  color: #64748b; font-size: 11px;
-  /* A new column starts with an EMPTY type, which collapsed the cell to zero
-     width \u2014 there was nothing to double-click, so a type could never be set on
-     a field you just added. Reserve a target and hint that it is editable. */
-  min-width: 52px; text-align: right; cursor: text;
-  /* Same contract as .axk-col: a long type must not wrap the row either.
-     It keeps its reserved width and never shrinks away. */
-  flex: 0 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 45%;
+// libs/element/src/lib/diagram-kit/er.ts
+var CARDINALITY = {
+  "one-to-many": { tail: "one", head: "crow-foot" },
+  "one-to-one": { tail: "one", head: "one" },
+  "many-to-many": { tail: "crow-foot", head: "crow-foot" },
+  "one-to-zero-or-many": { tail: "one", head: "zero-or-many" },
+  "one-to-one-or-many": { tail: "one", head: "one-or-many" }
+};
+function defaultMarkers(from, to) {
+  const col = (end) => end.rowIndex === void 0 ? void 0 : end.entity.columns[end.rowIndex];
+  const a = col(from), b = col(to);
+  const fromIsForeignKey = !!a?.fk && !a.pk;
+  const toIsKey = !!b?.pk && !b.fk;
+  if (fromIsForeignKey && toIsKey) return { tail: CARDINALITY["one-to-many"].head, head: CARDINALITY["one-to-many"].tail };
+  return CARDINALITY["one-to-many"];
 }
-.axk-ty:empty::before { content: 'type'; color: #cbd5e1; font-style: italic; }
-.axk-ty:hover { color: #0f172a; }
-.axk-row.axk-pk .axk-col { font-weight: 600; }
-
-/* ===== UML class cards ===== */
-.axk-uml { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #475569;
-  border-radius: 4px; overflow: hidden; background: #fff;
-  width: 100%; height: 100%; box-sizing: border-box;
-  display: flex; flex-direction: column; }
-.axk-uml-body { flex: 1; min-height: 0; overflow-y: hidden; }
-.axk-uml-body.axk-scroll { overflow-y: auto; scrollbar-width: thin; }
-/* Same one-line contract as .axk-entity-head: UML_NAME_H is what
-   classAutoHeight reserves, so a wrapped class name would push the first
-   compartment past the card's bottom edge. */
-.axk-uml-name { text-align: center; font-weight: 700; padding: 5px 10px;
-  background: #eef2ff; color: #1e1b4b;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.axk-uml-name.axk-abstract { font-style: italic; }
-.axk-uml-stereo { display: block; font-size: 10px; font-weight: 500; opacity: .8; }
-.axk-uml-comp { border-top: 1px solid #475569; padding: 3px 0; }
-.axk-uml-comp.axk-empty { min-height: 8px; }
-/* Members already refused to wrap, but with no ellipsis they were cut
-   MID-GLYPH by the card's overflow:hidden \u2014 a method signature needing 487px
-   in a 190px card lost 297px of itself silently, on the one line a class
-   diagram exists to show. classAutoWidth now widens the card to fit; past its
-   ceiling this ellipsis says so. min-width:0 lets the editable flex variant
-   shrink. */
-.axk-member { padding: 1px 10px; font: 11px/1.5 ui-monospace, Menlo, monospace;
-  color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  min-width: 0; }
-
-/* ===== Row interactivity (cards are interactive; drag stays geometric) ===== */
-.axk-entity, .axk-uml { user-select: none; -webkit-user-select: none; }
-.axk-row:hover { background: rgba(37, 99, 235, .07); }
-.axk-member:hover { background: rgba(79, 70, 229, .07); }
-.axk-row-selected, .axk-row-selected:hover { background: rgba(37, 99, 235, .16);
-  box-shadow: inset 2px 0 0 #2563eb; }
-.axk-member.axk-row-selected, .axk-member.axk-row-selected:hover {
-  background: rgba(79, 70, 229, .16); box-shadow: inset 2px 0 0 #4f46e5; }
-
-/* ===== Selection: ring the CARD, never a detached rectangle ===== */
-g.node-group:has(.axk-entity) .selection-highlight,
-g.node-group:has(.axk-uml) .selection-highlight { display: none; }
-g.node-group[data-selected="true"] .axk-entity {
-  border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, .45); }
-g.node-group[data-selected="true"] .axk-uml {
-  border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79, 70, 229, .45); }
-g.node-group[data-selected="true"]:has(.axk-entity) rect.diagram-node,
-g.node-group[data-selected="true"]:has(.axk-uml) rect.diagram-node {
-  stroke: transparent !important; fill: none !important; }
-
-/* ===== In-canvas editing chrome (only present when editable) ===== */
-.axk-col-del { width: 14px; text-align: center; color: #94a3b8; cursor: pointer;
-  font-weight: 700; opacity: 0; transition: opacity .1s; flex: 0 0 auto; }
-.axk-row:hover .axk-col-del, .axk-member:hover .axk-col-del { opacity: 1; }
-.axk-col-del:hover { color: #dc2626; }
-/* Only editable members (which wrap their text in .axk-mtext) go flex \u2014 a
-   read-only member stays a plain text div, so its golden never shifts. */
-.axk-member:has(.axk-mtext) { display: flex; align-items: center; }
-.axk-member .axk-mtext { flex: 1; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.axk-entity-add, .axk-uml-add { padding: 3px 10px; font-size: 11px; font-weight: 600;
-  color: #2563eb; cursor: pointer; border-top: 1px dashed #cbd5e1; user-select: none; }
-.axk-uml-add { color: #4f46e5; border-top: 1px dashed #c7d2fe; text-align: left; }
-.axk-entity-add:hover, .axk-uml-add:hover { background: rgba(37, 99, 235, .08); }
-.axk-edit-input { font: 12px/1.4 system-ui, sans-serif; box-sizing: border-box;
-  border: 1px solid #2563eb; border-radius: 3px; padding: 1px 6px; margin: 0;
-  background: #fff; color: #0f172a; outline: none; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
-
-/* ===== Dark mode ===== */
-@media (prefers-color-scheme: dark) {
-  .axk-entity { background: #1e293b; border-color: #475569; }
-  .axk-row { border-top-color: #334155; }
-  .axk-col { color: #e2e8f0; }
-  .axk-uml { background: #1e293b; border-color: #64748b; }
-  .axk-uml-name { background: #312e81; color: #e0e7ff; }
-  .axk-uml-comp { border-top-color: #64748b; }
-  .axk-member { color: #e2e8f0; }
+function parseEnd(ref, byId2) {
+  const dot = ref.indexOf(".");
+  const entityId = dot === -1 ? ref : ref.slice(0, dot);
+  const entity = byId2.get(entityId);
+  if (!entity) throw new Error(`erDiagram: unknown entity "${entityId}" in relationship end "${ref}"`);
+  if (dot === -1) return { entity };
+  const column = ref.slice(dot + 1);
+  const rowIndex = entity.columns.findIndex((c) => c.name === column);
+  if (rowIndex === -1) {
+    throw new Error(`erDiagram: entity "${entityId}" has no column "${column}" (relationship end "${ref}")`);
+  }
+  return { entity, column, rowIndex };
 }
-`;
-function ensureDiagramKitStyles(doc = typeof document !== "undefined" ? document : void 0) {
-  if (!doc) return;
-  if (doc.getElementById(DIAGRAM_KIT_STYLE_ID)) return;
-  const style = doc.createElement("style");
-  style.id = DIAGRAM_KIT_STYLE_ID;
-  style.textContent = CSS3;
-  doc.head.appendChild(style);
+function erDiagram(options) {
+  ensureDiagramKitStyles();
+  const byId2 = new Map(options.entities.map((e) => [e.id, e]));
+  const portsByEntity = /* @__PURE__ */ new Map();
+  const rowLandings = /* @__PURE__ */ new Map();
+  const width = (e) => entityAutoWidth(e, options.editable === true);
+  const fieldPort = (end, side) => {
+    const entity = end.entity;
+    const key = `${entity.id}#${end.rowIndex}#${side}`;
+    const landing = rowLandings.get(key) ?? 0;
+    rowLandings.set(key, landing + 1);
+    const dy = landing === 0 ? 0 : (landing % 2 === 1 ? -1 : 1) * Math.ceil(landing / 2) * 5;
+    const id = `${entity.id}__${end.column}__${side}__${landing}`;
+    const w = width(entity);
+    const port = {
+      id,
+      side,
+      visible: false,
+      layout: {
+        strategy: "absolute",
+        args: {
+          units: "px",
+          x: side === "right" ? w : side === "left" ? 0 : w / 2,
+          y: erRowCenterY(end.rowIndex),
+          dy
+        }
+      }
+    };
+    const bucket = portsByEntity.get(entity.id) ?? [];
+    bucket.push(port);
+    portsByEntity.set(entity.id, bucket);
+    return id;
+  };
+  const edges = (options.relationships ?? []).map((rel, i) => {
+    const from = parseEnd(rel.from, byId2);
+    const to = parseEnd(rel.to, byId2);
+    const fromSide = rel.fromSide ?? "right";
+    const toSide = rel.toSide ?? "left";
+    const markers2 = typeof rel.cardinality === "object" ? rel.cardinality : rel.cardinality !== void 0 ? CARDINALITY[rel.cardinality] : defaultMarkers(from, to);
+    return {
+      id: rel.id ?? `er-rel-${i + 1}`,
+      source: from.entity.id,
+      target: to.entity.id,
+      label: rel.label,
+      type: "orthogonal",
+      sourceHandle: from.column !== void 0 ? fieldPort(from, fromSide) : fromSide,
+      targetHandle: to.column !== void 0 ? fieldPort(to, toSide) : toSide,
+      style: {
+        stroke: rel.color ?? "#64748b",
+        strokeWidth: 1.5,
+        arrowTail: { type: markers2.tail, size: 8, filled: false },
+        arrowHead: { type: markers2.head, size: 9, filled: false }
+      }
+    };
+  });
+  const editable = options.editable === true;
+  const nodes = options.entities.map((entity, i) => ({
+    id: entity.id,
+    position: entity.position ?? { x: 60 + i % 3 * 340, y: 60 + Math.floor(i / 3) * 280 },
+    size: { width: width(entity), height: entityAutoHeight(entity, editable) },
+    // interactive: rows are real DOM targets (hover, row selection, inline
+    // editing) — node drag/select stay geometric in the binder.
+    metadata: {
+      html: cardHtml(entityCardContent(entity, editable)),
+      kitEntity: entity,
+      kitEditable: editable,
+      // Only the OPT-OUT is recorded. A loader has to know not to re-bind row
+      // selection, but stamping the default on every card would change the bytes
+      // of every existing document for a value that is already the default.
+      ...options.rowSelection === false ? { kitRowSelection: false } : {}
+    },
+    // The card draws its own border — the node's default rectangle is hidden
+    // (and re-suppressed on selection by the kit stylesheet).
+    shape: { type: "rect", fill: "none", stroke: "none" },
+    style: { fill: "transparent", stroke: "transparent", strokeWidth: 0 },
+    ...portsByEntity.has(entity.id) ? { ports: portsByEntity.get(entity.id) } : {}
+  }));
+  return {
+    nodes,
+    edges,
+    finalize: (api) => {
+      const a = api;
+      const model = a?.getModel?.();
+      if (model) for (const e of options.entities) model.getNode?.(e.id)?.setBehavior?.({ resizable: false });
+      if (options.rowSelection !== false && a?.container) bindRowInteractions(a);
+      if (editable && a?.container) bindCardEditing(a);
+    }
+  };
 }
+
+// libs/element/src/lib/diagram-kit/uml.ts
+var STROKE = "#475569";
+var DASH = "6,4";
+function edgeStyleFor(kind) {
+  const none = { type: "none", size: 0, filled: false };
+  switch (kind) {
+    case "inheritance":
+      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: { type: "generalization", size: 16, filled: false }, arrowTail: none };
+    case "realization":
+      return { stroke: STROKE, strokeWidth: 1.5, strokeDasharray: DASH, arrowHead: { type: "generalization", size: 16, filled: false }, arrowTail: none };
+    case "association":
+      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: none, arrowTail: none };
+    case "directed-association":
+      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: { type: "open-arrow", size: 12, filled: false }, arrowTail: none };
+    case "aggregation":
+      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: none, arrowTail: { type: "hollow-diamond", size: 14, filled: false } };
+    case "composition":
+      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: none, arrowTail: { type: "filled-diamond", size: 14, filled: true } };
+    case "dependency":
+      return { stroke: STROKE, strokeWidth: 1.5, strokeDasharray: DASH, arrowHead: { type: "open-arrow", size: 12, filled: false }, arrowTail: none };
+  }
+}
+var multiplicityChip = (text, slot) => ({
+  text,
+  slot,
+  offset: { x: 0, y: -7 },
+  style: { fontSize: 11, fontWeight: "600", color: "#0f172a", background: "#ffffffdd", padding: 1, borderRadius: 2 }
+});
+function umlDiagram(options) {
+  ensureDiagramKitStyles();
+  const editable = options.editable === true;
+  const nodes = options.classes.map((cls, i) => {
+    return {
+      id: cls.id,
+      position: cls.position ?? { x: 80 + i % 3 * 320, y: 60 + Math.floor(i / 3) * 260 },
+      size: { width: classAutoWidth(cls, editable), height: classAutoHeight(cls, editable) },
+      // interactive: members are real DOM targets (hover, row selection, inline
+      // editing); node drag/select stay geometric in the binder.
+      metadata: {
+        html: cardHtml(classCardContent(cls, editable)),
+        kitClass: cls,
+        kitEditable: editable,
+        // Opt-out only — see the same stamp in er.ts.
+        ...options.rowSelection === false ? { kitRowSelection: false } : {}
+      },
+      shape: { type: "rect", fill: "none", stroke: "none" },
+      style: { fill: "transparent", stroke: "transparent", strokeWidth: 0 }
+    };
+  });
+  const rels = options.relationships ?? [];
+  const edges = rels.map((rel, i) => ({
+    id: rel.id ?? `uml-rel-${i + 1}`,
+    source: rel.from,
+    target: rel.to,
+    label: rel.label,
+    type: "orthogonal",
+    ...rel.fromSide ? { sourceHandle: rel.fromSide } : {},
+    ...rel.toSide ? { targetHandle: rel.toSide } : {},
+    style: edgeStyleFor(rel.kind ?? "association")
+  }));
+  const finalized = /* @__PURE__ */ new WeakSet();
+  const finalize = (api) => {
+    const a0 = api;
+    const m0 = a0?.getModel?.();
+    if (m0) for (const cls of options.classes) m0.getNode?.(cls.id)?.setBehavior?.({ resizable: false });
+    if (options.rowSelection !== false) {
+      const a = api;
+      if (a?.container) bindRowInteractions(a);
+    }
+    if (editable && a0?.container) bindCardEditing(a0);
+    if (api && typeof api === "object") {
+      if (finalized.has(api)) return;
+      finalized.add(api);
+    }
+    const model = api?.getModel?.();
+    if (!model) return;
+    let added = false;
+    rels.forEach((rel, i) => {
+      if (!rel.multiplicity) return;
+      const link = model.getLink(edges[i].id);
+      if (!link) return;
+      link.addLabel(multiplicityChip(rel.multiplicity[0], "start"));
+      link.addLabel(multiplicityChip(rel.multiplicity[1], "end"));
+      added = true;
+    });
+    if (added) api?.renderNow?.();
+  };
+  return { nodes, edges, finalize };
+}
+
+// libs/element/src/lib/diagram-kit/text-kits.ts
+function adoptNodeLook(node, kitNode) {
+  const size = kitNode["size"];
+  if (size) node.setSize(size.width, size.height, node.size?.depth);
+  const metadata = kitNode["metadata"] ?? {};
+  for (const [key, value] of Object.entries(metadata)) node.setMetadata(key, value);
+  if (kitNode["shape"]) node.setMetadata("shape", kitNode["shape"]);
+  if (kitNode["style"]) node.setStyle(kitNode["style"]);
+}
+function pairLinks(diagram, edges) {
+  const key = (a, b) => [String(a), String(b)].sort().join("\0");
+  const queues = /* @__PURE__ */ new Map();
+  for (const link of diagram.getLinks()) {
+    const k = key(link.sourceNodeId, link.targetNodeId);
+    const q2 = queues.get(k) ?? [];
+    q2.push(link);
+    queues.set(k, q2);
+  }
+  const pairs = [];
+  edges.forEach((edge, index) => {
+    const link = queues.get(key(edge["source"], edge["target"]))?.shift();
+    if (link) pairs.push({ link, edge, index });
+  });
+  return pairs;
+}
+function adoptEdgeLook(link, edge, extra = {}) {
+  const style = { ...edge["style"] ?? {}, ...extra };
+  if (edge["source"] !== link.sourceNodeId) {
+    const { arrowHead, arrowTail } = style;
+    style["arrowHead"] = arrowTail ?? { type: "none", size: 0, filled: false };
+    style["arrowTail"] = arrowHead ?? { type: "none", size: 0, filled: false };
+  }
+  link.updateStyle(style);
+}
+function makeKit(build, extraForEdge, afterPair) {
+  let last = null;
+  return {
+    decorate(diagram) {
+      last = build(diagram);
+      if (!last) return;
+      for (const kitNode of last.nodes) {
+        const node = diagram.getNode(String(kitNode["id"]));
+        if (node) adoptNodeLook(node, kitNode);
+      }
+      for (const { link, edge, index } of pairLinks(diagram, last.edges)) {
+        adoptEdgeLook(link, edge, extraForEdge?.(index));
+        afterPair?.(link, edge, index);
+      }
+    },
+    finalize(instance) {
+      last?.finalize(instance);
+    }
+  };
+}
+function positionOf(diagram, id) {
+  const node = diagram.getNode(id);
+  return node ? { x: node.position.x, y: node.position.y } : void 0;
+}
+var registered = false;
+function registerDiagramKitTextKits() {
+  if (registered) return;
+  registered = true;
+  let erRelationships = [];
+  registerTextKit(
+    "erDiagram",
+    makeKit(
+      (diagram) => {
+        const spec = diagram.getMetadata("erSpec");
+        if (!spec) return null;
+        erRelationships = spec.relationships;
+        return erDiagram({
+          entities: spec.entities.map((e) => ({ ...e, position: positionOf(diagram, e.id) })),
+          relationships: spec.relationships.map((r) => ({
+            from: r.from,
+            to: r.to,
+            ...r.label ? { label: r.label } : {},
+            cardinality: { tail: r.cardinality.tail, head: r.cardinality.head }
+          }))
+        });
+      },
+      // Non-identifying (`..`) relationships are dashed, as Mermaid draws them.
+      (index) => erRelationships[index]?.dashed ? { strokeDasharray: "6 4" } : {}
+    )
+  );
+  let umlRelationships = [];
+  registerTextKit(
+    "classDiagram",
+    makeKit(
+      (diagram) => {
+        const spec = diagram.getMetadata("umlSpec");
+        if (!spec) return null;
+        umlRelationships = spec.relationships;
+        return umlDiagram({
+          classes: spec.classes.map((c) => ({ ...c, position: positionOf(diagram, c.id) })),
+          relationships: spec.relationships.map((r) => ({
+            from: r.from,
+            to: r.to,
+            kind: r.kind,
+            ...r.label ? { label: r.label } : {}
+          }))
+        });
+      },
+      void 0,
+      // Multiplicities are positioned chips at the link's ends — in the IMPORTED
+      // link's direction, which may be the reverse of the kit's.
+      (link, edge, index) => {
+        const m = umlRelationships[index]?.multiplicity;
+        if (!m) return;
+        const [atFrom, atTo] = edge["source"] === link.sourceNodeId ? m : [m[1], m[0]];
+        if (atFrom) link.addLabel(multiplicityChip(atFrom, "start"));
+        if (atTo) link.addLabel(multiplicityChip(atTo, "end"));
+      }
+    )
+  );
+}
+
+// libs/element/src/lib/grafloria.ts
+function render(spec, target, options = {}) {
+  const element = typeof target === "string" ? document.querySelector(target) : target;
+  if (!element) {
+    throw new Error(`Grafloria.render: no element matched ${JSON.stringify(target)}`);
+  }
+  const parsed = typeof spec === "string" ? parseSpec(spec) : spec;
+  const instance = createDiagram(element, {
+    // A kit spec may ask for instance options of its own — a fluid dashboard
+    // pins the zoom range so its layout can never become a scaled picture. The
+    // caller's explicit options still win.
+    ...parsed.renderOptions ?? {},
+    ...options,
+    nodes: parsed.nodes ?? [],
+    edges: parsed.edges ?? [],
+    ...parsed.groups ? { groups: parsed.groups } : {},
+    ...parsed.layout ? { layout: parsed.layout } : {},
+    // Wire the global registry in, so `registerNodeType` works for the tiny API
+    // exactly as it does for `<grafloria-flow>` — unless the caller supplies their
+    // own. A KIT SPEC may also carry its own painter (dashboard() does: every
+    // widget is a custom HTML node), and it must be honoured — otherwise the
+    // documented one-liner `render(dashboard({…}), host)` mounts a board whose
+    // widgets never paint. Precedence: explicit option > spec > registry.
+    renderCustomNode: options.renderCustomNode ?? parsed.renderCustomNode ?? ((node, host) => getNodeType(node.type)?.(node, host))
+  });
+  const maybeFinalize = spec.finalize;
+  if (typeof maybeFinalize === "function") {
+    try {
+      maybeFinalize(instance);
+    } catch {
+    }
+  }
+  const kitHandle = spec?.handle;
+  if (kitHandle && typeof kitHandle.dispose === "function") {
+    const disposeInstance = instance.dispose.bind(instance);
+    let disposed = false;
+    instance.dispose = () => {
+      if (!disposed) {
+        disposed = true;
+        try {
+          kitHandle.dispose?.();
+        } catch {
+        }
+      }
+      disposeInstance();
+    };
+  }
+  return instance;
+}
+function renderStatic(options = {}) {
+  return renderToStaticSVG(options);
+}
+function parseSpec(spec) {
+  try {
+    return JSON.parse(spec);
+  } catch (error) {
+    throw new Error(
+      `Grafloria.render: spec must be an object or a JSON string (${error.message})`
+    );
+  }
+}
+var Grafloria = {
+  render,
+  renderStatic,
+  registerNodeType,
+  registeredNodeTypes,
+  /** Register `<grafloria-flow>` (called for you when you import this package). */
+  define: defineGrafloriaFlow
+};
 
 // libs/element/src/lib/dashboard-kit/grid-mapping.ts
 function rowHeightFor(g, rows) {
@@ -199614,6 +200952,9 @@ var CSS4 = `
    used to select every label on it; kit cards are not prose. Tables stay
    copyable \u2014 a figure in a grid is the one thing a viewer selects. */
 .axdb-widget { user-select: none; -webkit-user-select: none; }
+/* A card lays out its own text: never the host's alignment (React's template centres #root). */
+.axdb-widget { text-align: start; }
+.axdb-slab, .axdb-tabs { text-align: start; }
 .axdb-widget .axdb-table { user-select: text; -webkit-user-select: text; }
 .axdb-widget-b > svg { display: block; width: 100%; height: 100%; }
 .axdb-widget-b.axdb-scroll { overflow: auto; }
@@ -200598,6 +201939,15 @@ function edgesNear(host, cx, cy) {
     e: r.right - cx <= EDGE_GRIP
   };
 }
+function edgesNearRect(r, x, y, grip, slack = grip * (2 / EDGE_GRIP)) {
+  if (x < r.x - slack || x > r.x + r.width + slack || y < r.y - slack || y > r.y + r.height + slack) return NO_EDGES;
+  return {
+    n: y - r.y <= grip,
+    s: r.y + r.height - y <= grip,
+    w: x - r.x <= grip,
+    e: r.x + r.width - x <= grip
+  };
+}
 var anyEdge = (E) => E.n || E.e || E.s || E.w;
 function cursorFor(E) {
   const v = E.n || E.s;
@@ -200972,9 +202322,10 @@ function createChrome(ctx, deps) {
     const grabbing = deps.grabbing();
     if (!host) {
       const wpt = api.viewport?.clientToWorld ? api.viewport.clientToWorld(e.clientX, e.clientY, api.container.getBoundingClientRect()) : null;
-      const sid = wpt ? deps.memberGroupAt(wpt.x, wpt.y) : null;
+      const card2 = wpt && !ctx.isStatic() ? deps.hostlessCardEdgesAt?.(wpt.x, wpt.y) ?? null : null;
+      const sid = wpt && !card2 ? deps.memberGroupAt(wpt.x, wpt.y) : null;
       const grp = sid ? diagram.getGroup(sid) : void 0;
-      const c = grp && wpt && !ctx.isStatic() ? cursorFor(deps.slabEdgesNear(grp, wpt.x, wpt.y)) : "";
+      const c = card2 ? cursorFor(card2) : grp && wpt && !ctx.isStatic() ? cursorFor(deps.slabEdgesNear(grp, wpt.x, wpt.y)) : "";
       if (!grabbing) api.container.style.cursor = c;
       return;
     }
@@ -201186,13 +202537,13 @@ function createTearOut(ctx, deps) {
     })();
     setTearing(pageId);
     const doc = api.container.ownerDocument ?? document;
-    const chip2 = doc.createElement("div");
-    chip2.className = "axdb-drag-chip axdb-tab-chip";
-    chip2.textContent = plan.label;
-    doc.body.appendChild(chip2);
+    const chip = doc.createElement("div");
+    chip.className = "axdb-drag-chip axdb-tab-chip";
+    chip.textContent = plan.label;
+    doc.body.appendChild(chip);
     const moveChip = (cx, cy) => {
-      chip2.style.left = `${cx + 6}px`;
-      chip2.style.top = `${cy + 6}px`;
+      chip.style.left = `${cx + 6}px`;
+      chip.style.top = `${cy + 6}px`;
     };
     moveChip(ev.clientX, ev.clientY);
     armGlide();
@@ -201483,7 +202834,7 @@ function createTearOut(ctx, deps) {
       const world = toWorld(e.clientX, e.clientY);
       const z = zoneAt(e.clientX, e.clientY, world);
       applyZone(z, world);
-      chip2.classList.toggle("axdb-out", zone.kind === "home" || zone.kind === "off" || zone.kind === "board" && (!leg || landingHidden()));
+      chip.classList.toggle("axdb-out", zone.kind === "home" || zone.kind === "off" || zone.kind === "board" && (!leg || landingHidden()));
       api.render();
     };
     const done = (changed, kind) => {
@@ -201495,7 +202846,7 @@ function createTearOut(ctx, deps) {
     };
     const finish = (commit2) => {
       detach();
-      chip2.remove();
+      chip.remove();
       hideOverlay();
       plan.markDrop(null, null);
       setTearing(null);
@@ -201925,6 +203276,19 @@ function bindDashboardGrid(api, group, options = {}) {
     gestureRunning: () => !!gesture,
     memberGroupAt: (x, y) => memberGroupAt(x, y),
     slabEdgesNear: (grp, x, y) => slabEdgesNear(grp, x, y),
+    hostlessCardEdgesAt: (x, y) => {
+      for (const id of group.members ?? []) {
+        if (hostOf(id)) continue;
+        const node = diagram.getNode(id);
+        if (!node) continue;
+        const edges = nodeEdgesNear(node, x, y);
+        const inside = x >= node.position.x && x <= node.position.x + node.size.width && y >= node.position.y && y <= node.position.y + node.size.height;
+        if (!inside && !anyEdge(edges)) continue;
+        const resizable = node.state?.locked !== true && node.getMetadata?.("widgetResizable") !== false;
+        return resizable ? edges : NO_EDGES;
+      }
+      return null;
+    },
     dragHandle: () => dragHandle,
     wantHandles
   });
@@ -202153,6 +203517,19 @@ function bindDashboardGrid(api, group, options = {}) {
       const p = grp.position;
       const s = sizeOf(grp);
       if (x >= p.x && x <= p.x + s.width && y >= p.y && y <= p.y + s.height) return id;
+    }
+    return null;
+  };
+  const nodeEdgesNear = (node, x, y) => {
+    const k = clientPerWorld();
+    const grip = EDGE_GRIP / (Math.min(k.x, k.y) || 1);
+    return edgesNearRect({ x: node.position.x, y: node.position.y, width: node.size.width, height: node.size.height }, x, y, grip);
+  };
+  const hostlessCardOnEdge = (x, y) => {
+    for (const id of group.members ?? []) {
+      if (hostOf(id)) continue;
+      const node = diagram.getNode(id);
+      if (node && anyEdge(nodeEdgesNear(node, x, y))) return node;
     }
     return null;
   };
@@ -203606,7 +204983,7 @@ function bindDashboardGrid(api, group, options = {}) {
       const grp = diagram.getGroup(id);
       const cellBefore = { x: item.x, y: item.y, w: item.w, h: item.h };
       const fb = grp ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height } : void 0;
-      const r = engine.resizeCheck(id, item.w, item.h + dRows);
+      const r = engine.resizeCheck(id, item.w, item.h + dRows, { pushSolid: dRows > 0 });
       if (!r.changed) return { changed: false };
       project();
       const after = engine.getItem(id);
@@ -203658,6 +205035,7 @@ function bindDashboardGrid(api, group, options = {}) {
         }
         return insideMemberGroupFrame(ev.world.x, ev.world.y);
       }
+      if (hostlessCardOnEdge(ev.world.x, ev.world.y)) return true;
       for (const p of BOARD_REGISTRY.get(api.container) ?? []) {
         if (p !== selfPeer && (group.members ?? /* @__PURE__ */ new Set()).has(p.group.id) && p.containsWorld(ev.world.x, ev.world.y)) return false;
       }
@@ -203677,6 +205055,8 @@ function bindDashboardGrid(api, group, options = {}) {
       const captionBand = target?.closest?.(".axdb-slab > .axdb-slab-h");
       const captionId = captionBand?.parentElement?.getAttribute("data-slab-id") ?? null;
       const ownCaption = !!captionId && (group.members ?? /* @__PURE__ */ new Set()).has(captionId);
+      const bandNode = !hit.node && !onGrip && !sectionHandle && !ownCaption ? hostlessCardOnEdge(ev.world.x, ev.world.y) : null;
+      if (bandNode) hit = { ...hit, node: bandNode, empty: false };
       if (!hit.node && !onGrip || sectionHandle || ownCaption) {
         const slabHandle = target?.closest?.(".axdb-slab > .axdb-rs");
         const slabId = slabHandle?.parentElement?.getAttribute("data-slab-id") ?? (ownCaption ? captionId : null) ?? memberGroupAt(ev.world.x, ev.world.y);
@@ -203723,6 +205103,7 @@ function bindDashboardGrid(api, group, options = {}) {
       if (resizable && !onGrip) {
         if (onHandle) edges = rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false };
         else if (hostEl) edges = edgesNear(hostEl, cx, cy);
+        else edges = nodeEdgesNear(node, ev.world.x, ev.world.y);
       }
       const isResize = anyEdge(edges);
       if (!isResize && !movable) return;
@@ -203832,12 +205213,12 @@ function bindDashboardGrid(api, group, options = {}) {
   });
   const beginPaletteDrag = (node, spec, event) => {
     if (disposed || gesture || isStatic) return;
-    const chip2 = spec.chip ?? null;
-    if (chip2) {
-      chip2.classList.add("axdb-drag-chip");
-      document.body.appendChild(chip2);
-      chip2.style.left = `${event.clientX + 6}px`;
-      chip2.style.top = `${event.clientY + 6}px`;
+    const chip = spec.chip ?? null;
+    if (chip) {
+      chip.classList.add("axdb-drag-chip");
+      document.body.appendChild(chip);
+      chip.style.left = `${event.clientX + 6}px`;
+      chip.style.top = `${event.clientY + 6}px`;
     }
     const g = {
       kind: "palette",
@@ -203862,7 +205243,7 @@ function bindDashboardGrid(api, group, options = {}) {
       lastScreen: null,
       hostEl: null,
       esc: null,
-      chip: chip2
+      chip
     };
     gesture = g;
     const toWorld = (cx, cy) => {
@@ -203885,9 +205266,9 @@ function bindDashboardGrid(api, group, options = {}) {
         const gg = geom();
         g.grab = { dx: (g.spans.w * (columnUnitFor(gg, f.width) + gap) - gap) / 2, dy: (g.spans.h * (rowHeightFor(gg, rows()) + gap) - gap) / 2 };
       }
-      if (chip2) {
-        chip2.style.left = `${e.clientX + 6}px`;
-        chip2.style.top = `${e.clientY + 6}px`;
+      if (chip) {
+        chip.style.left = `${e.clientX + 6}px`;
+        chip.style.top = `${e.clientY + 6}px`;
       }
       const rect = api.container.getBoundingClientRect();
       const world = toWorld(e.clientX, e.clientY);
@@ -203910,7 +205291,7 @@ function bindDashboardGrid(api, group, options = {}) {
       if (gesture !== g) return;
       if (!g.started) {
         gesture = null;
-        chip2?.remove();
+        chip?.remove();
         return;
       }
       if (commit2 && g.leg) {
@@ -203942,7 +205323,7 @@ function bindDashboardGrid(api, group, options = {}) {
     group.on("member:removed", (id) => onMemberRemoved(id)),
     group.on("bounds:changed", () => onBoundsChanged())
   ];
-  const programmatic = async (name, id, op) => {
+  const programmatic = async (name, id, op, extra) => {
     if (disposed || gesture || !engine.getItem(id)) return false;
     engine.beginGesture();
     const snap = snapshotAll();
@@ -203961,6 +205342,7 @@ function bindDashboardGrid(api, group, options = {}) {
       writing = false;
     }
     const commands = tileCommands(deltasSince(snap.cells, snap.geoms));
+    if (extra) commands.push(...extra());
     engine.endGesture();
     disarmGlideSoon();
     enforceBoardHeight();
@@ -204157,7 +205539,30 @@ function bindDashboardGrid(api, group, options = {}) {
     },
     resizeTo(id, w, h) {
       const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h;
-      return programmatic("Resize widget", id, () => engine.resizeCheck(id, w, hh).changed);
+      let grown = null;
+      return programmatic(
+        "Resize widget",
+        id,
+        () => {
+          let changed = engine.resizeCheck(id, w, hh).changed;
+          const parent = parentPeer();
+          let grownBy = 0;
+          while (escalate && parent && designRows !== void 0 && (engine.getItem(id)?.h ?? hh) < hh && grownBy < hh) {
+            const res = parent.resizeMemberBy(group.id, 1);
+            if (!res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter) break;
+            grownBy += 1;
+            grown = {
+              first: grown?.first ?? { cell: res.cellBefore, frame: res.frameBefore },
+              last: { cell: res.cellAfter, frame: res.frameAfter },
+              commands: res.commands ?? grown?.commands
+            };
+            setLiveBound((maxRows ?? 0) + 1);
+            changed = engine.resizeCheck(id, w, hh).changed || changed;
+          }
+          return changed || grownBy > 0;
+        },
+        () => grown ? grown.commands ?? [new SetGroupCellCommand(group.id, grown.first.cell, grown.last.cell, grown.first.frame, grown.last.frame)] : []
+      );
     },
     fitRows(id, h) {
       const it = engine.getItem(id);
@@ -205671,13 +207076,13 @@ function bindDashboardSplit(api, group, options = {}) {
     const bodyUserSelect = doc.body.style.userSelect;
     doc.body.style.userSelect = "none";
     doc.getSelection?.()?.removeAllRanges?.();
-    const chip2 = doc.createElement("div");
-    chip2.className = "axdb-drag-chip axdb-tab-chip";
-    chip2.textContent = plan.label;
-    doc.body.appendChild(chip2);
+    const chip = doc.createElement("div");
+    chip.className = "axdb-drag-chip axdb-tab-chip";
+    chip.textContent = plan.label;
+    doc.body.appendChild(chip);
     const moveChip = (cx, cy) => {
-      chip2.style.left = `${cx + 6}px`;
-      chip2.style.top = `${cy + 6}px`;
+      chip.style.left = `${cx + 6}px`;
+      chip.style.top = `${cy + 6}px`;
     };
     moveChip(ev.clientX, ev.clientY);
     const layer = htmlLayer();
@@ -205748,7 +207153,7 @@ function bindDashboardSplit(api, group, options = {}) {
       if (jt) showJoin(frameOfGroup(jt));
       else hideJoin();
       showInsertion(z.kind === "pane" ? insertionRect(z.target.rect, z.target.side) : null);
-      chip2.classList.toggle("axdb-out", z.kind === "home" || z.kind === "off");
+      chip.classList.toggle("axdb-out", z.kind === "home" || z.kind === "off");
     };
     let last = { x: ev.clientX, y: ev.clientY };
     const detach = () => {
@@ -205772,7 +207177,7 @@ function bindDashboardSplit(api, group, options = {}) {
     };
     const finish = (commit2) => {
       detach();
-      chip2.remove();
+      chip.remove();
       hideJoin();
       showInsertion(null);
       plan.markDrop(null, null);
@@ -205844,12 +207249,12 @@ function bindDashboardSplit(api, group, options = {}) {
     doc.getSelection?.()?.removeAllRanges?.();
     const meta = grp.getMetadata("containerWidget") ?? {};
     const label = typeof meta.title === "string" && meta.title ? meta.title : grp.name || id;
-    const chip2 = doc.createElement("div");
-    chip2.className = "axdb-drag-chip axdb-tab-chip";
-    chip2.textContent = label;
+    const chip = doc.createElement("div");
+    chip.className = "axdb-drag-chip axdb-tab-chip";
+    chip.textContent = label;
     const moveChip = (cx, cy) => {
-      chip2.style.left = `${cx + 6}px`;
-      chip2.style.top = `${cy + 6}px`;
+      chip.style.left = `${cx + 6}px`;
+      chip.style.top = `${cy + 6}px`;
     };
     const down = { x: ev.clientX, y: ev.clientY };
     let started = false;
@@ -205862,7 +207267,7 @@ function bindDashboardSplit(api, group, options = {}) {
     };
     const finish = (commit2) => {
       detach();
-      chip2.remove();
+      chip.remove();
       showInsertion(null);
       tearing = false;
       doc.body.style.userSelect = bodyUserSelect;
@@ -205892,13 +207297,13 @@ function bindDashboardSplit(api, group, options = {}) {
       if (!started) {
         if (Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y) < DRAG_THRESHOLD2) return;
         started = true;
-        doc.body.appendChild(chip2);
+        doc.body.appendChild(chip);
       }
       moveChip(e.clientX, e.clientY);
       const w = toWorld(e.clientX, e.clientY);
       target = worldInsideBoard(w.x, w.y) ? dropTargetAt(tree0, w.x, w.y, id) : null;
       showInsertion(target ? insertionRect(target.rect, target.side) : null);
-      chip2.classList.toggle("axdb-out", !target);
+      chip.classList.toggle("axdb-out", !target);
       api.render();
     };
     const onUp = () => finish(true);
@@ -205914,12 +207319,12 @@ function bindDashboardSplit(api, group, options = {}) {
   };
   const beginPaletteDrag = (node, spec, event) => {
     if (disposed || gesture || isStatic) return;
-    const chip2 = spec.chip ?? null;
-    if (chip2) {
-      chip2.classList.add("axdb-drag-chip");
-      document.body.appendChild(chip2);
-      chip2.style.left = `${event.clientX + 6}px`;
-      chip2.style.top = `${event.clientY + 6}px`;
+    const chip = spec.chip ?? null;
+    if (chip) {
+      chip.classList.add("axdb-drag-chip");
+      document.body.appendChild(chip);
+      chip.style.left = `${event.clientX + 6}px`;
+      chip.style.top = `${event.clientY + 6}px`;
     }
     const tree = readTree();
     const g = {
@@ -205935,7 +207340,7 @@ function bindDashboardSplit(api, group, options = {}) {
       divider: null,
       target: null,
       out: false,
-      chip: chip2,
+      chip,
       esc: null,
       strip: null,
       leg: null,
@@ -205955,9 +207360,9 @@ function bindDashboardSplit(api, group, options = {}) {
     const chipPx = { width: Math.max(1, spec.w * (colW0 + gap) - gap), height: Math.max(1, spec.h * (baseRowHeight + gap) - gap) };
     const onMove = (e) => {
       if (gesture !== g) return detach();
-      if (chip2) {
-        chip2.style.left = `${e.clientX + 6}px`;
-        chip2.style.top = `${e.clientY + 6}px`;
+      if (chip) {
+        chip.style.left = `${e.clientX + 6}px`;
+        chip.style.top = `${e.clientY + 6}px`;
       }
       const w = toWorld(e.clientX, e.clientY);
       const inside = worldInsideBoard(w.x, w.y);
@@ -205965,7 +207370,7 @@ function bindDashboardSplit(api, group, options = {}) {
       const t = zoneTarget(g, tileZone(g, ev, null), w, inside, chipPx);
       g.target = t ? targetOf(t) : null;
       showInsertion(t ? insertionRect(t.rect, t.side) : null);
-      chip2?.classList.toggle("axdb-out", !t && !g.leg && !!g.liveTree);
+      chip?.classList.toggle("axdb-out", !t && !g.leg && !!g.liveTree);
       api.render();
     };
     const onUp = () => {
@@ -206774,6 +208179,16 @@ function createAutoHeight(host) {
 }
 
 // libs/element/src/lib/dashboard-kit/dashboard.ts
+function dataOnly(o) {
+  const out = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (v === void 0 || typeof v === "function") continue;
+    if (v && typeof v === "object" && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype) {
+      out[k] = dataOnly(v);
+    } else out[k] = v;
+  }
+  return out;
+}
 var AddSectionCommand = class extends Command {
   constructor(group, boardId, registry5) {
     super("Add section");
@@ -207023,7 +208438,7 @@ function attachTabsRuntime(ctx, model, container, handle) {
     if (!peer || !plan) return false;
     return peer.tearOutMember(pageId, containerId, ev, plan);
   };
-  const paintStrip = (id, f, h, pages, active2) => {
+  const paintStrip = (id, f, h, pages, active3) => {
     const layer = container?.querySelector(".grafloria-html-layer");
     if (!layer) return;
     let el2 = ctx.tabStrips.get(id);
@@ -207040,12 +208455,12 @@ function attachTabsRuntime(ctx, model, container, handle) {
     el2.style.width = `${f.width}px`;
     el2.style.height = `${h}px`;
     const rtl = ctx.binders.get(ctx.viewOfBoard.get(id) ?? ctx.active)?.getRtl() ?? false;
-    const key = tabStripKey(pages, active2, ctx.tabsOf.get(id), rtl);
+    const key = tabStripKey(pages, active3, ctx.tabsOf.get(id), rtl);
     if (el2.getAttribute("data-key") === key) return;
     paintTabStrip(
       el2,
       pages,
-      active2,
+      active3,
       ctx.tabsOf.get(id),
       rtl,
       (pid) => handle.activateTab(id, pid),
@@ -207061,9 +208476,9 @@ function attachTabsRuntime(ctx, model, container, handle) {
     const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
     if (!cg || !isTabs(id)) return;
     const pages = pagesOf(id);
-    let active2 = ctx.activeTab.get(id) ?? pages[0].id;
-    if (!pages.some((p) => p.id === active2)) active2 = pages[0].id;
-    ctx.activeTab.set(id, active2);
+    let active3 = ctx.activeTab.get(id) ?? pages[0].id;
+    if (!pages.some((p) => p.id === active3)) active3 = pages[0].id;
+    ctx.activeTab.set(id, active3);
     const strip = tabStripReserve(ctx.tabsOf.get(id), pages.length);
     const inset = tabPageInset(ctx.tabsOf.get(id));
     const f = { x: cg.position.x, y: cg.position.y, width: cg.size?.width ?? 0, height: cg.size?.height ?? 0 };
@@ -207073,13 +208488,13 @@ function attachTabsRuntime(ctx, model, container, handle) {
       for (const p of pages) {
         const pg = model.getGroup(p.id);
         if (!pg) continue;
-        pg.setFrame({ x: p.id === active2 ? f.x + inset : OFFSCREEN_X, y: f.y + strip + inset, width: inner.width, height: inner.height });
+        pg.setFrame({ x: p.id === active3 ? f.x + inset : OFFSCREEN_X, y: f.y + strip + inset, width: inner.width, height: inner.height });
       }
     });
     for (const p of pages) ctx.binders.get(p.id)?.sync();
     for (const p of pages) {
       const pg = model.getGroup(p.id);
-      const parked = p.id !== active2;
+      const parked = p.id !== active3;
       for (const m of pg?.members ?? []) {
         const host = container?.querySelector(`.grafloria-node-host[data-node-id="${cssEscape5(m)}"]`);
         if (!host) continue;
@@ -207092,7 +208507,7 @@ function attachTabsRuntime(ctx, model, container, handle) {
     if (ctx.tabsOf.get(id)?.hidden === true) {
       ctx.tabStrips.get(id)?.remove();
       ctx.tabStrips.delete(id);
-    } else paintStrip(id, f, strip, pages, active2);
+    } else paintStrip(id, f, strip, pages, active3);
   };
   ctx.syncTabs = sync;
   ctx.subscriptions = ctx.subscriptions ?? [];
@@ -207956,11 +209371,12 @@ function createDashboardHandle(ctx) {
       return true;
     },
     setSizing(mode) {
+      ctx.sizing = mode;
       for (const [id, b] of binders) if (groups.has(id)) b.setSizing(mode);
       clampCamera();
       ctx.apiRef?.renderNow();
     },
-    getSizing: () => binders.get(ctx.active)?.getSizing() ?? ctx.optionsBase.sizing ?? (ctx.mode === "fluid" ? "grow" : "fit"),
+    getSizing: () => binders.get(ctx.active)?.getSizing() ?? ctx.sizing ?? ctx.optionsBase.sizing ?? (ctx.mode === "fluid" ? "grow" : "fit"),
     setFloat(on) {
       for (const b of binders.values()) b.setFloat(on);
       ctx.apiRef?.renderNow();
@@ -208088,16 +209504,16 @@ function createDashboardHandle(ctx) {
           widgets: live.length > 0 || (ctx.boardGroups.get(v.id)?.members?.size ?? 0) > 0 ? live : v.widgets.map((w) => ({ ...w }))
         };
       });
+      const { widgets: _authored, views: _views, ...rest } = ctx.optionsBase;
       return {
-        ...ctx.optionsBase,
-        renderWidget: void 0,
-        onLayoutChange: void 0,
+        ...dataOnly(rest),
         columns: ctx.columns,
         gap: ctx.gap,
         rowHeight: ctx.rowHeight,
         mode: ctx.mode,
         overflow: ctx.overflow,
-        sizing: handle.getSizing(),
+        // The SETTING, which a split view (always 'fit') keeps for its grid.
+        sizing: ctx.sizing ?? handle.getSizing(),
         float: handle.getFloat(),
         rtl: handle.getRtl(),
         static: handle.getStatic(),
@@ -208564,12 +209980,12 @@ function dashboard(options) {
             mountBoard(w.id, viewId, w.widgets, cg);
             if (w.layout === "tabs") {
               const pages = (w.widgets ?? []).filter((c) => !!c.widgets);
-              const active2 = w.active && pages.some((p) => p.id === w.active) ? w.active : pages[0]?.id;
-              if (active2) {
-                ctx.activeTab.set(w.id, active2);
-                w.active = active2;
+              const active3 = w.active && pages.some((p) => p.id === w.active) ? w.active : pages[0]?.id;
+              if (active3) {
+                ctx.activeTab.set(w.id, active3);
+                w.active = active3;
               }
-              cg.setMetadata("containerWidget", { ...cg.getMetadata("containerWidget"), layout: "tabs", ...active2 ? { active: active2 } : {}, ...w.tabs ? { tabs: w.tabs } : {} });
+              cg.setMetadata("containerWidget", { ...cg.getMetadata("containerWidget"), layout: "tabs", ...active3 ? { active: active3 } : {}, ...w.tabs ? { tabs: w.tabs } : {} });
               ctx.tabsOf.set(w.id, w.tabs ?? {});
               continue;
             }
@@ -208644,7 +210060,7 @@ function dashboard(options) {
         return bindDashboardGrid(a, g, {
           ...common,
           columns: v.columns ?? columns,
-          sizing,
+          sizing: ctx.sizing ?? sizing,
           baseRowHeight: rowHeight,
           designHeight: viewH(v),
           float: options.float ?? false,
@@ -208858,6 +210274,9 @@ function fromDocument(document2, options = {}) {
       for (const stroke of model.getStrokes()) {
         if (!live.getStroke?.(stroke.id)) live.addStroke?.(stroke);
       }
+      const store = a.getCommentStore?.();
+      if (store) store.adopt(model.comments);
+      else adoptComments(live, model.comments);
     }
     if (options.interactive === false) return;
     const cards = nodes.filter(isDiagramKitCard);
@@ -208899,7 +210318,7 @@ function fromDocument(document2, options = {}) {
         group.setMetadata("dashboardBoard", { ...board, layout: next });
       });
       ctx.layoutOf.set(viewId, next);
-      boards.set(viewId, bindBoard(group, { ...board, layout: next }));
+      boards.set(viewId, bindBoard(group, { ...board, layout: next, ...ctx.sizing ? { sizing: ctx.sizing } : {} }));
       boards.get(viewId)?.sync();
     };
     ctx.rebindContainer = (id) => {
@@ -208932,207 +210351,6 @@ function parseDocument(json) {
   } catch (error) {
     throw new Error(`fromDocument: not a saved diagram (${error.message})`);
   }
-}
-
-// libs/element/src/lib/diagram-kit/er.ts
-var CARDINALITY = {
-  "one-to-many": { tail: "one", head: "crow-foot" },
-  "one-to-one": { tail: "one", head: "one" },
-  "many-to-many": { tail: "crow-foot", head: "crow-foot" },
-  "one-to-zero-or-many": { tail: "one", head: "zero-or-many" },
-  "one-to-one-or-many": { tail: "one", head: "one-or-many" }
-};
-function parseEnd(ref, byId2) {
-  const dot = ref.indexOf(".");
-  const entityId = dot === -1 ? ref : ref.slice(0, dot);
-  const entity = byId2.get(entityId);
-  if (!entity) throw new Error(`erDiagram: unknown entity "${entityId}" in relationship end "${ref}"`);
-  if (dot === -1) return { entity };
-  const column = ref.slice(dot + 1);
-  const rowIndex = entity.columns.findIndex((c) => c.name === column);
-  if (rowIndex === -1) {
-    throw new Error(`erDiagram: entity "${entityId}" has no column "${column}" (relationship end "${ref}")`);
-  }
-  return { entity, column, rowIndex };
-}
-function erDiagram(options) {
-  ensureDiagramKitStyles();
-  const byId2 = new Map(options.entities.map((e) => [e.id, e]));
-  const portsByEntity = /* @__PURE__ */ new Map();
-  const rowLandings = /* @__PURE__ */ new Map();
-  const width = (e) => entityAutoWidth(e, options.editable === true);
-  const fieldPort = (end, side) => {
-    const entity = end.entity;
-    const key = `${entity.id}#${end.rowIndex}#${side}`;
-    const landing = rowLandings.get(key) ?? 0;
-    rowLandings.set(key, landing + 1);
-    const dy = landing === 0 ? 0 : (landing % 2 === 1 ? -1 : 1) * Math.ceil(landing / 2) * 5;
-    const id = `${entity.id}__${end.column}__${side}__${landing}`;
-    const w = width(entity);
-    const port = {
-      id,
-      side,
-      visible: false,
-      layout: {
-        strategy: "absolute",
-        args: {
-          units: "px",
-          x: side === "right" ? w : side === "left" ? 0 : w / 2,
-          y: erRowCenterY(end.rowIndex),
-          dy
-        }
-      }
-    };
-    const bucket = portsByEntity.get(entity.id) ?? [];
-    bucket.push(port);
-    portsByEntity.set(entity.id, bucket);
-    return id;
-  };
-  const edges = (options.relationships ?? []).map((rel, i) => {
-    const from = parseEnd(rel.from, byId2);
-    const to = parseEnd(rel.to, byId2);
-    const fromSide = rel.fromSide ?? "right";
-    const toSide = rel.toSide ?? "left";
-    const markers2 = typeof rel.cardinality === "object" ? rel.cardinality : CARDINALITY[rel.cardinality ?? "one-to-many"];
-    return {
-      id: rel.id ?? `er-rel-${i + 1}`,
-      source: from.entity.id,
-      target: to.entity.id,
-      label: rel.label,
-      type: "orthogonal",
-      sourceHandle: from.column !== void 0 ? fieldPort(from, fromSide) : fromSide,
-      targetHandle: to.column !== void 0 ? fieldPort(to, toSide) : toSide,
-      style: {
-        stroke: rel.color ?? "#64748b",
-        strokeWidth: 1.5,
-        arrowTail: { type: markers2.tail, size: 8, filled: false },
-        arrowHead: { type: markers2.head, size: 9, filled: false }
-      }
-    };
-  });
-  const editable = options.editable === true;
-  const nodes = options.entities.map((entity, i) => ({
-    id: entity.id,
-    position: entity.position ?? { x: 60 + i % 3 * 340, y: 60 + Math.floor(i / 3) * 280 },
-    size: { width: width(entity), height: entityAutoHeight(entity, editable) },
-    // interactive: rows are real DOM targets (hover, row selection, inline
-    // editing) — node drag/select stay geometric in the binder.
-    metadata: {
-      html: cardHtml(entityCardContent(entity, editable)),
-      kitEntity: entity,
-      kitEditable: editable,
-      // Only the OPT-OUT is recorded. A loader has to know not to re-bind row
-      // selection, but stamping the default on every card would change the bytes
-      // of every existing document for a value that is already the default.
-      ...options.rowSelection === false ? { kitRowSelection: false } : {}
-    },
-    // The card draws its own border — the node's default rectangle is hidden
-    // (and re-suppressed on selection by the kit stylesheet).
-    shape: { type: "rect", fill: "none", stroke: "none" },
-    style: { fill: "transparent", stroke: "transparent", strokeWidth: 0 },
-    ...portsByEntity.has(entity.id) ? { ports: portsByEntity.get(entity.id) } : {}
-  }));
-  return {
-    nodes,
-    edges,
-    finalize: (api) => {
-      const a = api;
-      const model = a?.getModel?.();
-      if (model) for (const e of options.entities) model.getNode?.(e.id)?.setBehavior?.({ resizable: false });
-      if (options.rowSelection !== false && a?.container) bindRowInteractions(a);
-      if (editable && a?.container) bindCardEditing(a);
-    }
-  };
-}
-
-// libs/element/src/lib/diagram-kit/uml.ts
-var STROKE = "#475569";
-var DASH = "6,4";
-function edgeStyleFor(kind) {
-  const none = { type: "none", size: 0, filled: false };
-  switch (kind) {
-    case "inheritance":
-      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: { type: "generalization", size: 16, filled: false }, arrowTail: none };
-    case "realization":
-      return { stroke: STROKE, strokeWidth: 1.5, strokeDasharray: DASH, arrowHead: { type: "generalization", size: 16, filled: false }, arrowTail: none };
-    case "association":
-      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: none, arrowTail: none };
-    case "directed-association":
-      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: { type: "open-arrow", size: 12, filled: false }, arrowTail: none };
-    case "aggregation":
-      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: none, arrowTail: { type: "hollow-diamond", size: 14, filled: false } };
-    case "composition":
-      return { stroke: STROKE, strokeWidth: 1.5, arrowHead: none, arrowTail: { type: "filled-diamond", size: 14, filled: true } };
-    case "dependency":
-      return { stroke: STROKE, strokeWidth: 1.5, strokeDasharray: DASH, arrowHead: { type: "open-arrow", size: 12, filled: false }, arrowTail: none };
-  }
-}
-var chip = (text, slot) => ({
-  text,
-  slot,
-  offset: { x: 0, y: -7 },
-  style: { fontSize: 11, fontWeight: "600", color: "#0f172a", background: "#ffffffdd", padding: 1, borderRadius: 2 }
-});
-function umlDiagram(options) {
-  ensureDiagramKitStyles();
-  const editable = options.editable === true;
-  const nodes = options.classes.map((cls, i) => {
-    return {
-      id: cls.id,
-      position: cls.position ?? { x: 80 + i % 3 * 320, y: 60 + Math.floor(i / 3) * 260 },
-      size: { width: classAutoWidth(cls, editable), height: classAutoHeight(cls, editable) },
-      // interactive: members are real DOM targets (hover, row selection, inline
-      // editing); node drag/select stay geometric in the binder.
-      metadata: {
-        html: cardHtml(classCardContent(cls, editable)),
-        kitClass: cls,
-        kitEditable: editable,
-        // Opt-out only — see the same stamp in er.ts.
-        ...options.rowSelection === false ? { kitRowSelection: false } : {}
-      },
-      shape: { type: "rect", fill: "none", stroke: "none" },
-      style: { fill: "transparent", stroke: "transparent", strokeWidth: 0 }
-    };
-  });
-  const rels = options.relationships ?? [];
-  const edges = rels.map((rel, i) => ({
-    id: rel.id ?? `uml-rel-${i + 1}`,
-    source: rel.from,
-    target: rel.to,
-    label: rel.label,
-    type: "orthogonal",
-    ...rel.fromSide ? { sourceHandle: rel.fromSide } : {},
-    ...rel.toSide ? { targetHandle: rel.toSide } : {},
-    style: edgeStyleFor(rel.kind ?? "association")
-  }));
-  const finalized = /* @__PURE__ */ new WeakSet();
-  const finalize = (api) => {
-    const a0 = api;
-    const m0 = a0?.getModel?.();
-    if (m0) for (const cls of options.classes) m0.getNode?.(cls.id)?.setBehavior?.({ resizable: false });
-    if (options.rowSelection !== false) {
-      const a = api;
-      if (a?.container) bindRowInteractions(a);
-    }
-    if (editable && a0?.container) bindCardEditing(a0);
-    if (api && typeof api === "object") {
-      if (finalized.has(api)) return;
-      finalized.add(api);
-    }
-    const model = api?.getModel?.();
-    if (!model) return;
-    let added = false;
-    rels.forEach((rel, i) => {
-      if (!rel.multiplicity) return;
-      const link = model.getLink(edges[i].id);
-      if (!link) return;
-      link.addLabel(chip(rel.multiplicity[0], "start"));
-      link.addLabel(chip(rel.multiplicity[1], "end"));
-      added = true;
-    });
-    if (added) api?.renderNow?.();
-  };
-  return { nodes, edges, finalize };
 }
 
 // libs/element/src/lib/diagram-kit/join-guidance.ts
@@ -209233,7 +210451,7 @@ function bindJoinGuidance(api, options = {}) {
     return null;
   };
   const resolvePort = options.resolvePort ?? defaultResolve;
-  const active2 = /* @__PURE__ */ new Map();
+  const active3 = /* @__PURE__ */ new Map();
   let portStyle = null;
   const rowsOf = (nodeId) => {
     const group = api.container.querySelector(`[data-node-id="${esc2(nodeId)}"]`);
@@ -209243,10 +210461,10 @@ function bindJoinGuidance(api, options = {}) {
     for (const cls of Object.values(TIER_CLASS)) {
       for (const el2 of Array.from(api.container.querySelectorAll(`.${cls}`))) el2.classList.remove(cls);
     }
-    for (const chip2 of Array.from(api.container.querySelectorAll(`.${CHIP_CLASS}`))) chip2.remove();
+    for (const chip of Array.from(api.container.querySelectorAll(`.${CHIP_CLASS}`))) chip.remove();
     portStyle?.remove();
     portStyle = null;
-    active2.clear();
+    active3.clear();
   };
   const portsForColumn = (node, column) => {
     const ports = node.getPorts?.() ?? [];
@@ -209295,17 +210513,17 @@ function bindJoinGuidance(api, options = {}) {
     const cssRules = [];
     candidates.forEach((candidate, i) => {
       const tier = tiers[i];
-      const byRow = active2.get(candidate.node.id) ?? /* @__PURE__ */ new Map();
+      const byRow = active3.get(candidate.node.id) ?? /* @__PURE__ */ new Map();
       byRow.set(candidate.rowIndex, tier);
-      active2.set(candidate.node.id, byRow);
+      active3.set(candidate.node.id, byRow);
       const row = rowsOf(candidate.node.id)[candidate.rowIndex];
       if (row) {
         row.classList.add(TIER_CLASS[tier]);
         if (tier === "top") {
-          const chip2 = api.container.ownerDocument.createElement("span");
-          chip2.className = CHIP_CLASS;
-          chip2.textContent = chipText;
-          row.appendChild(chip2);
+          const chip = api.container.ownerDocument.createElement("span");
+          chip.className = CHIP_CLASS;
+          chip.textContent = chipText;
+          row.appendChild(chip);
         }
       }
       if (tier !== "none") {
@@ -209333,7 +210551,7 @@ function bindJoinGuidance(api, options = {}) {
   return {
     activeTiers: () => {
       const copy = /* @__PURE__ */ new Map();
-      for (const [nodeId, byRow] of active2) copy.set(nodeId, new Map(byRow));
+      for (const [nodeId, byRow] of active3) copy.set(nodeId, new Map(byRow));
       return copy;
     },
     dispose: () => {
@@ -210680,6 +211898,7 @@ registerCardBuilders();
 
 // libs/element/src/index.ts
 defineGrafloriaFlow();
+registerDiagramKitTextKits();
 export {
   ALL_LOD_FEATURES,
   ALWAYS_SAFE_MODE,
@@ -211002,6 +212221,7 @@ export {
   RouteSolverBridge,
   RoutingEngine,
   SCREEN_LAYER_CLASS,
+  SERVER_ROOT_STYLE,
   SHAPES,
   SMART_MODE_CONFIG,
   STYLES,
@@ -211082,6 +212302,7 @@ export {
   actorColor,
   actorInitials,
   addColumnAt,
+  adoptComments,
   adoptTextGrammarMetadata,
   affectedRegion,
   alignToPrevious,
@@ -211285,6 +212506,7 @@ export {
   ellipsePath,
   embedModelInPng,
   embedModelInSvg,
+  engineNow,
   ensureContrast,
   ensureDashboardKitStyles,
   ensureDiagramKitStyles,
@@ -211438,6 +212660,7 @@ export {
   isConnectionAllowedByGroup,
   isDebugLogging,
   isDefaultPort,
+  isDeterministic,
   isDiagramDocumentEnvelope,
   isDocumentLocked,
   isDocumentMessage,
@@ -211491,6 +212714,7 @@ export {
   loadCanvasPlugins,
   loadNodeRasterBackend,
   loadReadonlySnapshot,
+  loadTextInto,
   lockDocument,
   mapPathCmds,
   markerTipOffset,
@@ -211622,6 +212846,7 @@ export {
   registerTemplateLibrary,
   registerTemplatesByCategory,
   registerTemplatesById,
+  registerTextKit,
   registerTool,
   registerUMLTypes,
   registeredNodeTypes,
@@ -211687,6 +212912,7 @@ export {
   rotation,
   rowHeightFor,
   rowIndexFromY,
+  runDeterministic,
   runDiagramMigrations,
   runInRegistryScope,
   runLayout,
@@ -211714,6 +212940,7 @@ export {
   serializeVNode,
   serveLayout,
   serveSolver,
+  serverSvgLayerStyle,
   setDebugLogging,
   setNodePortGroups,
   shadcnBridge,
@@ -211746,6 +212973,7 @@ export {
   targetNodeIdOf,
   textAlignFor,
   textBaselineFor,
+  textKitFor,
   textLines,
   themeRef,
   themeRefCssValue,

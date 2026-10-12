@@ -16,7 +16,7 @@
 </style>
 <div class="lab" id="lab"></div>
 <script type="module">
-import { render, dashboard } from '../shell/grafloria.js';
+import { render, dashboard, NodeModel } from '../shell/grafloria.js';
 
 // One KPI row + two charts: 12 columns, three rows at rowHeight 130.
 const KPIS = () => [
@@ -216,6 +216,17 @@ board('tabs', "layout: 'tabs' · three pages, one visible · the middle page is 
       { id: 'pc1', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
   ] },
 ] }, { height: 340 });
+board('tabshid', "layout: 'tabs' with tabs: { hidden: true } · no strip, the pages fill the frame, switched from code", { sizing: 'grow', rowHeight: 60, onTabChange: (c, p, v) => { (window.__labTabsHid ||= []).push(`${v}:${c}:${p}`); }, widgets: [
+  { id: 'th-free', kind: 'kpi', span: 2, rows: 1, x: 0, y: 0, data: { label: 'Drag me in', value: '7' } },
+  { id: 'th-left', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Left', data: { series: [{ name: 's', values: [2, 3, 1, 4] }] } },
+  { id: 'th-panel', title: 'Hidden strip', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', tabs: { hidden: true }, active: 'th-a', widgets: [
+    { id: 'th-a', title: 'Filters', columns: 6, widgets: [
+      { id: 'tha1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+      { id: 'tha2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'Period', value: 'Q3' } } ] },
+    { id: 'th-b', title: 'Alerts', columns: 6, widgets: [
+      { id: 'thb1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Open alerts', value: '3' } } ] },
+  ] },
+] }, { height: 340 });
 board('near', 'a tile dropped where a LOCKED section blocks it lands beside it, not at the bottom', { sizing: 'grow', rowHeight: 70, widgets: [
   { id: 'n-a', kind: 'kpi', span: 4, rows: 2, x: 0, y: 0, data: { label: 'A (0..4)', value: '1' } },
   { id: 'n-sec', title: 'Locked section', span: 5, rows: 2, x: 7, y: 0, columns: 5, widgets: [
@@ -236,7 +247,7 @@ board('vert', 'a TALL tile whose rows cross a full-width locked section takes th
   { id: 'v-src', title: 'Source', span: 4, rows: 4, x: 0, y: 0, columns: 4, widgets: [
     { id: 'v-in', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Inner', value: '1' } } ] },
   { id: 'v-a', kind: 'kpi', span: 8, rows: 4, x: 4, y: 0, data: { label: 'A', value: '2' } },
-  { id: 'v-wall', title: 'Full-width section', span: 12, rows: 2, x: 0, y: 4, columns: 12, widgets: [
+  { id: 'v-wall', title: 'Full-width section', span: 12, rows: 2, x: 0, y: 4, columns: 12, sizing: 'fit', widgets: [ // FIT: a wall that cannot grow for an arrival (a GROW section would take it — D4)
     { id: 'v-w1', kind: 'kpi', span: 12, rows: 2, x: 0, y: 0, data: { label: 'Wall', value: '3' } } ] },
   { id: 'v-b', kind: 'kpi', span: 12, rows: 2, x: 0, y: 6, data: { label: 'B', value: '4' } },
   { id: 'v-c', kind: 'kpi', span: 12, rows: 2, x: 0, y: 8, data: { label: 'C', value: '5' } },
@@ -245,7 +256,7 @@ board('vert', 'a TALL tile whose rows cross a full-width locked section takes th
 board('tear', 'a tab torn out of a FULL-HEIGHT panel takes the room under the pointer, not the bottom of the board', { sizing: 'grow', rowHeight: 50, widgets: [
   { id: 'te-a', kind: 'kpi', span: 8, rows: 3, x: 0, y: 0, data: { label: 'A', value: '1' } },
   { id: 'te-b', kind: 'kpi', span: 8, rows: 3, x: 0, y: 3, data: { label: 'B', value: '2' } },
-  { id: 'te-wall', title: 'Locked wall', span: 8, rows: 2, x: 0, y: 6, columns: 8, widgets: [
+  { id: 'te-wall', title: 'Locked wall', span: 8, rows: 2, x: 0, y: 6, columns: 8, sizing: 'fit', widgets: [ // FIT: full is full — it refuses and is pushed (D2), where a GROW section grows (D4)
     { id: 'te-w1', kind: 'kpi', span: 8, rows: 2, x: 0, y: 0, data: { label: 'Wall', value: '3' } } ] },
   { id: 'te-side', title: 'Side', span: 4, rows: 8, x: 8, y: 0, columns: 4, layout: 'tabs', widgets: [
     { id: 'te-p1', title: 'Filters', columns: 4, widgets: [
@@ -315,6 +326,109 @@ board('sptabs', 'tabs on a SPLIT board (0.4.37) · a torn-out tab becomes a PANE
     { id: 'st-b1', title: 'Filters', columns: 4, widgets: [ { id: 'st-kb1', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Filters', value: '4' } } ] },
     { id: 'st-b2', title: 'Notes', columns: 4, widgets: [ { id: 'st-kb2', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Notes', value: '5' } } ] } ] },
 ] }, { height: 300 });
+board('spdrop', 'a WIDGET over a tab group on a SPLIT board (0.4.69) · the strip makes it a tab, the page takes it, the fifth means a pane beside', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'sd-w', kind: 'kpi', span: 4, rows: 2, x: 0, y: 0, data: { label: 'Widget', value: '1' } },
+  { id: 'sd-a', title: 'Group A', span: 8, rows: 6, x: 4, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'sd-a1', title: 'Sales', columns: 6, widgets: [ { id: 'sd-ka1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Sales', value: '2' } } ] },
+    { id: 'sd-a2', title: 'Margin', columns: 6, widgets: [ { id: 'sd-ka2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Margin', value: '3' } } ] } ] },
+], binder: { onDropIn: (node, cell, displaced, target) => {
+  (window.__labDrops ||= []).push({ boardId: target?.boardId ?? null, cell, displaced: displaced.length });
+  window.__lab.spdrop.handle.addWidget({ id: node.id, kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y, data: { label: 'Dropped', value: '★' } }, target?.boardId, { displaced });
+} } }, { height: 360 });
+{
+  // a palette chip for the SPLIT board (0.4.70): a chip dragged into a tab page there lands in the page
+  const chip = document.createElement('button');
+  chip.id = 'spdrop-chip';
+  chip.textContent = '＋ KPI chip';
+  chip.style.cssText = 'margin-left: 12px; font: 600 11px ui-monospace, monospace; cursor: grab; text-transform: none; letter-spacing: 0;';
+  document.querySelector('#cv-spdrop').parentElement.querySelector('.h').appendChild(chip);
+  let n = 0;
+  chip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const binder = window.__lab.spdrop.handle.binderOf('main');
+    if (!binder) return;
+    const node = new NodeModel({ id: `sd-new-${++n}`, type: 'widget', position: { x: 0, y: 0 }, size: { width: 120, height: 60, depth: 0 } });
+    const c = chip.cloneNode(true);
+    c.id = '';
+    binder.beginPaletteDrag(node, { w: 2, h: 1, chip: c }, e);
+  });
+}
+board('spgrow', 'D4 on a SPLIT board (0.4.71) · a FULL grow section takes a row for a widget arriving by hand: its pane grows into its column sibling', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'sg-w', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Widget', value: '1' } },
+  { id: 'sg-x', kind: 'kpi', span: 6, rows: 4, x: 6, y: 0, data: { label: 'Other', value: '2' } },
+  { id: 'sg-ops', title: 'Operations', caption: true, span: 12, rows: 2, x: 0, y: 4, columns: 12, widgets: [
+    { id: 'sg-o1', kind: 'kpi', span: 12, rows: 1, x: 0, y: 0, data: { label: 'Orders', value: '312' } } ] },
+] }, { height: 420 });
+board('spsplit', 'a SPLIT page inside a tab group on a SPLIT board (0.4.72) · a widget goes INTO the split page as a pane where its line shows; the gap between two panes is the nearest edge', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'ss-w', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Widget', value: '1' } },
+  { id: 'ss-a', title: 'Group A', span: 8, rows: 6, x: 4, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'ss-a1', title: 'Alerts', columns: 6, layout: 'split', widgets: [
+      { id: 'ss-p1', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Open', value: '3' } },
+      { id: 'ss-p2', kind: 'kpi', span: 3, rows: 4, x: 3, y: 0, data: { label: 'Closed', value: '9' } } ] },
+    { id: 'ss-a2', title: 'Notes', columns: 6, widgets: [ { id: 'ss-n1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Last', value: '—' } } ] } ] },
+] }, { height: 360 });
+board('refuse', 'a FULL fit board holding a FULL fit section (0.4.74) · a widget the section refuses and the board cannot push shows the red cell and a not-allowed cursor where the hand is', { sizing: 'fit', squeeze: false, rowHeight: 50, widgets: [
+  { id: 'rf-w', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Widget', value: '1' } },
+  { id: 'rf-sec', title: 'Full fit section', caption: true, span: 6, rows: 2, x: 6, y: 0, columns: 6, sizing: 'fit', widgets: [
+    { id: 'rf-o1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'Only', value: '2' } } ] },
+] }, { height: 170 });
+board('pal', 'a PALETTE chip dragged into a tab page lands there — the drop names the board it took (tile first, step 4a)', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'pal-a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },
+  { id: 'pal-tabs', title: 'Side', span: 6, rows: 4, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'pal-p1', title: 'Filters', columns: 6, maxRows: 3, widgets: [
+      { id: 'pal-in', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } } ] },
+    { id: 'pal-p2', title: 'Alerts', columns: 6, widgets: [
+      { id: 'pal-o', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Open', value: '3' } } ] },
+  ] },
+  { id: 'pal-b', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'B', value: '2' } },
+], binder: { onDropIn: (node, cell, displaced, target) => {
+  (window.__labDrops ||= []).push({ boardId: target?.boardId ?? null, cell, displaced: displaced.length });
+  // Two hosts. The first chip's host adds the widget under the chip's OWN id, so the tile the drop left waiting is taken
+  // over. The second chip's host mints its own id (Quantia's designer does) and passes the drop's `displaced` commands
+  // into the add's own undo step — without them the kit re-reads the board, forgets the push, and the widget
+  // auto-positions into whatever hole is left (kit 0.4.54).
+  if (node.__ownId) window.__lab.pal.handle.addWidget({ id: `own-${node.__ownId}`, kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y, data: { label: 'Own id', value: '◆' } }, target?.boardId, { displaced });
+  else window.__lab.pal.handle.addWidget({ id: node.id, kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y, data: { label: 'Dropped', value: '★' } }, target?.boardId);
+} } }, { height: 380 });
+{
+  const chip = document.createElement('button');
+  chip.id = 'pal-chip';
+  chip.textContent = '＋ KPI chip';
+  chip.style.cssText = 'margin-left: 12px; font: 600 11px ui-monospace, monospace; cursor: grab; text-transform: none; letter-spacing: 0;';
+  document.querySelector('#cv-pal').parentElement.querySelector('.h').appendChild(chip);
+  const chip2 = document.createElement('button');
+  chip2.id = 'pal-chip-own';
+  chip2.textContent = '＋ KPI (own id)';
+  chip2.style.cssText = chip.style.cssText;
+  chip.parentElement.appendChild(chip2);
+  let n = 0;
+  const press = (ownId) => (e) => {
+    if (e.button !== 0) return;
+    const binder = window.__lab.pal.handle.binderOf('main');
+    if (!binder) return;
+    const node = new NodeModel({ id: `pal-new-${++n}`, type: 'widget', position: { x: 0, y: 0 }, size: { width: 120, height: 60, depth: 0 } });
+    if (ownId) node.__ownId = n;
+    const c = (ownId ? chip2 : chip).cloneNode(true);
+    c.id = '';
+    binder.beginPaletteDrag(node, { w: 2, h: 1, chip: c }, e);
+  };
+  chip.addEventListener('pointerdown', press(false));
+  chip2.addEventListener('pointerdown', press(true));
+}
+board('nest', 'a GROUP is dragged like a widget (tile first, 4b-ii): a tab container by its strip into a roomy section, over a full one it pushes; and a FULL GROW section takes a row for a widget (D4)', { sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'nt-sec', title: 'Roomy section', caption: true, span: 6, rows: 6, x: 0, y: 0, columns: 6, maxRows: 6, widgets: [
+    { id: 'nt-s1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'S1', value: '1' } } ] },
+  { id: 'nt-tabs', title: 'Tabs', span: 6, rows: 3, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'nt-p1', title: 'Filters', columns: 6, widgets: [{ id: 'nt-k1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'K1', value: '2' } }] },
+    { id: 'nt-p2', title: 'Alerts', columns: 6, widgets: [{ id: 'nt-k2', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'K2', value: '3' } }] },
+  ] },
+  { id: 'nt-full', title: 'Full FIT section', caption: true, span: 6, rows: 1, x: 6, y: 3, columns: 6, sizing: 'fit', widgets: [
+    { id: 'nt-f1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'F1', value: '4' } } ] },
+  { id: 'nt-b', kind: 'kpi', span: 6, rows: 2, x: 6, y: 4, data: { label: 'B', value: '5' } },
+  // Directly under B, with nothing between: a widget carried down into it reaches it before anything else moves.
+  { id: 'nt-grow', title: 'Full GROW section', caption: true, span: 6, rows: 1, x: 6, y: 6, columns: 6, maxRows: 1, widgets: [
+    { id: 'nt-g1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'G1', value: '6' } } ] },
+] }, { height: 470 });
 board('cap-nested', 'captions two levels down · setCaption live', { sizing: 'grow', rowHeight: 34, widgets: [
   { id: 'outer', title: 'Outer section', span: 12, rows: 10, x: 0, y: 0, columns: 12, caption: true, widgets: [
     { id: 'inner', title: 'Inner section', span: 6, rows: 8, x: 0, y: 0, columns: 4, caption: { text: 'Inner', description: 'two levels down' }, widgets: [{ id: 'k', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'K', value: '1' } }] },

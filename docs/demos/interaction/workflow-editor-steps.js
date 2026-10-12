@@ -84,8 +84,9 @@ export const TEMPLATES = {
         `</div></div>`,
       ports: [
         { id: `${node.id}:in`, side: 'left', type: 'input' },
-        { id: `${node.id}:true`, side: 'right', type: 'output', index: 0, label: { text: 'true' } },
-        { id: `${node.id}:false`, side: 'right', type: 'output', index: 1, label: { text: 'false' } },
+        // No port labels: the branch tabs ARE the labels (a label would be drawn twice).
+        { id: `${node.id}:true`, side: 'right', type: 'output', index: 0 },
+        { id: `${node.id}:false`, side: 'right', type: 'output', index: 1 },
       ],
       size: { width: 240, height: 152 },
     }),
@@ -107,7 +108,7 @@ export const TEMPLATES = {
           `</div></div>`,
         ports: [
           { id: `${node.id}:in`, side: 'left', type: 'input' },
-          ...rules.map((r, i) => ({ id: `${node.id}:r${i}`, side: 'right', type: 'output', index: i, label: { text: r } })),
+          ...rules.map((r, i) => ({ id: `${node.id}:r${i}`, side: 'right', type: 'output', index: i })),
         ],
         size: { width: 240, height: 64 + 30 + rules.length * 30 + 8 + 34 },
       };
