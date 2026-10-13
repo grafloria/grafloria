@@ -97,6 +97,7 @@ import type { LayoutAdapter, LayoutResult } from './layout-adapter.interface';
 import type { GroupInfo } from './subgraph-layout.interface';
 import type { UnifiedLayoutOptions } from './layout-registry';
 import { translateOptions } from './layout-registry';
+import { layoutPool } from '../interaction/swimlane-layout';
 
 /**
  * Any registered layout name, or the built-in grid. Nested layout resolves
@@ -212,6 +213,28 @@ export class CompoundLayoutService {
       if (group.isCollapsed) {
         result.collapsed.push(group.id);
         result.skipped.push(group.id);
+        result.groupBounds.set(group.id, group.getOuterBounds());
+        continue;
+      }
+
+      // A POOL is laid out as one unit, by the swimlane layout: its steps go along
+      // the lanes by their links and stay in their own lanes; the lanes stay tiled
+      // in order. Its lanes are never laid out on their own (that ranked each
+      // lane blind to the links between lanes) nor arranged as free boxes (that
+      // tore the pool apart). At the level above, the pool is one box.
+      if (group.laneConfig?.role === 'lane' && group.parentGroupId &&
+          this.diagram.getGroup(group.parentGroupId)?.laneConfig?.role === 'pool') {
+        result.groupBounds.set(group.id, group.getOuterBounds());
+        continue;
+      }
+      if (group.laneConfig?.role === 'pool') {
+        if (!this.isFixed(group)) {
+          const o = this.resolveLayoutOptions(group);
+          layoutPool(this.diagram, group, { rankSpacing: o.rankSpacing, nodeSpacing: o.nodeSpacing });
+          result.laidOut.push(group.id);
+        } else {
+          result.skipped.push(group.id);
+        }
         result.groupBounds.set(group.id, group.getOuterBounds());
         continue;
       }

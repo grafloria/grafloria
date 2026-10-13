@@ -162,8 +162,12 @@ export class SwimlaneService {
     }));
   }
 
-  /** Run `edit` on `pool`; with a dispatcher, record it as one undo step. */
-  private edit<T>(pool: GroupModel, name: string, edit: () => T): T {
+  /**
+   * Run `edit` on `pool` — any change to the pool, its lanes or their steps (a
+   * host's own edit, `layoutPool`) — and, with a dispatcher, record it as ONE
+   * undo step named `name`.
+   */
+  editPool<T>(pool: GroupModel, name: string, edit: () => T): T {
     if (!this.dispatcher) return edit();
     const before = this.snapshot(pool);
     const result = edit();
@@ -197,7 +201,7 @@ export class SwimlaneService {
   /** Add a lane to a pool (optionally at an index) and re-tile. */
   addLane(pool: GroupModel, spec: LaneSpec, atIndex?: number): GroupModel {
     this.assertPool(pool);
-    return this.edit(pool, 'Add lane', () => this.addLaneNow(pool, spec, atIndex));
+    return this.editPool(pool, 'Add lane', () => this.addLaneNow(pool, spec, atIndex));
   }
 
   private addLaneNow(pool: GroupModel, spec: LaneSpec, atIndex?: number): GroupModel {
@@ -225,7 +229,7 @@ export class SwimlaneService {
     const at = order.indexOf(laneId);
     const lane = this.diagram.getGroup(laneId);
     if (at < 0 || !lane || order.length <= 1) return;
-    this.edit(pool, 'Remove lane', () => {
+    this.editPool(pool, 'Remove lane', () => {
       if (lane.isCollapsed) new GroupCollapseService(this.diagram).expand(lane);
       const heir = this.diagram.getGroup(order[at > 0 ? at - 1 : at + 1]!)!;
       const steps = [...lane.members].filter((id) => this.diagram.getNode(id));
@@ -249,7 +253,7 @@ export class SwimlaneService {
     const from = order.indexOf(laneId);
     const to = Math.max(0, Math.min(order.length - 1, Math.round(toIndex)));
     if (from < 0 || from === to) return;
-    this.edit(pool, 'Move lane', () => {
+    this.editPool(pool, 'Move lane', () => {
       order.splice(from, 1);
       order.splice(to, 0, laneId);
       pool.laneConfig!.laneOrder = order;
@@ -267,7 +271,7 @@ export class SwimlaneService {
     this.assertPool(pool);
     const lane = this.diagram.getGroup(laneId);
     if (!lane?.laneConfig || !this.getLanes(pool).includes(lane)) return;
-    this.edit(pool, 'Resize lane', () => {
+    this.editPool(pool, 'Resize lane', () => {
       const horizontal = pool.laneConfig!.orientation === 'horizontal';
       const cross = (g: GroupModel) => (horizontal ? g.getOuterBounds().height : g.getOuterBounds().width);
       const next = Math.max(MIN_LANE_SIZE, size);
@@ -290,7 +294,7 @@ export class SwimlaneService {
     this.assertPool(pool);
     const lane = this.diagram.getGroup(laneId);
     if (!lane || !lane.laneConfig) return;
-    this.edit(pool, 'Resize lane', () => {
+    this.editPool(pool, 'Resize lane', () => {
       lane.laneConfig = { ...lane.laneConfig!, fixedSize: Math.max(0, crossSize) };
       this.touch(lane);
       this.reflow(pool);
@@ -300,7 +304,7 @@ export class SwimlaneService {
   /** Resize the whole pool and re-tile its lanes to the new frame. */
   resizePool(pool: GroupModel, bounds: GroupRect): void {
     this.assertPool(pool);
-    this.edit(pool, 'Resize pool', () => {
+    this.editPool(pool, 'Resize pool', () => {
       pool.setFrame(bounds);
       this.reflow(pool);
     });
