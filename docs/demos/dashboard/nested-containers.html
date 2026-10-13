@@ -307,6 +307,7 @@ defineDemo({
     // A RESIZE gesture, not a move: it must start on the kit's corner handle
     // (escalation arms only for resizes — a move past the frame is adoption).
     const slab0 = H.binderOf('main').cellOf('kpis');
+    const deals0 = H.binderOf('main').cellOf('deals');
     const kRev = D.getNode('k-rev');
     const rs = container.querySelector(`.grafloria-node-host[data-node-id="k-rev"] .axdb-rs`);
     check(!!rs, 'the child carries the kit\'s corner resize handle');
@@ -319,9 +320,12 @@ defineDemo({
     await raf(); await raf();
     const slab1 = H.binderOf('main').cellOf('kpis');
     check(slab1.h > slab0.h, 'pulling a child past the section grew the section a row in the BOARD');
+    const deals1 = H.binderOf('main').cellOf('deals');
+    check(deals1.y >= slab1.y + slab1.h && deals1.y > deals0.y, 'and the growing section pushed the chart below it down');
     await release(corner.x, corner.y + section.size.height + 80);
     await cm.undo(); H.refresh(); await settle();
     checkEqual(H.binderOf('main').cellOf('kpis').h, slab0.h, 'one undo restored the slab height');
+    checkEqual(H.binderOf('main').cellOf('deals').y, deals0.y, 'and put the chart below back');
 
     // ---- ⑤ the snapshot rebuilds: toJSON → dashboard → toJSON is stable ----
     const snap = H.toJSON();

@@ -79,7 +79,7 @@
   autoHeight: true,                         // every card as tall as its content
   canDrop,                                  // WIP limits: a full column refuses a card
   widgets: COLUMNS.map((c) =&gt; ({
-    id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1,
+    id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1, pinned: true,
     movable: 'row',                         // a column only trades places with its row
     resizable: false,
     background: c.tint,

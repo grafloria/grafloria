@@ -48,9 +48,23 @@
   .nav img { width: 34px; height: 34px; }
   .nav .name { font-weight: 700; font-size: 20px; letter-spacing: -0.3px; }
   .nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 15px; font-weight: 500; }
+  @media (max-width: 640px) {
+    .nav { flex-wrap: wrap; }
+    .nav .links { margin-left: 0; width: 100%; flex-wrap: wrap; gap: 8px 16px; font-size: 14.5px; }
+  }
 
-  /* Hero — two columns: the pitch on the left, a LIVE Grafloria canvas on the right. */
-  .hero { padding: 60px 0 20px; display: grid; grid-template-columns: 1fr 1.05fr; gap: 40px; align-items: center; }
+  /* Hero — the pitch centred on top, then a WIDE live stage: the robot cell running by default,
+     with tabs for a workflow and a dashboard. Every pane is a real Grafloria instance. */
+  .hero { padding: 32px 0 20px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+  .hero-copy { display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 860px; }
+  .hero-copy .cta { justify-content: center; margin: 22px 0 0; }
+  .hero-under { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .hero-under .prod-band { width: 100%; max-width: 760px; margin: 0; }
+  .hero-under .install { margin: 0; }
+  .hero-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 22px 40px; margin-top: 6px; }
+  .hero-foot .fw-band { margin-top: 0; text-align: center; }
+  .hero-foot .fw-row { justify-content: center; }
+  .hero-foot .ph-badge { margin-top: 0; }
     .fw-band { margin-top: 16px; }
   .fw-label { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .08em;
     text-transform: uppercase; color: var(--slate, #5A6478); margin-bottom: 8px; }
@@ -63,18 +77,18 @@
   .hero .brandmark img { width: 40px; height: 40px; }
   .hero .brandmark span { font-weight: 700; font-size: 17px; letter-spacing: -0.3px; }
   .hero h1 {
-    margin: 0 0 16px; font-size: clamp(34px, 4.4vw, 52px); font-weight: 800;
-    letter-spacing: -1.5px; line-height: 1.06; max-width: 15ch; text-wrap: balance;
+    margin: 0 0 12px; font-size: clamp(32px, 4.2vw, 50px); font-weight: 800;
+    letter-spacing: -1.4px; line-height: 1.06; max-width: 24ch; text-wrap: balance;
   }
   .hero h1 em { font-style: normal; color: var(--indigo); }
-  .hero p.lede { max-width: 48ch; margin: 0; font-size: 18px; color: var(--slate); }
-  @media (max-width: 900px) { .hero { grid-template-columns: 1fr; gap: 26px; padding: 40px 0 10px; } }
+  .hero p.lede { max-width: 66ch; margin: 0; font-size: 17.5px; color: var(--slate); }
+  @media (max-width: 900px) { .hero { gap: 22px; padding: 36px 0 10px; } }
 
   /* The live canvas frame — a real, draggable, flow-animated workflow, not a screenshot. */
-  .stage { position: relative; }
+  .stage { position: relative; width: 100%; }
   .stage .glow { position: absolute; inset: -14% -8% -20% -8%; z-index: 0; border-radius: 40px;
     background: radial-gradient(60% 55% at 55% 42%, rgba(148,165,240,.42), rgba(148,165,240,0) 70%); filter: blur(6px); }
-  .canvasframe { position: relative; z-index: 1; height: 400px; border: 1px solid var(--line);
+  .canvasframe { position: relative; z-index: 1; height: 520px; border: 1px solid var(--line);
     border-radius: 18px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Ccircle cx='1.4' cy='1.4' r='1.4' fill='%23dfe3f0'/%3E%3C/svg%3E");
     box-shadow: 0 18px 60px rgba(35,42,61,.14); overflow: hidden; opacity: 0; transform: translateY(10px) scale(.99);
     transition: opacity .6s ease, transform .6s cubic-bezier(.2,.7,.3,1); }
@@ -84,8 +98,22 @@
     padding: 4px 11px; display: flex; align-items: center; gap: 6px; pointer-events: none; }
   .canvasframe .live-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 0 rgba(22,163,74,.5); animation: pulse-dot 2s infinite; }
   @keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 rgba(22,163,74,.5); } 70% { box-shadow: 0 0 0 6px rgba(22,163,74,0); } 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); } }
-  .canvasframe .hint { position: absolute; bottom: 10px; left: 14px; z-index: 3; font-size: 12px; color: var(--slate); pointer-events: none; }
+  .stage .hint { position: relative; z-index: 1; margin: 12px 0 0; text-align: center; font-size: 12.5px; color: var(--slate); }
   #hero-canvas { width: 100%; height: 100%; }
+  /* the stage's tabs and panes */
+  .hero-tabs { position: absolute; top: 12px; left: 12px; z-index: 4; display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px;
+    background: rgba(255,255,255,.92); border: 1px solid var(--line); box-shadow: 0 2px 10px rgba(35,42,61,.08); }
+  .hero-tab { border: 0; background: transparent; color: var(--slate); font: 600 13px/1 inherit; padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+  .hero-tab:hover { color: var(--ink); }
+  .hero-tab[aria-selected="true"] { background: var(--indigo); color: #fff; }
+  .hero-pane { position: absolute; inset: 0; }
+  .hero-pane[hidden] { display: none; }
+  .hero-pane .cv { width: 100%; height: 100%; }
+  .hero-pane .rt-mini-hud { top: 58px; }
+  .hero-pane[data-demo="dashboard"] { top: 52px; }   /* the tiles start under the tabs */
+  .hero-poster { position: absolute; left: 0; right: 0; top: 0; height: calc(100% - 156px); width: 100%; object-fit: cover; z-index: 2; transition: opacity .35s ease; }
+  .hero-poster.gone { opacity: 0; pointer-events: none; }
+  @media (max-width: 600px) { .canvasframe { height: 460px; } .hero-tab { padding: 7px 10px; font-size: 12px; } .canvasframe .live-badge { display: none; } }
   .canvasframe .skeleton { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
     color: var(--indigo-soft); font-size: 13px; font-weight: 600; letter-spacing: .04em; }
   @media (prefers-reduced-motion: reduce) { .canvasframe { transition: none; } .canvasframe .live-badge .dot { animation: none; } }
@@ -271,17 +299,43 @@
           Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native
           Angular, React and Vue bindings, one document format and one undo stack.
         </p>
-        <div class="prod-band" aria-label="Products">
-          <a class="prod" href="diagrams/"><b>Grafloria Diagrams</b><span>Flowcharts, workflow editors, UML and ER diagrams — routing, auto-layout, undo and collaboration built in.</span><i>The diagram library →</i></a>
-          <a class="prod" href="dashboards/"><b>Grafloria Dashboards</b><span>Draggable, resizable widgets on a grid or a splitter layout — undo, nesting and persistence built in.</span><i>The dashboard layout library →</i></a>
-        </div>
         <div class="cta">
           <a class="btn primary" href="demos/">Try the live demos</a>
           <a class="btn ghost" href="https://github.com/grafloria/grafloria">Star on GitHub</a>
         </div>
+      </div>
+      <div class="stage">
+        <div class="glow"></div>
+        <div class="canvasframe ready" id="hero-frame">
+          <div class="hero-tabs" role="tablist" aria-label="Live demos">
+            <button class="hero-tab" role="tab" data-pane="robot" aria-selected="true">Robot cell</button>
+            <button class="hero-tab" role="tab" data-pane="workflow" aria-selected="false">Workflow</button>
+            <button class="hero-tab" role="tab" data-pane="dashboard" aria-selected="false">Dashboard</button>
+          </div>
+          <span class="live-badge"><span class="dot"></span>live</span>
+          <div class="hero-pane" data-demo="robot" role="tabpanel" aria-label="Robot cell">
+            <img class="hero-poster" src="demos/interaction/robot-timeline-poster.jpg" alt="" width="1010" height="364" fetchpriority="high">
+            <div class="skel skeleton">rendering…</div><div class="cv"></div>
+          </div>
+          <div class="hero-pane" data-demo="workflow" role="tabpanel" aria-label="Workflow" hidden>
+            <div class="skel skeleton">rendering…</div><div class="cv" id="hero-canvas"></div>
+          </div>
+          <div class="hero-pane" data-demo="dashboard" role="tabpanel" aria-label="Dashboard" hidden>
+            <div class="skel skeleton">rendering…</div><div class="cv"></div>
+          </div>
+        </div>
+        <p class="hint" id="hero-hint">A real Grafloria timeline driving a 3D cell (the arm is three.js), not a video.</p>
+      </div>
+      <div class="hero-under">
+        <div class="prod-band" aria-label="Products">
+          <a class="prod" href="diagrams/"><b>Grafloria Diagrams</b><span>Flowcharts, workflow editors, UML and ER diagrams — routing, auto-layout, undo and collaboration built in.</span><i>The diagram library →</i></a>
+          <a class="prod" href="dashboards/"><b>Grafloria Dashboards</b><span>Draggable, resizable widgets on a grid or a splitter layout — undo, nesting and persistence built in.</span><i>The dashboard layout library →</i></a>
+        </div>
         <div class="install">
           <code>npm install <b>@grafloria/react</b>   <i># or angular · vue · element</i></code>
         </div>
+      </div>
+      <div class="hero-foot">
         <!-- Developers search by framework — each chip is a dedicated landing page. -->
         <div class="fw-band" aria-label="Framework guides">
           <span class="fw-label">Guides for your stack</span>
@@ -295,15 +349,6 @@
         <a class="ph-badge" href="https://www.producthunt.com/products/grafloria?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-grafloria" target="_blank" rel="noopener noreferrer">
           <img alt="Grafloria - The framework-agnostic diagram engine | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204715&amp;theme=light&amp;t=1784932924027">
         </a>
-      </div>
-      <div class="stage">
-        <div class="glow"></div>
-        <div class="canvasframe" id="hero-frame">
-          <span class="live-badge"><span class="dot"></span>live · drag a node</span>
-          <div class="skeleton" id="hero-skeleton">rendering…</div>
-          <div id="hero-canvas"></div>
-          <span class="hint">A real Grafloria canvas — not a screenshot.</span>
-        </div>
       </div>
     </div>
   </div>
@@ -329,25 +374,6 @@
         </div>
         <div class="story-stage">
           <div class="story-canvas" data-demo="n8n"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
-        </div>
-      </div>
-
-      <div class="connector" aria-hidden="true"><svg viewBox="0 0 84 96"><path class="wire" d="M42 6 C 24 34, 60 62, 42 90"/><path class="flow" d="M42 6 C 24 34, 60 62, 42 90"/><circle class="handle-ring" cx="42" cy="6" r="8"/><circle class="handle" cx="42" cy="6" r="4"/><circle class="handle-ring" cx="42" cy="90" r="8"/><circle class="handle" cx="42" cy="90" r="4"/></svg></div>
-
-      <div class="story wide">
-        <div class="story-text">
-          <span class="chip">Robotics · cobot programming</span>
-          <h3>Program a robot on a timeline</h3>
-          <p><b>Drag the steps, press Run, watch the arm do it.</b> Pick, Place, Insert into, Close lid and
-            Stamp go onto a timeline docked under a 3D cell; loop a run of them, set each one in a popup, and a
-            six-axis cobot reaches, grips, presses and stamps while its cards light up in turn.</p>
-          <p>The program is checked as you edit: an empty gripper or a full pallet is flagged on its card
-            before the robot moves. Advanced mode runs two arms, a conveyor and a camera in lanes that wait for
-            each other. The timeline below is a live Grafloria canvas; the cobot is three.js, driven by the same run.</p>
-          <a class="go" href="demos/interaction/robot-timeline.html">Open the robot cell programmer →</a>
-        </div>
-        <div class="story-stage">
-          <div class="story-canvas" data-demo="robot"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
         </div>
       </div>
 
@@ -726,18 +752,22 @@
     let k;
     try { k = await loadBundle(); } catch { skel.textContent = 'demo bundle unavailable'; return; }
     if (kind === 'robot') {
-      // The robot story is the demo's own modules: a Grafloria timeline under a 3D cell, on a loop.
+      // The robot cell is the demo's own modules: a Grafloria timeline under a 3D cell, on a loop.
+      // The timeline paints first; three.js follows, and the poster fades out when the cell is drawn.
       try {
         const m = await import('./demos/interaction/robot-timeline-mini.js');
-        await m.mountRobotStory(host, k);
+        const story = await m.mountRobotStory(host, k);
         frame.classList.add('ready');
         if (skel) { skel.style.opacity = '0'; skel.style.pointerEvents = 'none'; }
+        const poster = frame.querySelector('.hero-poster');
+        if (poster) story.ready3d.then(() => poster.classList.add('gone'), () => {});
       } catch (e) { if (skel) skel.textContent = 'render error'; }
       return;
     }
     try {
       const spec = DEMOS[kind](k);
       const api = k.render(spec, host);
+      frame.__api = api;
       // HTML node cards (the n8n cards) only paint at the 'decorations' LOD tier
       // (zoom >= 0.5), but a story canvas fits a wide graph at ~0.35 zoom, which
       // would drop them. Pin a single all-detail tier so cards always render —
@@ -758,11 +788,33 @@
     } catch (e) { if (skel) skel.textContent = 'render error'; }
   }
 
-  // Lazy-mount every canvas (the hero frame + the story frames) as it nears the viewport.
-  const frames = [
-    (() => { const f = document.getElementById('hero-frame'); f.dataset.demo = 'workflow'; f.querySelector('#hero-canvas').classList.add('cv'); f.querySelector('#hero-skeleton').classList.add('skel'); return f; })(),
-    ...document.querySelectorAll('.story-canvas'),
-  ];
+  // Lazy-mount every story canvas as it nears the viewport (the hero's panes mount from their tabs).
+  // The hero stage: the robot cell runs by default; a tab mounts its pane the first time it is shown.
+  const hero = document.getElementById('hero-frame');
+  const HINT = {
+    robot: 'A real Grafloria timeline driving a 3D cell (the arm is three.js), not a video.',
+    workflow: 'A real Grafloria canvas, not a screenshot: drag a node.',
+    dashboard: 'A real Grafloria dashboard: drag a widget by its caption, resize it from an edge.',
+  };
+  const mountedPanes = new Set();
+  function showPane(kind) {
+    for (const t of hero.querySelectorAll('.hero-tab')) t.setAttribute('aria-selected', String(t.dataset.pane === kind));
+    for (const p of hero.querySelectorAll('.hero-pane')) p.hidden = p.dataset.demo !== kind;
+    document.getElementById('hero-hint').textContent = HINT[kind];
+    const pane = hero.querySelector(`.hero-pane[data-demo="${kind}"]`);
+    if (!mountedPanes.has(kind)) { mountedPanes.add(kind); mount(pane); }
+    else requestAnimationFrame(() => { pane.__api?.fitView?.(30); pane.__api?.renderNow?.(); });
+  }
+  for (const t of hero.querySelectorAll('.hero-tab')) t.addEventListener('click', () => showPane(t.dataset.pane));
+  hero.querySelector('.hero-tabs').addEventListener('keydown', (e) => {
+    const tabs = [...hero.querySelectorAll('.hero-tab')], i = tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true');
+    const j = e.key === 'ArrowRight' ? (i + 1) % tabs.length : e.key === 'ArrowLeft' ? (i + tabs.length - 1) % tabs.length : -1;
+    if (j < 0) return;
+    e.preventDefault(); tabs[j].focus(); showPane(tabs[j].dataset.pane);
+  });
+  showPane('robot');
+
+  const frames = [...document.querySelectorAll('.story-canvas')];
   if ('IntersectionObserver' in window) {
     const io = new IntersectionObserver((es) => es.forEach((e) => {
       if (e.isIntersecting) { io.unobserve(e.target); mount(e.target); }
@@ -781,11 +833,11 @@
   // wheel at capture phase so the binder never sees it (the browser then
   // scrolls normally); drag-to-pan and every click still work. pan-y lets
   // vertical TOUCH pans through for the same reason.
-  for (const el of document.querySelectorAll('#hero-canvas, .story-canvas')) {
+  for (const el of document.querySelectorAll('.hero-pane, .story-canvas')) {
     el.addEventListener('wheel', (e) => e.stopPropagation(), { capture: true, passive: true });
   }
 </script>
-<style>#hero-canvas, .story-canvas , #hero-canvas, .story-canvas * { touch-action: pan-y !important; }</style>
+<style>.hero-pane, .story-canvas, .hero-pane *, .story-canvas * { touch-action: pan-y !important; }</style>
 
 </body>
 </html>

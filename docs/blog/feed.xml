@@ -48,7 +48,8 @@
     <guid isPermaLink="true">https://grafloria.com/blog/fluid-boards-split-layout-and-a-drag-grip/</guid>
     <pubDate>Mon, 07 Sep 2026 12:00:00 GMT</pubDate>
     <description>What changed in the Grafloria dashboard kit: boards that lay out in real pixels, a fit mode that never scrolls, a splitter-tree layout beside the grid, and a drag handle that can be the caption, your own element, or a grip only the selected widget shows.</description>
-    <category>dashboards,layout</category>
+    <category>dashboards</category>
+    <category>layout</category>
   </item>
   <item>
     <title>Our benchmark was wrong three ways — all in our favour</title>
