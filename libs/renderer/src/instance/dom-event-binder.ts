@@ -2,7 +2,7 @@ import type { DiagramEngine, LinkModel, NodeModel, GroupModel, PortModel } from 
 // wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
 import {
   MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService,
-  memberConfinement, clampBoxInto, poolOfLane, settleLaneDrop,
+  memberConfinement, clampBoxInto, poolOfLane, settleLaneDrop, groupDragContents, PROXY_NODE_GROUP_KEY,
 } from '@grafloria/engine';
 import type { Command, DropResult, HistoryOwner } from '@grafloria/engine';
 import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
@@ -1184,6 +1184,17 @@ export class DomEventBinder {
     if (node) {
       event.preventDefault();
 
+      // A folded group's placeholder stands for the group: pressing it moves the
+      // group (a folded lane's band moves its whole pool), never the placeholder alone.
+      if (diagram.isProxyNode(node) && !this.isReadonly() && config.enableGroupDrag) {
+        const folded = diagram.getGroup(String(node.getMetadata(PROXY_NODE_GROUP_KEY)));
+        if (folded) {
+          this.pressGroup(poolOfLane(diagram, folded) ?? folded, diagram, event, worldX, worldY);
+          this.host.emit('node:click', { node, world: { x: worldX, y: worldY } });
+          return;
+        }
+      }
+
       // 8a. wave12 (gap 3) — Easy Connect: the whole node BODY is a handle. When
       // on (and the configured modifier, if any, is held), a body press starts a
       // CONNECTION from the node's nearest port instead of a move. A press ON a
@@ -2287,36 +2298,6 @@ export class DomEventBinder {
     return false;
   }
 
-  /**
-   * Every member NODE (recursively through nested groups) and every group FRAME
-   * (this group + its descendant groups) that a drag of `group` must carry.
-   * Cycle-guarded so a corrupt membership loop can never spin.
-   */
-  private collectGroupContents(
-    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
-    group: GroupModel
-  ): { nodeIds: string[]; groupIds: string[] } {
-    const nodeIds = new Set<string>();
-    const groupIds = new Set<string>();
-    const stack: GroupModel[] = [group];
-
-    while (stack.length) {
-      const g = stack.pop()!;
-      if (groupIds.has(g.id)) continue;
-      groupIds.add(g.id);
-      for (const memberId of g.members) {
-        const node = diagram.getNode(memberId);
-        if (node) {
-          nodeIds.add(memberId);
-          continue;
-        }
-        const child = diagram.getGroup(memberId);
-        if (child && !groupIds.has(child.id)) stack.push(child);
-      }
-    }
-    return { nodeIds: [...nodeIds], groupIds: [...groupIds] };
-  }
-
   /** Snapshot a group frame's restorable geometry (for undo). */
   private snapshotFrame(group: GroupModel): GroupFrameSnapshot {
     return {
@@ -2334,7 +2315,7 @@ export class DomEventBinder {
     worldX: number,
     worldY: number
   ): void {
-    const { nodeIds, groupIds } = this.collectGroupContents(diagram, group);
+    const { nodeIds, groupIds } = groupDragContents(diagram, group);
 
     const nodeFrom = new Map<string, { x: number; y: number; z?: number }>();
     for (const id of nodeIds) {

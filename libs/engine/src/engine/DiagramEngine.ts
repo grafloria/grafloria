@@ -25,6 +25,7 @@ import { AddLinkCommand } from '../commands/basic/AddLinkCommand';
 import { RemoveLinkCommand } from '../commands/basic/RemoveLinkCommand';
 import { AddGroupCommand, RemoveGroupCommand, AddToGroupCommand, RemoveFromGroupCommand, ExpandGroupCommand, CollapseGroupCommand } from '../commands/basic'; // Phase 1.6c
 import type { CollapseOptions } from '../interaction/GroupCollapseService'; // Wave-5 Card 4
+import { LANE_BAND_KEY } from '../interaction/GroupCollapseService';
 import { SetLayoutCommand, SetFlexItemCommand, SetGridItemCommand } from '../commands/basic'; // Phase 1.7
 import { CopyCommand, PasteCommand, DuplicateCommand, DeleteSelectionCommand } from '../commands/basic'; // Phase 1.8
 import { ClipboardManager } from '../clipboard/ClipboardManager'; // Phase 1.8
@@ -160,9 +161,12 @@ export interface SnapGuideSegment {
 
 /**
  * A text note (shape 'text') is words on the canvas with no box: lines may pass
- * it. Every other node is a wall the router plans round.
+ * it. So may a folded lane's band — it is a strip of its pool, and links between
+ * the lanes either side of it cross it as they cross any lane line (as a wall it
+ * sent them round the whole pool). Every other node is a wall the router plans round.
  */
 function isRoutingObstacle(node: NodeModel): boolean {
+  if (node.getMetadata(LANE_BAND_KEY) === true) return false;
   return (node.getMetadata('shape') as { type?: string } | undefined)?.type !== 'text';
 }
 
@@ -1841,7 +1845,8 @@ export class DiagramEngine {
     // nested inside another collapsed group is itself hidden)
     for (const g of groups) {
       const rect = this.groupObstacleRect(g);
-      if (g.isCollapsed && !hidden.has(g.id) && rect) {
+      // A folded LANE is a strip links cross, not a block (see isRoutingObstacle).
+      if (g.isCollapsed && !hidden.has(g.id) && rect && g.laneConfig?.role !== 'lane') {
         this.routingEngine.updateObstacle({ id: g.id, ...rect, kind: 'group' });
       } else {
         this.routingEngine.removeObstacle(g.id);

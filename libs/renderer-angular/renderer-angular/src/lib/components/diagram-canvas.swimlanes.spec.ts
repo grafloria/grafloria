@@ -10,7 +10,7 @@
  */
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DiagramCanvasComponent } from './diagram-canvas.component';
-import { DiagramEngine, DiagramModel, GroupModel, NodeModel, SwimlaneService } from '@grafloria/engine';
+import { DiagramEngine, DiagramModel, GroupModel, NodeModel, SwimlaneService, GroupCollapseService } from '@grafloria/engine';
 
 describe('DiagramCanvasComponent — swimlanes under a hand', () => {
   let component: DiagramCanvasComponent;
@@ -142,6 +142,24 @@ describe('DiagramCanvasComponent — swimlanes under a hand', () => {
     await engine.undo();
     for (const id of ['t', 'u']) expect(lanes[1]!.members.has(id)).toBe(true);
     expect(engine.commandManager.canUndo()).toBe(false);
+  });
+
+  test("pressing a FOLDED lane's band drags the whole pool — the band rides along, lanes stay tiled", async () => {
+    const { pool: p, lanes } = pool();
+    new GroupCollapseService(diagram).collapse(lanes[0]!);
+    paint();
+    const proxy = diagram.getNode(lanes[0]!.collapsedState!.proxyNodeId)!;
+    const before = p.getOuterBounds(), band0 = { ...proxy.position };
+    const press = { x: proxy.position.x + 300, y: proxy.position.y + proxy.size.height / 2 };
+    mouse('mousedown', press.x, press.y);
+    for (let i = 1; i <= 6; i++) mouse('mousemove', press.x + (60 * i) / 6, press.y + (40 * i) / 6);
+    mouse('mouseup', press.x + 60, press.y + 40);
+    for (let i = 0; i < 5; i++) await flush();
+    const after = p.getOuterBounds();
+    expect(after.x).toBeCloseTo(before.x + 60);
+    expect(after.y).toBeCloseTo(before.y + 40);
+    expect(proxy.position.x).toBeCloseTo(band0.x + 60);
+    expect(proxy.position.y).toBeCloseTo(band0.y + 40);
   });
 
   test('a drop from one group into another is ONE undo step', async () => {

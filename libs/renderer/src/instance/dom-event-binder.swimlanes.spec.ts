@@ -4,7 +4,7 @@
 // stayed a member of "In progress"; dragged out of the pool it stayed a member
 // too, outside every lane; and a lane could be dragged on its own, on top of its
 // neighbour. Driven through the SAME DomEventBinder an embed uses.
-import { DiagramEngine, GroupModel, SwimlaneService } from '@grafloria/engine';
+import { DiagramEngine, GroupModel, SwimlaneService, GroupCollapseService } from '@grafloria/engine';
 import type { DiagramModel } from '@grafloria/engine';
 import { DomEventBinder } from './dom-event-binder';
 import type { DomEventBinderHost } from './dom-event-binder';
@@ -163,6 +163,25 @@ describe('swimlanes under a real hand', () => {
     await flush();
     for (const id of ['t', 'u']) expect(lanes[1]!.members.has(id)).toBe(true);
     expect(h.engine.commandManager.canUndo()).toBe(false);
+  });
+
+  it("pressing a FOLDED lane's band drags the whole pool — the band rides along, lanes stay tiled", async () => {
+    h = harness();
+    const { pool: p, lanes } = pool(h);
+    new GroupCollapseService(h.model).collapse(lanes[0]!);
+    const proxy = h.model.getNode(lanes[0]!.collapsedState!.proxyNodeId)!;
+    const before = p.getOuterBounds(), band0 = { ...proxy.position };
+    const press = { x: proxy.position.x + 300, y: proxy.position.y + proxy.size.height / 2 };
+    drag(h, press, { x: press.x + 80, y: press.y + 50 });
+    await flush();
+    const after = p.getOuterBounds();
+    expect(after.x).toBeCloseTo(before.x + 80);
+    expect(after.y).toBeCloseTo(before.y + 50);
+    expect(proxy.position.x).toBeCloseTo(band0.x + 80);
+    expect(proxy.position.y).toBeCloseTo(band0.y + 50);
+    const b = lanes.map((l) => l.getOuterBounds());
+    expect(b[1]!.y).toBeCloseTo(b[0]!.y + b[0]!.height);
+    expect(proxy.position.y).toBeCloseTo(b[0]!.y);
   });
 
   it('a member of a plain confining group cannot be dragged out of it', async () => {

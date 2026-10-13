@@ -91,6 +91,8 @@ export class SwimlaneService {
     this.assertPool(pool);
     const order = (pool.laneConfig!.laneOrder ?? []).filter((id) => id !== laneId);
     pool.laneConfig!.laneOrder = order;
+    const proxyId = this.diagram.getGroup(laneId)?.collapsedState?.proxyNodeId;
+    if (proxyId && this.diagram.getNode(proxyId)) this.diagram.removeNode(proxyId); // a folded lane's band goes with it
     pool.removeMember(laneId, this.diagram);
     this.diagram.removeGroup(laneId);
     this.touch(pool);
@@ -181,6 +183,13 @@ export class SwimlaneService {
       // band. Carry each member by the band's offset, then clamp it into the band
       // (it may have shrunk).
       this.carryMembers(lane, previous, frame);
+      // A folded lane's placeholder IS its band: it follows every re-tile.
+      const proxyId = lane.collapsedState?.proxyNodeId;
+      const proxy = proxyId ? this.diagram.getNode(proxyId) : undefined;
+      if (proxy) {
+        proxy.setPosition(frame.x, frame.y);
+        proxy.setSize(frame.width, frame.height);
+      }
       // Keep each lane's orientation in sync for downstream consumers.
       lane.laneConfig = { ...lc, orientation: cfg.orientation };
       cross += size;

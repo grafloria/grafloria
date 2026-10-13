@@ -4446,6 +4446,19 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       if (clickedNode) {
         event.preventDefault();
 
+        // A folded group's placeholder stands for the group: pressing it moves the
+        // group (a folded lane's band moves its whole pool), never the placeholder alone.
+        if (
+          !(event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) &&
+          !diagram.isReadonly() &&
+          config.enableGroupDrag !== false &&
+          this.groupDrag.pressFolded(diagram, clickedNode, worldX, worldY, event.clientX, event.clientY)
+        ) {
+          if (this.containerRef?.nativeElement) this.containerRef.nativeElement.style.cursor = 'move';
+          this.cdr.markForCheck();
+          return;
+        }
+
         // Store the originally clicked node (before any parent substitution)
         const originallyClickedNode = clickedNode;
 

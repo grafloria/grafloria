@@ -1,6 +1,9 @@
 import {
   MoveGroupCommand,
   poolOfLane,
+  groupDragContents,
+  PROXY_NODE_GROUP_KEY,
+  type NodeModel,
   type DiagramModel,
   type GroupFrameMove,
   type GroupFrameSnapshot,
@@ -58,8 +61,23 @@ export class GroupDragController {
   press(diagram: DiagramModel, worldX: number, worldY: number, clientX: number, clientY: number): boolean {
     const hit = this.findGroupAtPoint(diagram, worldX, worldY);
     if (!hit) return false;
-    const group = poolOfLane(diagram, hit) ?? hit;
-    const { nodeIds, groupIds } = collectGroupContents(diagram, group);
+    return this.arm(diagram, poolOfLane(diagram, hit) ?? hit, worldX, worldY, clientX, clientY);
+  }
+
+  /**
+   * A press on a FOLDED group's placeholder: the placeholder stands for the group,
+   * so the group moves (a folded lane's band moves its whole pool), never the
+   * placeholder alone. False when the node is not a placeholder.
+   */
+  pressFolded(diagram: DiagramModel, node: NodeModel, worldX: number, worldY: number, clientX: number, clientY: number): boolean {
+    if (!diagram.isProxyNode(node)) return false;
+    const folded = diagram.getGroup(String(node.getMetadata(PROXY_NODE_GROUP_KEY)));
+    if (!folded) return false;
+    return this.arm(diagram, poolOfLane(diagram, folded) ?? folded, worldX, worldY, clientX, clientY);
+  }
+
+  private arm(diagram: DiagramModel, group: GroupModel, worldX: number, worldY: number, clientX: number, clientY: number): boolean {
+    const { nodeIds, groupIds } = groupDragContents(diagram, group);
     const nodeFrom = new Map<string, { x: number; y: number; z?: number }>();
     for (const id of nodeIds) {
       const node = diagram.getNode(id);
@@ -137,26 +155,6 @@ export class GroupDragController {
   cancel(): void {
     this.drag = null;
   }
-}
-
-function collectGroupContents(diagram: DiagramModel, group: GroupModel): { nodeIds: string[]; groupIds: string[] } {
-  const nodeIds = new Set<string>();
-  const groupIds = new Set<string>();
-  const stack: GroupModel[] = [group];
-  while (stack.length) {
-    const g = stack.pop()!;
-    if (groupIds.has(g.id)) continue;
-    groupIds.add(g.id);
-    for (const memberId of g.members) {
-      if (diagram.getNode(memberId)) {
-        nodeIds.add(memberId);
-        continue;
-      }
-      const child = diagram.getGroup(memberId);
-      if (child && !groupIds.has(child.id)) stack.push(child);
-    }
-  }
-  return { nodeIds: [...nodeIds], groupIds: [...groupIds] };
 }
 
 function snapshotFrame(group: GroupModel): GroupFrameSnapshot {

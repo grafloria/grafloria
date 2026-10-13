@@ -155,7 +155,28 @@ export interface CollapsedState {
     originalPortId: string;
     originalNodeId?: string;
     aggregatedCount: number;
+    /**
+     * A folded LANE's link is pinned port to port while folded: the other end's
+     * port before it was turned to face the band, and the link's own
+     * `connectionPoint` metadata before it was pinned (null = it had none).
+     */
+    otherPortId?: string;
+    prevConnectionPoint?: string | null;
   }>;
+  /**
+   * A LANE folds to a band of its pool instead of a placeholder box: what expand
+   * needs to give the band its size back (the pool grows by it again) and to put
+   * the members back relative to where the lane is THEN (the pool may have moved).
+   */
+  lane?: {
+    poolId: string;
+    /** The lane's thickness across the band axis before it folded. */
+    crossSize: number;
+    /** Its pinned size before it folded (absent = it was weighted). */
+    prevFixedSize?: number;
+    /** The lane's top-left when it folded. */
+    origin: { x: number; y: number };
+  };
 }
 
 /** Per-side padding (a scalar expands to all four sides). */

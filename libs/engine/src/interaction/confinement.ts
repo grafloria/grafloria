@@ -132,6 +132,10 @@ export function settleLaneDrop(diagram: DiagramModel, drops: LaneDrop[]): void {
     });
     if (!lane) continue;
     if (lane !== group) {
+      if (lane.isCollapsed) {
+        node.setPosition(from.x, from.y); // a folded lane is a title band: it takes no drops
+        continue;
+      }
       const already = joining.get(lane.id) ?? 0;
       const full = lane.capacity !== undefined && lane.members.size + already >= lane.capacity;
       if (full || !lane.canAddMember(id, diagram)) {
@@ -143,4 +147,33 @@ export function settleLaneDrop(diagram: DiagramModel, drops: LaneDrop[]): void {
     const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
     if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
   }
+}
+
+/**
+ * Everything a drag of `group` carries: every member NODE (recursively through
+ * nested groups), every group FRAME (it and its descendants), and the
+ * placeholder of every folded group among them — a folded lane's band, or a
+ * collapsed group's box, used to stay behind when its container moved.
+ * Cycle-guarded so a corrupt membership loop can never spin.
+ */
+export function groupDragContents(diagram: DiagramModel, group: GroupModel): { nodeIds: string[]; groupIds: string[] } {
+  const nodeIds = new Set<string>();
+  const groupIds = new Set<string>();
+  const stack: GroupModel[] = [group];
+  while (stack.length) {
+    const g = stack.pop()!;
+    if (groupIds.has(g.id)) continue;
+    groupIds.add(g.id);
+    const proxyId = g.collapsedState?.proxyNodeId;
+    if (proxyId && diagram.getNode(proxyId)) nodeIds.add(proxyId);
+    for (const memberId of g.members) {
+      if (diagram.getNode(memberId)) {
+        nodeIds.add(memberId);
+        continue;
+      }
+      const child = diagram.getGroup(memberId);
+      if (child && !groupIds.has(child.id)) stack.push(child);
+    }
+  }
+  return { nodeIds: [...nodeIds], groupIds: [...groupIds] };
 }
