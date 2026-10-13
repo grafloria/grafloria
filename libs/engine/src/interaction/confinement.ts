@@ -102,3 +102,45 @@ export function clampBoxInto(
     y: Math.min(Math.max(y, rect.y), maxY),
   };
 }
+
+/** One node let go at the end of a drag, and where the drag found it. */
+export interface LaneDrop {
+  id: string;
+  from: { x: number; y: number };
+}
+
+/**
+ * Where each dropped LANE member settles. It belongs to the lane under its
+ * centre, so it moves fully inside that band. A lane that refuses it (full, or
+ * its own validation says no) sends it back where the drag found it: it was
+ * once left drawn inside the full lane while it still belonged to the old one.
+ * Members dropped together count against a lane's room in order. Anything that
+ * is not a lane member is left alone. Renderers call this BEFORE recording the
+ * move, so undo replays the position the user saw.
+ */
+export function settleLaneDrop(diagram: DiagramModel, drops: LaneDrop[]): void {
+  const joining = new Map<string, number>();
+  for (const { id, from } of drops) {
+    const node = diagram.getNode(id);
+    if (!node || node.state?.locked) continue;
+    const group = containingGroup(diagram, id);
+    const pool = group ? poolOfLane(diagram, group) : undefined;
+    if (!group || !pool) continue;
+    const lane = laneAtPoint(diagram, pool, {
+      x: node.position.x + node.size.width / 2,
+      y: node.position.y + node.size.height / 2,
+    });
+    if (!lane) continue;
+    if (lane !== group) {
+      const already = joining.get(lane.id) ?? 0;
+      const full = lane.capacity !== undefined && lane.members.size + already >= lane.capacity;
+      if (full || !lane.canAddMember(id, diagram)) {
+        node.setPosition(from.x, from.y);
+        continue;
+      }
+      joining.set(lane.id, already + 1);
+    }
+    const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
+    if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
+  }
+}

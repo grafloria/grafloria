@@ -13,7 +13,7 @@
 // the affected groups' derived bounds. `translateOnReparent` is the single seam
 // where a relative-coordinate model would translate; here it is the identity.
 
-import { areSiblingLanes } from './confinement';
+import { areSiblingLanes, poolOfLane } from './confinement';
 import type { Point } from '../types/geometry.types';
 import type { DiagramModel } from '../models/DiagramModel';
 import type { GroupModel } from '../models/GroupModel';
@@ -235,6 +235,33 @@ export class GroupMembershipService {
 
     result.changed = result.commands.length > 0;
     return result;
+  }
+
+  /**
+   * {@link planNodeDrop} for every node a drag let go, each judged at its own
+   * centre. One node: exactly planNodeDrop. Several: only LANE members change
+   * what contains them (each joins the lane it landed in); a multi-node drop
+   * anywhere else keeps every node's group, as it always has. Settle the lane
+   * members first ({@link settleLaneDrop}) so a refused one is already home.
+   */
+  planNodesDrop(nodeIds: string[]): DropResult[] {
+    const centre = (id: string) => {
+      const n = this.diagram.getNode(id);
+      return n ? { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 } : null;
+    };
+    const ids =
+      nodeIds.length === 1
+        ? nodeIds
+        : nodeIds.filter((id) => {
+            const g = this.getContainingGroup(id);
+            return !!g && !!poolOfLane(this.diagram, g);
+          });
+    const plans: DropResult[] = [];
+    for (const id of ids) {
+      const at = centre(id);
+      if (at) plans.push(this.planNodeDrop(id, at));
+    }
+    return plans;
   }
 
   /**

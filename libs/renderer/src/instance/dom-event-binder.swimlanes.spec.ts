@@ -116,6 +116,55 @@ describe('swimlanes under a real hand', () => {
     expect(h.model.getNode('t')!.position.x).toBeCloseTo(t0.x + 100);
   });
 
+  it('a FULL lane refuses the ticket: it goes back where it came from, still in its own lane, and nothing is recorded', async () => {
+    // Measured on grafloria.com before this: the refused ticket stayed drawn INSIDE the full lane
+    // while it still belonged to the old one (settled into the band first, refused after).
+    h = harness();
+    const { lanes } = pool(h);
+    applyNodes(h.model, [
+      { id: 't', position: { x: 300, y: 260 }, size: { width: 120, height: 50 } },
+      { id: 'd', position: { x: 700, y: 470 }, size: { width: 120, height: 50 } },
+    ]);
+    lanes[1]!.addMember('t', h.model);
+    lanes[2]!.addMember('d', h.model);
+    lanes[2]!.capacity = 1;
+    const t0 = { ...h.model.getNode('t')!.position };
+    const done = lanes[2]!.getOuterBounds();
+    drag(h, centre(h.model, 't'), { x: 500, y: done.y + done.height / 2 });
+    await flush();
+    expect(lanes[2]!.members.has('t')).toBe(false);
+    expect(lanes[1]!.members.has('t')).toBe(true);
+    expect(h.model.getNode('t')!.position).toMatchObject({ x: t0.x, y: t0.y });
+    expect(inside(h.model, 't', lanes[1]!.getInnerBounds())).toBe(true);
+    expect(h.engine.commandManager.canUndo()).toBe(false);
+  });
+
+  it('two selected tickets dragged into "Done" BOTH join Done, in one undo step', async () => {
+    h = harness();
+    const { lanes } = pool(h);
+    applyNodes(h.model, [
+      { id: 't', position: { x: 300, y: 260 }, size: { width: 120, height: 50 } },
+      { id: 'u', position: { x: 480, y: 260 }, size: { width: 120, height: 50 } },
+    ]);
+    lanes[1]!.addMember('t', h.model);
+    lanes[1]!.addMember('u', h.model);
+    h.model.getNode('t')!.setSelected(true);
+    h.model.getNode('u')!.setSelected(true);
+    const done = lanes[2]!.getOuterBounds();
+    const from = centre(h.model, 't');
+    drag(h, from, { x: from.x + 40, y: done.y + done.height / 2 });
+    await flush();
+    for (const id of ['t', 'u']) {
+      expect(lanes[2]!.members.has(id)).toBe(true);
+      expect(lanes[1]!.members.has(id)).toBe(false);
+      expect(inside(h.model, id, lanes[2]!.getInnerBounds())).toBe(true);
+    }
+    await h.engine.commandManager.undo();
+    await flush();
+    for (const id of ['t', 'u']) expect(lanes[1]!.members.has(id)).toBe(true);
+    expect(h.engine.commandManager.canUndo()).toBe(false);
+  });
+
   it('a member of a plain confining group cannot be dragged out of it', async () => {
     h = harness();
     applyNodes(h.model, [{ id: 'n', position: { x: 420, y: 220 }, size: { width: 80, height: 40 } }]);

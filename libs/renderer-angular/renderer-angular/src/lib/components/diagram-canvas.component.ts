@@ -65,9 +65,9 @@ import {
   GroupMembershipService,
   memberConfinement,
   clampBoxInto,
-  containingGroup,
-  poolOfLane,
-  laneAtPoint,
+  settleLaneDrop,
+  type LaneDrop,
+  type DropResult,
   type HistoryOwner,
 } from '@grafloria/engine';
 
@@ -2324,7 +2324,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // …and so does any change of WHAT CONTAINS the node: planned here, run in
     // the same step (a drop out of a group used to take two Ctrl+Z presses).
     const membership = diagram && moves.length > 0 ? this.planMembershipOnDrop(diagram, dropped) : null;
-    const memberCommands = membership?.plan.commands ?? [];
+    const memberCommands = membership?.commands ?? [];
 
     let command: Command;
     if (moves.length === 0 && linkCommand) {
@@ -2340,50 +2340,43 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     void this.executeCommand(command).then(() => {
       if (!membership) return;
-      membership.service.finishDrop(membership.plan);
-      if (membership.plan.changed) {
+      for (const plan of membership.plans) membership.service.finishDrop(plan);
+      if (membership.changed) {
         this.renderDiagram();
         this.cdr.markForCheck();
       }
     });
   }
 
-  /** A lane member settles fully inside the lane its centre landed in. */
+  /**
+   * Lane members let go: each settles fully inside the lane under its centre, or
+   * goes back where the drag found it when that lane refuses it (the engine's
+   * settleLaneDrop decides, for every renderer).
+   */
   private settleIntoLanes(diagram: DiagramModel): void {
-    this.draggedNodes.forEach((_start, nodeId) => {
-      const node = diagram.getNode(nodeId);
-      const group = node ? containingGroup(diagram, nodeId) : undefined;
-      const pool = group ? poolOfLane(diagram, group) : undefined;
-      if (!node || !pool) return;
-      const lane = laneAtPoint(diagram, pool, {
-        x: node.position.x + node.size.width / 2,
-        y: node.position.y + node.size.height / 2,
-      });
-      if (!lane) return;
-      const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
-      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
-    });
+    const drops: LaneDrop[] = [];
+    this.draggedNodes.forEach((start, id) => drops.push({ id, from: { x: start.startX, y: start.startY } }));
+    settleLaneDrop(diagram, drops);
   }
 
   /**
-   * A single dropped node may change WHAT CONTAINS it: into the group (or lane)
-   * under its centre, out of a group that does not confine it. The engine's
-   * GroupMembershipService decides, exactly as for every other host — PLANNED
-   * here, so the drop's own undo step carries the change.
+   * Dropped nodes may change WHAT CONTAINS them: one node joins the group (or
+   * lane) under its centre or leaves a group that does not confine it; several
+   * change lanes when they are lane members. The engine's GroupMembershipService
+   * decides, exactly as for every other host — PLANNED here, so the drop's own
+   * undo step carries the change.
    */
   private planMembershipOnDrop(
     diagram: DiagramModel,
     nodeIds: string[]
-  ): { service: GroupMembershipService; plan: ReturnType<GroupMembershipService['planNodeDrop']> } | null {
-    if (nodeIds.length !== 1 || diagram.isReadonly()) return null;
+  ): { service: GroupMembershipService; plans: DropResult[]; changed: boolean; commands: Command[] } | null {
+    if (nodeIds.length === 0 || diagram.isReadonly()) return null;
     if ((this.eng.getInteractionConfig?.() as { enableGroupMembershipOnDrop?: boolean } | undefined)?.enableGroupMembershipOnDrop === false) return null;
     if (diagram.getGroups().length === 0) return null;
-    const node = diagram.getNode(nodeIds[0]!);
-    if (!node) return null;
     const service = new GroupMembershipService({ diagram, dispatcher: this.eng.commandManager });
     service.refresh();
-    const plan = service.planNodeDrop(node.id, { x: node.position.x + node.size.width / 2, y: node.position.y + node.size.height / 2 });
-    return { service, plan };
+    const plans = service.planNodesDrop(nodeIds.filter((id) => !!diagram.getNode(id)));
+    return { service, plans, changed: plans.some((p) => p.changed), commands: plans.flatMap((p) => p.commands) };
   }
 
   /** One node's gesture-committed move (opts out of CommandManager merging). */

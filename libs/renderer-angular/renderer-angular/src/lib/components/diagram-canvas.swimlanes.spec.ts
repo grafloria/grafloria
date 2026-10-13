@@ -102,6 +102,48 @@ describe('DiagramCanvasComponent — swimlanes under a hand', () => {
     expect(fullyInside('n', g.getInnerBounds())).toBe(true);
     expect(g.members.has('n')).toBe(true);
   });
+  test('a FULL lane refuses the ticket: it goes back where it came from, still in its own lane, nothing recorded', async () => {
+    const { lanes } = pool();
+    addNode('d', 400, 440);
+    lanes[2]!.addMember('d', diagram);
+    lanes[2]!.capacity = 1;
+    paint();
+    const t0 = { ...diagram.getNode('t')!.position };
+    const done = lanes[2]!.getOuterBounds();
+    drag('t', { x: 300, y: done.y + done.height / 2 });
+    for (let i = 0; i < 5; i++) await flush();
+    expect(lanes[2]!.members.has('t')).toBe(false);
+    expect(lanes[1]!.members.has('t')).toBe(true);
+    expect(diagram.getNode('t')!.position).toMatchObject({ x: t0.x, y: t0.y });
+    expect(fullyInside('t', lanes[1]!.getInnerBounds())).toBe(true);
+    expect(engine.commandManager.canUndo()).toBe(false);
+  });
+
+  test('two selected tickets dragged into "Done" BOTH join Done, in one undo step', async () => {
+    const { lanes } = pool();
+    addNode('u', 360, 230);
+    lanes[1]!.addMember('u', diagram);
+    diagram.getNode('t')!.setSelected(true);
+    diagram.getNode('u')!.setSelected(true);
+    paint();
+    const t = diagram.getNode('t')!;
+    const from = { x: t.position.x + t.size.width / 2, y: t.position.y + t.size.height / 2 };
+    const done = lanes[2]!.getOuterBounds();
+    const to = { x: from.x + 30, y: done.y + done.height / 2 };
+    mouse('mousedown', from.x, from.y);
+    for (let i = 1; i <= 6; i++) mouse('mousemove', from.x + ((to.x - from.x) * i) / 6, from.y + ((to.y - from.y) * i) / 6);
+    mouse('mouseup', to.x, to.y);
+    for (let i = 0; i < 5; i++) await flush();
+    for (const id of ['t', 'u']) {
+      expect(lanes[2]!.members.has(id)).toBe(true);
+      expect(lanes[1]!.members.has(id)).toBe(false);
+      expect(fullyInside(id, lanes[2]!.getInnerBounds())).toBe(true);
+    }
+    await engine.undo();
+    for (const id of ['t', 'u']) expect(lanes[1]!.members.has(id)).toBe(true);
+    expect(engine.commandManager.canUndo()).toBe(false);
+  });
+
   test('a drop from one group into another is ONE undo step', async () => {
     addNode('n', 200, 200);
     const billing = new GroupModel({ id: 'billing', name: 'billing' });

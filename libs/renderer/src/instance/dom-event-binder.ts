@@ -2,9 +2,9 @@ import type { DiagramEngine, LinkModel, NodeModel, GroupModel, PortModel } from 
 // wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
 import {
   MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService,
-  memberConfinement, clampBoxInto, containingGroup, poolOfLane, laneAtPoint,
+  memberConfinement, clampBoxInto, poolOfLane, settleLaneDrop,
 } from '@grafloria/engine';
-import type { Command, HistoryOwner } from '@grafloria/engine';
+import type { Command, DropResult, HistoryOwner } from '@grafloria/engine';
 import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
 import type { CanvasRect, ViewportController } from '../viewport/viewport-controller';
@@ -2468,45 +2468,40 @@ export class DomEventBinder {
   }
 
   /**
-   * A lane member is let go: it belongs to the lane its CENTRE landed in (the
-   * membership service makes that so on drop), so move it fully inside that
-   * lane's band — a box straddling two lanes reads as belonging to neither.
+   * Lane members let go: each settles fully inside the lane under its centre, or
+   * goes back where the drag found it when that lane refuses it (the engine's
+   * settleLaneDrop decides, for every renderer).
    */
   private settleIntoLanes(engine: DiagramEngine, drag: NodeDragState): void {
     const diagram = engine.getDiagram();
-    if (!diagram) return;
-    for (const id of drag.nodeIds) {
-      const node = diagram.getNode(id);
-      if (!node || node.state.locked) continue;
-      const group = containingGroup(diagram, id);
-      const pool = group ? poolOfLane(diagram, group) : undefined;
-      if (!pool) continue;
-      const lane = laneAtPoint(diagram, pool, {
-        x: node.position.x + node.size.width / 2,
-        y: node.position.y + node.size.height / 2,
-      });
-      if (!lane) continue;
-      const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
-      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
-    }
+    if (!diagram || !drag.startPositions) return;
+    const drops = drag.nodeIds.flatMap((id) => {
+      const from = drag.startPositions!.get(id);
+      return from ? [{ id, from }] : [];
+    });
+    settleLaneDrop(diagram, drops);
   }
 
   /**
-   * What the drop does to what contains the dragged node — PLANNED, not done:
+   * What the drop does to what contains the dragged nodes — PLANNED, not done:
    * the leave/join commands ride in the drop's own undo step (see commitDrop).
-   * Null when drop-to-join is off, several nodes moved, or the node is locked.
+   * One node: the group or lane under its centre. Several: lane members change
+   * lanes, nothing else changes group. Null when drop-to-join is off.
    */
   private planMembershipOnDrop(
     engine: DiagramEngine,
     drag: NodeDragState
-  ): { service: GroupMembershipService; plan: ReturnType<GroupMembershipService['planNodeDrop']> } | null {
+  ): { service: GroupMembershipService; plans: DropResult[]; changed: boolean; commands: Command[] } | null {
     if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return null;
-    if (drag.nodeIds.length !== 1 || this.isReadonly()) return null;
+    if (this.isReadonly()) return null;
 
     const diagram = engine.getDiagram();
     if (!diagram) return null;
-    const node = diagram.getNode(drag.nodeIds[0]);
-    if (!node || node.state.locked) return null;
+    const ids = drag.nodeIds.filter((id) => {
+      const n = diagram.getNode(id);
+      return !!n && !n.state.locked;
+    });
+    if (ids.length === 0) return null;
 
     if (!this.membership || this.membership.diagram !== diagram) {
       this.membership = {
@@ -2517,14 +2512,11 @@ export class DomEventBinder {
     const service = this.membership.service;
     service.refresh(); // groups may have moved during the drag
 
-    // Hit-test the node's CENTRE, not the pointer: the cursor can sit outside a
-    // small node's body, and it is the shape's position that decides where it
-    // landed.
-    const point = {
-      x: node.position.x + node.size.width / 2,
-      y: node.position.y + node.size.height / 2,
-    };
-    return { service, plan: service.planNodeDrop(node.id, point) };
+    // Each node is judged at its CENTRE, not the pointer: the cursor can sit
+    // outside a small node's body, and it is the shape's position that decides
+    // where it landed.
+    const plans = service.planNodesDrop(ids);
+    return { service, plans, changed: plans.some((p) => p.changed), commands: plans.flatMap((p) => p.commands) };
   }
 
   /** One MoveNodeCommand per dragged node that actually moved (FROM → TO). */
@@ -2563,11 +2555,11 @@ export class DomEventBinder {
   /** A completed drop: the move plus any membership change, one undo step. */
   private commitDrop(engine: DiagramEngine, drag: NodeDragState): void {
     const membership = this.planMembershipOnDrop(engine, drag);
-    const steps = [...this.moveSteps(engine, drag), ...(membership?.plan.commands ?? [])];
-    void this.executeAsOneStep(engine, membership?.plan.changed ? 'Move into group' : 'Move nodes', steps).then(() => {
+    const steps = [...this.moveSteps(engine, drag), ...(membership?.commands ?? [])];
+    void this.executeAsOneStep(engine, membership?.changed ? 'Move into group' : 'Move nodes', steps).then(() => {
       if (!membership) return;
-      membership.service.finishDrop(membership.plan);
-      if (membership.plan.changed) {
+      for (const plan of membership.plans) membership.service.finishDrop(plan);
+      if (membership.changed) {
         this.emitNodesChange();
         this.host.requestRender();
       }
