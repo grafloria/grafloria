@@ -94,6 +94,38 @@ async function check(url) {
       }, sel, { timeout: 6000 }).then(() => true).catch(() => false);
       if (!gone) bad(`a live example never finished loading: ${await page.$eval(sel, (el) => `${el.tagName.toLowerCase()}${el.className ? '.' + String(el.className).split(' ')[0] : ''} "${el.textContent.trim()}"`).catch(() => sel)}`);
     }
+    // Every link and button takes a press: nothing drawn over it. A decorative glow reaching past its box
+    // once covered the landing page's hero buttons and the cards under the stage, and every check passed.
+    // One screen at a time, top to bottom; what a fixed or sticky bar covers is the bar's, not a fault.
+    const covered = [];
+    const pageH = await page.evaluate(() => document.documentElement.scrollHeight);
+    for (let y = 0; y < pageH && covered.length < 3; y += 800) {
+      await page.evaluate((y) => window.scrollTo(0, y), y);
+      await page.waitForTimeout(150);
+      covered.push(...await page.evaluate(() => {
+        const seen = (window.__siteRunPressed ??= new WeakSet());
+        const name = (el) => `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : ''}`;
+        const pinned = (el) => { for (let e = el; e; e = e.parentElement) { const ps = getComputedStyle(e).position; if (ps === 'fixed' || ps === 'sticky') return true; } return false; };
+        // the middle of its FIRST line box: a link that wraps has a bounding box whose centre is plain text
+        const spot = (el) => { const r = [...el.getClientRects()].find((q) => q.width > 0 && q.height > 0); return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; };
+        const out = [];
+        for (const el of document.querySelectorAll('a[href], button')) {
+          if (seen.has(el)) continue;
+          const p = spot(el);
+          if (!p || p.x < 0 || p.y < 0 || p.x >= innerWidth || p.y >= innerHeight) continue;
+          let hidden = false;
+          for (let e = el; e; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0 || cs.pointerEvents === 'none') { hidden = true; break; } }
+          if (hidden || el.disabled || el.getAttribute('aria-disabled') === 'true') continue;
+          seen.add(el);
+          const top = document.elementFromPoint(p.x, p.y);
+          if (top && (top === el || el.contains(top))) continue;
+          if (top && pinned(top) && !pinned(el)) continue;
+          out.push(`"${(el.textContent || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 30)}" is under ${top ? name(top) : 'nothing'}`);
+        }
+        return out;
+      }));
+    }
+    for (const c of covered.slice(0, 3)) bad(`a link or button cannot be pressed: ${c}`);
     return { problems, links: found.links, ids: found.ids };
   } catch (e) {
     bad(`could not load: ${String(e.message ?? e).split('\n')[0]}`);
