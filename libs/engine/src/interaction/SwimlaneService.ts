@@ -12,7 +12,13 @@
 // columns and matrix rows are all the same shape.
 
 import type { DiagramModel } from '../models/DiagramModel';
-import { GroupModel, type LaneConfig, type GroupRect } from '../models/GroupModel';
+import { GroupModel, type LaneConfig, type GroupRect, type SerializedGroup } from '../models/GroupModel';
+import type { SerializedNode } from '../models/NodeModel';
+import type { SerializedLink } from '../models/LinkModel';
+import { Command, type CommandContext, type SerializedCommand } from '../commands/Command';
+import { INCREMENTAL_FORMAT } from '../serialization/Incremental';
+import { DIAGRAM_SCHEMA_VERSION } from '../serialization/DiagramMigrations';
+import { GroupCollapseService } from './GroupCollapseService';
 
 export type LaneOrientation = 'horizontal' | 'vertical';
 
@@ -44,8 +50,126 @@ export interface Pool {
   lanes: GroupModel[];
 }
 
+/** Smallest band a lane can be sized to by hand (a step still fits). */
+export const MIN_LANE_SIZE = 40;
+
+/** Something that runs commands onto the undo stack (a CommandManager). */
+export interface PoolEditDispatcher {
+  execute(command: Command): Promise<void> | void;
+}
+
+export interface SwimlaneServiceOptions {
+  /**
+   * Record every lane edit (add, remove, move, size, pool resize) as ONE undo
+   * step on this dispatcher — typically `engine.commandManager`. Without one the
+   * edits are plain model calls, as before (building a pool in code, a gesture's
+   * live preview).
+   */
+  dispatcher?: PoolEditDispatcher;
+}
+
+/**
+ * Everything a pool edit can touch, serialized: the pool, its lanes, their
+ * member nodes (a folded lane's placeholder included) and the links on those
+ * nodes. Restoring one puts the pool back exactly, in place.
+ */
+export interface PoolSnapshot {
+  poolId: string;
+  groups: SerializedGroup[];
+  nodes: SerializedNode[];
+  links: SerializedLink[];
+}
+
+/**
+ * One undoable pool edit, as BEFORE and AFTER snapshots. Execute restores the
+ * after state — a no-op when the edit has already happened, which is how both
+ * the service and a renderer's gesture record it — and undo the before state.
+ * Entities are updated in place, so a host holding the pool or a lane keeps a
+ * live object.
+ */
+export class PoolEditCommand extends Command {
+  constructor(name: string, private readonly before: PoolSnapshot, private readonly after: PoolSnapshot) {
+    super(name);
+  }
+
+  override execute(context: CommandContext): void {
+    restorePoolSnapshot(context.diagram as DiagramModel, this.after, this.before);
+  }
+
+  override undo(context: CommandContext): void {
+    restorePoolSnapshot(context.diagram as DiagramModel, this.before, this.after);
+  }
+
+  override canExecute(context: CommandContext): boolean {
+    return !!context.diagram;
+  }
+
+  override canUndo(context: CommandContext): boolean {
+    return !!context.diagram;
+  }
+
+  override serialize(): SerializedCommand {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { before: this.before, after: this.after } };
+  }
+
+  override getDescription(): string {
+    return this.name;
+  }
+}
+
+/** Put the diagram's pool back to `target`; `other` names what else the edit touched (removed if absent from `target`). */
+function restorePoolSnapshot(diagram: DiagramModel, target: PoolSnapshot, other: PoolSnapshot): void {
+  const gone = <T extends { id: string }>(a: T[], b: T[]) => {
+    const keep = new Set(a.map((e) => e.id));
+    return b.map((e) => e.id).filter((id) => !keep.has(id));
+  };
+  diagram.applyIncremental({
+    format: INCREMENTAL_FORMAT,
+    schemaVersion: DIAGRAM_SCHEMA_VERSION,
+    baseVersion: diagram.version,
+    targetVersion: undefined as unknown as number, // keep this diagram's own counter
+    added: { nodes: [], links: [], groups: [] },
+    removed: { nodes: gone(target.nodes, other.nodes), links: gone(target.links, other.links), groups: gone(target.groups, other.groups) },
+    modified: { nodes: target.nodes, links: target.links, groups: target.groups },
+  });
+}
+
 export class SwimlaneService {
-  constructor(private readonly diagram: DiagramModel) {}
+  private readonly dispatcher?: PoolEditDispatcher;
+
+  constructor(private readonly diagram: DiagramModel, options: SwimlaneServiceOptions = {}) {
+    this.dispatcher = options.dispatcher;
+  }
+
+  /** Serialize everything an edit of `pool` can touch (see {@link PoolSnapshot}). */
+  snapshot(pool: GroupModel): PoolSnapshot {
+    const lanes = [...pool.members].map((id) => this.diagram.getGroup(id)).filter((g): g is GroupModel => !!g);
+    const nodeIds = new Set<string>();
+    for (const lane of lanes) {
+      for (const id of lane.members) if (this.diagram.getNode(id)) nodeIds.add(id);
+      const proxy = lane.collapsedState?.proxyNodeId;
+      if (proxy && this.diagram.getNode(proxy)) nodeIds.add(proxy);
+    }
+    const links = new Map<string, SerializedLink>();
+    for (const id of nodeIds) for (const link of this.diagram.getLinksForNode(id)) links.set(link.id, link.serialize());
+    // A deep copy: serialize() shares nested config (a pool's laneConfig) with the
+    // live model, so a later edit would quietly rewrite the "before" state.
+    return JSON.parse(JSON.stringify({
+      poolId: pool.id,
+      groups: [pool, ...lanes].map((g) => g.serialize()),
+      nodes: [...nodeIds].map((id) => this.diagram.getNode(id)!.serialize()),
+      links: [...links.values()],
+    }));
+  }
+
+  /** Run `edit` on `pool`; with a dispatcher, record it as one undo step. */
+  private edit<T>(pool: GroupModel, name: string, edit: () => T): T {
+    if (!this.dispatcher) return edit();
+    const before = this.snapshot(pool);
+    const result = edit();
+    void this.dispatcher.execute(new PoolEditCommand(name, before, this.snapshot(pool)));
+    return result;
+  }
 
   /** Create a pool group with N lane bands and tile them. */
   createPool(options: CreatePoolOptions): Pool {
@@ -73,6 +197,10 @@ export class SwimlaneService {
   /** Add a lane to a pool (optionally at an index) and re-tile. */
   addLane(pool: GroupModel, spec: LaneSpec, atIndex?: number): GroupModel {
     this.assertPool(pool);
+    return this.edit(pool, 'Add lane', () => this.addLaneNow(pool, spec, atIndex));
+  }
+
+  private addLaneNow(pool: GroupModel, spec: LaneSpec, atIndex?: number): GroupModel {
     const lane = this.buildLane(pool, spec, this.firstLaneHeader(pool));
     const order = pool.laneConfig!.laneOrder ?? [];
     if (atIndex === undefined || atIndex >= order.length) {
@@ -86,17 +214,72 @@ export class SwimlaneService {
     return lane;
   }
 
-  /** Remove a lane from a pool and re-tile the survivors. */
+  /**
+   * Remove a lane and re-tile the survivors. Its steps are not deleted with it:
+   * they move to the lane before it (the next one, for the first lane). A folded
+   * lane is unfolded first. A pool keeps at least one lane.
+   */
   removeLane(pool: GroupModel, laneId: string): void {
     this.assertPool(pool);
-    const order = (pool.laneConfig!.laneOrder ?? []).filter((id) => id !== laneId);
-    pool.laneConfig!.laneOrder = order;
-    const proxyId = this.diagram.getGroup(laneId)?.collapsedState?.proxyNodeId;
-    if (proxyId && this.diagram.getNode(proxyId)) this.diagram.removeNode(proxyId); // a folded lane's band goes with it
-    pool.removeMember(laneId, this.diagram);
-    this.diagram.removeGroup(laneId);
-    this.touch(pool);
-    this.reflow(pool);
+    const order = pool.laneConfig!.laneOrder ?? [];
+    const at = order.indexOf(laneId);
+    const lane = this.diagram.getGroup(laneId);
+    if (at < 0 || !lane || order.length <= 1) return;
+    this.edit(pool, 'Remove lane', () => {
+      if (lane.isCollapsed) new GroupCollapseService(this.diagram).expand(lane);
+      const heir = this.diagram.getGroup(order[at > 0 ? at - 1 : at + 1]!)!;
+      const steps = [...lane.members].filter((id) => this.diagram.getNode(id));
+      for (const id of steps) {
+        lane.removeMember(id, this.diagram);
+        heir.addMember(id, this.diagram);
+      }
+      pool.laneConfig!.laneOrder = order.filter((id) => id !== laneId);
+      pool.removeMember(laneId, this.diagram);
+      this.diagram.removeGroup(laneId);
+      this.touch(pool);
+      this.reflow(pool);
+      for (const id of steps) heir.clampChildToExtent(id, this.diagram);
+    });
+  }
+
+  /** Move a lane to `toIndex` in its pool's band order; every lane takes its steps along. */
+  moveLane(pool: GroupModel, laneId: string, toIndex: number): void {
+    this.assertPool(pool);
+    const order = [...(pool.laneConfig!.laneOrder ?? [])];
+    const from = order.indexOf(laneId);
+    const to = Math.max(0, Math.min(order.length - 1, Math.round(toIndex)));
+    if (from < 0 || from === to) return;
+    this.edit(pool, 'Move lane', () => {
+      order.splice(from, 1);
+      order.splice(to, 0, laneId);
+      pool.laneConfig!.laneOrder = order;
+      this.touch(pool);
+      this.reflow(pool);
+    });
+  }
+
+  /**
+   * Size one lane the way a hand drags its border: the lane takes `size`, the
+   * pool grows or shrinks by the difference, and every other lane keeps its
+   * size (each is pinned where it is). Never below {@link MIN_LANE_SIZE}.
+   */
+  setLaneSize(pool: GroupModel, laneId: string, size: number): void {
+    this.assertPool(pool);
+    const lane = this.diagram.getGroup(laneId);
+    if (!lane?.laneConfig || !this.getLanes(pool).includes(lane)) return;
+    this.edit(pool, 'Resize lane', () => {
+      const horizontal = pool.laneConfig!.orientation === 'horizontal';
+      const cross = (g: GroupModel) => (horizontal ? g.getOuterBounds().height : g.getOuterBounds().width);
+      const next = Math.max(MIN_LANE_SIZE, size);
+      const delta = next - cross(lane);
+      for (const l of this.getLanes(pool)) {
+        l.laneConfig = { ...l.laneConfig!, fixedSize: l === lane ? next : cross(l) };
+        this.touch(l);
+      }
+      const b = pool.getOuterBounds();
+      pool.setFrame(horizontal ? { ...b, height: b.height + delta } : { ...b, width: b.width + delta });
+      this.reflow(pool);
+    });
   }
 
   /**
@@ -107,16 +290,20 @@ export class SwimlaneService {
     this.assertPool(pool);
     const lane = this.diagram.getGroup(laneId);
     if (!lane || !lane.laneConfig) return;
-    lane.laneConfig = { ...lane.laneConfig, fixedSize: Math.max(0, crossSize) };
-    this.touch(lane);
-    this.reflow(pool);
+    this.edit(pool, 'Resize lane', () => {
+      lane.laneConfig = { ...lane.laneConfig!, fixedSize: Math.max(0, crossSize) };
+      this.touch(lane);
+      this.reflow(pool);
+    });
   }
 
   /** Resize the whole pool and re-tile its lanes to the new frame. */
   resizePool(pool: GroupModel, bounds: GroupRect): void {
     this.assertPool(pool);
-    pool.setFrame(bounds);
-    this.reflow(pool);
+    this.edit(pool, 'Resize pool', () => {
+      pool.setFrame(bounds);
+      this.reflow(pool);
+    });
   }
 
   /** Lanes of a pool in band order. */
@@ -162,6 +349,10 @@ export class SwimlaneService {
 
     const fixed = lanes.reduce((s, l) => s + (l.laneConfig?.fixedSize ?? 0), 0);
     const flexible = lanes.filter((l) => l.laneConfig?.fixedSize === undefined);
+    // Every lane pinned: the LAST one that is not folded takes what the pool has
+    // over or under (a resized pool used to leave a gap or overflow its frame).
+    const absorber = flexible.length === 0 ? [...lanes].reverse().find((l) => !l.isCollapsed) : undefined;
+    const spare = crossTotal - fixed;
     const totalWeight = flexible.reduce((s, l) => s + (l.laneConfig?.weight ?? 1), 0) || 1;
     const flexSpace = Math.max(0, crossTotal - fixed);
 
@@ -169,7 +360,9 @@ export class SwimlaneService {
     for (const lane of lanes) {
       const lc = lane.laneConfig!;
       const size =
-        lc.fixedSize !== undefined ? lc.fixedSize : (flexSpace * (lc.weight ?? 1)) / totalWeight;
+        lane === absorber
+          ? Math.max(MIN_LANE_SIZE, lc.fixedSize! + spare)
+          : lc.fixedSize !== undefined ? lc.fixedSize : (flexSpace * (lc.weight ?? 1)) / totalWeight;
 
       const frame: GroupRect = horizontal
         ? { x: mainStart, y: cross, width: mainSpan, height: size }
