@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sections that push, tabs that tear out — Grafloria engineering</title>
+<meta name="description" content="What changed in the Grafloria dashboard kit between 0.4.9 and 0.7: solid sections that push what is below them when they grow, captions the kit paints, tab containers you can tear apart, drops that mean what they show, and four fixes you only meet when they bite.">
+<link rel="alternate" type="application/rss+xml" title="The Grafloria blog" href="https://grafloria.com/blog/feed.xml">
+<link rel="canonical" href="https://grafloria.com/blog/sections-that-push-tabs-that-tear-out/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="Sections that push, tabs that tear out">
+<meta property="og:description" content="What changed in the Grafloria dashboard kit between 0.4.9 and 0.7: solid sections that push what is below them when they grow, captions the kit paints, tab containers you can tear apart, drops that mean what they show, and four fixes you only meet when they bite.">
+<meta property="og:url" content="https://grafloria.com/blog/sections-that-push-tabs-that-tear-out/">
+<meta property="og:image" content="https://grafloria.com/blog/sections-that-push-tabs-that-tear-out/og.png">
+<meta name="twitter:image" content="https://grafloria.com/blog/sections-that-push-tabs-that-tear-out/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Sections that push, tabs that tear out","description":"What changed in the Grafloria dashboard kit between 0.4.9 and 0.7: solid sections that push what is below them when they grow, captions the kit paints, tab containers you can tear apart, drops that mean what they show, and four fixes you only meet when they bite.","url":"https://grafloria.com/blog/sections-that-push-tabs-that-tear-out/","datePublished":"2026-10-13","dateModified":"2026-10-13","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/blog/sections-that-push-tabs-that-tear-out/og.png","mainEntityOfPage":"https://grafloria.com/blog/sections-that-push-tabs-that-tear-out/","keywords":"dashboards, layout, tabs, accessibility"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .tags { margin: 2px 0 0; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+    background: var(--indigo-wash); color: var(--indigo-deep); }
+  .tag:hover { background: var(--indigo); color: #fff; text-decoration: none; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../diagrams/">Diagrams</a>
+      <a href="../../dashboards/">Dashboards</a>
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../blog/" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Engineering</p>
+      <h1>Sections that push, tabs that tear out</h1>
+      <p class="meta">October 13, 2026 · dashboards · layout</p>
+      <p class="tags"><a class="tag" href="../?tag=dashboards">dashboards</a> <a class="tag" href="../?tag=layout">layout</a></p>
+      <p class="lede">Our last dashboard post was about <a href="../fluid-boards-split-layout-and-a-drag-grip/">fluid
+      boards, a split layout and a drag grip</a>, in <code>@grafloria/element</code> 0.4.9. The
+      kit is at 0.7 now, with a package of its own, <code>@grafloria/dashboard</code>. This is
+      what changed in between that you would notice in an app: sections that push, captions the
+      kit paints, tab containers you can tear apart, drops that mean what they show, and a few
+      fixes you only meet when they bite.</p>
+
+      <h2>Sections are solid, and a growing section pushes</h2>
+      <p>A section is a tile that holds tiles: a "Revenue" panel with three charts in it. The
+      first rule we changed is that a section is <i>solid</i>. A widget dragged across the board
+      no longer shoves a section out of its way the way it shoves a small tile; it is refused,
+      and the section stays put. A section moves only when you mean it to: when you drag the
+      section itself, or when something next to it grows.</p>
+      <p>Growing is where the old kit gave up. Pull a chart inside a section taller than the
+      section's rows and the section grows to hold it. But until 0.7, if another section sat
+      below, the growth stopped at it and the pull was capped. Now the growing section pushes
+      everything below it down, other sections and tab containers included, and the whole thing
+      is one undo step. The same is true from code:</p>
+<pre data-lang="javascript">const board = dashboard({ /* … */ });
+// Past its section's rows: the section grows by the rows it needs, and pushes what is below it.
+await board.widget('k-rev').resize(1, 2);
+// One ⌘Z puts the widget, its section and everything that moved back.</pre>
+      <p>A section that should never change size says so: with <code>sizing: 'fit'</code> the
+      section is the bound, and a child that needs a row it does not have is refused instead.</p>
+
+      <h2>Captions the kit paints</h2>
+      <p>A section can carry a caption band: a title, a subtitle, an icon, and buttons. You
+      describe it as data, and the kit paints it, keeps it out of the way of its neighbours, and
+      tells you when a button is pressed:</p>
+<pre data-lang="javascript">{ id: 'sales', widgets: [/* … */],
+  caption: {
+    text: 'Sales', subtitle: 'This quarter', icon: '📈',
+    position: 'inside',            // or 'tab': a tab above the frame
+    show: 'always',                // or 'design', 'hover'
+    actions: [{ id: 'export', label: 'Export' }],
+  } }
+// options: onCaptionAction: (sectionId, actionId, viewId) =&gt; …   handle.setCaption(id, caption)</pre>
+      <p>The actions are real buttons, a press on one never selects the section, and the band
+      is a group labelled with its section's name for assistive technology. When the band is not
+      enough, <code>renderCaption</code> lets you paint your own.</p>
+
+      <h2>Tab containers</h2>
+      <p>A section with <code>layout: 'tabs'</code> shows one page at a time behind a tab strip.
+      The strip is a proper tablist: one tab stop, arrow keys to move, Home and End to jump, and
+      the arrows mirrored on right-to-left pages. From code, <code>activateTab</code>,
+      <code>getActiveTab</code>, <code>moveToTab</code> and <code>moveTab</code> drive it, and
+      <code>onTabChange</code> reports it.</p>
+      <p>Tabs can also be taken apart by hand, the way editor tabs can. Drag a tab out of its
+      strip and the page becomes a section of its own where you drop it; a chip with the tab's
+      label follows the pointer and a dashed placeholder shows where it will land. Drop it on
+      another group's strip and it joins that group; on a split board, drop it beside a pane and
+      it becomes a pane. Undo puts it back and shows the page that was showing before the drag,
+      not whichever page happened to be first.</p>
+      <p>For read-only viewers there is <code>tabs: { hidden: true }</code>: no strip at all,
+      nothing reserved for it, pages switched from code. A designer leaves it off so the author
+      can reach every page.</p>
+
+      <h2>Drops that mean what they show</h2>
+      <p>On a board with sections inside sections inside tabs, "where will this land?" used to
+      have several answers depending on which code path asked. There is now one recursive
+      answer: the same resolver decides what the placeholder shows and what the drop does, down
+      to the deepest board the <code>nesting</code> option allows. A widget dropped on a
+      section's caption band means "into this section". A drop that will be refused shows its
+      cell in red under the pointer, so a refusal is visible before you let go. And a palette
+      drop through <code>addWidget(spec, viewId, { displaced })</code> lands exactly on the cell
+      the preview showed, pushing the same tiles the preview pushed.</p>
+
+      <h2>Fixes you only meet when they bite</h2>
+      <p><b>⌘Z undid every board on the page.</b> With two diagrams or dashboards on one page,
+      a single ⌘Z undid a step in each of them, and one Delete deleted in each. Keys now act on
+      the canvas you last pressed or focused. If your own Undo button calls
+      <code>getEngine().commandManager</code>, nothing changes for it.</p>
+      <p><b>Disposing the diagram left the board behind.</b> Disposing the render instance did
+      not dispose the dashboard handle on it, so the old board's tools kept taking presses on
+      the next board mounted in the same element. React's StrictMode, which mounts everything
+      twice in development, made this easy to hit. Disposing the diagram now disposes its board
+      too; calling both is still fine.</p>
+      <p><b>A saved board carried functions.</b> <code>toJSON()</code> returns plain data
+      now: no callbacks, nothing that cannot go through <code>JSON.stringify</code> and come
+      back.</p>
+      <p><b>Split views forgot your sizing.</b> A split view always lays out to fit its frame,
+      but switching a view to split and back used to leave it in fit mode. The board now keeps
+      the sizing you chose, the split view draws fit anyway, and switching back to grid gives
+      you your setting again, saved in <code>toJSON</code>.</p>
+
+      <h2>What we got wrong</h2>
+      <p>The section that stopped growing was found by a review of our documentation, not by
+      our checks, because every check grew a section with nothing below it. The scenario that now
+      covers it puts a second section directly underneath and pulls a widget past the first
+      one's rows, and it fails without the fix. While fixing it we found that
+      <code>resize()</code> from code still refused where a hand pull grew: two paths to the same
+      edit had drifted apart. Both now grow the section the same way, and each has its own
+      scenario.</p>
+
+      <h2>Get it</h2>
+      <p>Install <code>@grafloria/dashboard</code>, or keep using <code>@grafloria/element</code>,
+      which it re-exports. Everything above is in 0.7, MIT. The
+      <a href="../../demos/dashboard/fluid-board.html">fluid dashboard</a> has tabs, captions,
+      splits and sizing in its toolbar, the
+      <a href="../../demos/dashboard/nested-containers.html">nested containers</a> demo has
+      sections in sections, and the <a href="../../demos/dashboard/dashboard-builder.html">dashboard
+      builder</a> shows palette drops. For a board with stronger opinions, read
+      <a href="../a-kanban-board-is-a-dashboard-with-opinions/">A Kanban board is a dashboard with
+      opinions</a>.</p>
+
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../blog/">Blog</a> · <a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

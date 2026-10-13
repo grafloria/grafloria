@@ -6,7 +6,42 @@
   <atom:link href="https://grafloria.com/blog/feed.xml" rel="self" type="application/rss+xml"/>
   <description>Honest write-ups of diagram and dashboard problems developers actually hit, and engine deep-dives with the real numbers.</description>
   <language>en</language>
-  <lastBuildDate>Mon, 07 Sep 2026 12:00:00 GMT</lastBuildDate>
+  <lastBuildDate>Tue, 13 Oct 2026 12:00:00 GMT</lastBuildDate>
+  <item>
+    <title>A Kanban board is a dashboard with opinions</title>
+    <link>https://grafloria.com/blog/a-kanban-board-is-a-dashboard-with-opinions/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/a-kanban-board-is-a-dashboard-with-opinions/</guid>
+    <pubDate>Tue, 13 Oct 2026 12:00:00 GMT</pubDate>
+    <description>Two Kanban boards built without a line of Kanban code in the library: columns that only trade places, cards that keep their order, WIP limits and an Add-a-card band are all dashboard() options. What each one does, what the boards taught the kit, and the composer that closed itself.</description>
+    <category>dashboards</category>
+    <category>kanban</category>
+    <category>drag and drop</category>
+    <category>javascript</category>
+  </item>
+  <item>
+    <title>Programming a robot on a timeline</title>
+    <link>https://grafloria.com/blog/programming-a-robot-on-a-timeline/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/programming-a-robot-on-a-timeline/</guid>
+    <pubDate>Tue, 13 Oct 2026 12:00:00 GMT</pubDate>
+    <description>A worker drags Pick, Place and Close lid onto a timeline and a six-axis cobot does it. How the demo schedules lanes that wait for each other, checks a program before the arm moves, poses the arm as a pure function of time, and the zoom bug our own tests could not see.</description>
+    <category>robotics</category>
+    <category>timeline</category>
+    <category>scheduling</category>
+    <category>inverse kinematics</category>
+    <category>three.js</category>
+    <category>diagrams</category>
+  </item>
+  <item>
+    <title>Sections that push, tabs that tear out</title>
+    <link>https://grafloria.com/blog/sections-that-push-tabs-that-tear-out/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/sections-that-push-tabs-that-tear-out/</guid>
+    <pubDate>Tue, 13 Oct 2026 12:00:00 GMT</pubDate>
+    <description>What changed in the Grafloria dashboard kit between 0.4.9 and 0.7: solid sections that push what is below them when they grow, captions the kit paints, tab containers you can tear apart, drops that mean what they show, and four fixes you only meet when they bite.</description>
+    <category>dashboards</category>
+    <category>layout</category>
+    <category>tabs</category>
+    <category>accessibility</category>
+  </item>
   <item>
     <title>Fluid boards, a split layout and a drag grip</title>
     <link>https://grafloria.com/blog/fluid-boards-split-layout-and-a-drag-grip/</link>

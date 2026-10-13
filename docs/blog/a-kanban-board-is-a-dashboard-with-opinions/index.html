@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A Kanban board is a dashboard with opinions — Grafloria engineering</title>
+<meta name="description" content="Two Kanban boards built without a line of Kanban code in the library: columns that only trade places, cards that keep their order, WIP limits and an Add-a-card band are all dashboard() options. What each one does, what the boards taught the kit, and the composer that closed itself.">
+<link rel="alternate" type="application/rss+xml" title="The Grafloria blog" href="https://grafloria.com/blog/feed.xml">
+<link rel="canonical" href="https://grafloria.com/blog/a-kanban-board-is-a-dashboard-with-opinions/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="A Kanban board is a dashboard with opinions">
+<meta property="og:description" content="Two Kanban boards built without a line of Kanban code in the library: columns that only trade places, cards that keep their order, WIP limits and an Add-a-card band are all dashboard() options. What each one does, what the boards taught the kit, and the composer that closed itself.">
+<meta property="og:url" content="https://grafloria.com/blog/a-kanban-board-is-a-dashboard-with-opinions/">
+<meta property="og:image" content="https://grafloria.com/blog/a-kanban-board-is-a-dashboard-with-opinions/og.png">
+<meta name="twitter:image" content="https://grafloria.com/blog/a-kanban-board-is-a-dashboard-with-opinions/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"A Kanban board is a dashboard with opinions","description":"Two Kanban boards built without a line of Kanban code in the library: columns that only trade places, cards that keep their order, WIP limits and an Add-a-card band are all dashboard() options. What each one does, what the boards taught the kit, and the composer that closed itself.","url":"https://grafloria.com/blog/a-kanban-board-is-a-dashboard-with-opinions/","datePublished":"2026-10-13","dateModified":"2026-10-13","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/blog/a-kanban-board-is-a-dashboard-with-opinions/og.png","mainEntityOfPage":"https://grafloria.com/blog/a-kanban-board-is-a-dashboard-with-opinions/","keywords":"dashboards, kanban, drag and drop, javascript"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .tags { margin: 2px 0 0; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+    background: var(--indigo-wash); color: var(--indigo-deep); }
+  .tag:hover { background: var(--indigo); color: #fff; text-decoration: none; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../diagrams/">Diagrams</a>
+      <a href="../../dashboards/">Dashboards</a>
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../blog/" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Engineering</p>
+      <h1>A Kanban board is a dashboard with opinions</h1>
+      <p class="meta">October 13, 2026 · dashboards · kanban</p>
+      <p class="tags"><a class="tag" href="../?tag=dashboards">dashboards</a> <a class="tag" href="../?tag=kanban">kanban</a></p>
+      <p class="lede">We built two Kanban boards on Grafloria, a <a href="../../demos/dashboard/kanban-board.html">plain
+      one</a> and a <a href="../../demos/dashboard/kanban-studio.html">full team board</a> with
+      covers, labels, checklists and comments. Neither needed a line of Kanban code in the
+      library. A Kanban board turns out to be a dashboard with a few strong opinions: columns
+      only trade places, cards keep their order, a full column says no. Each opinion is now a
+      <code>dashboard()</code> option. Here is what they do, what the boards taught the kit, and
+      the composer that closed itself.</p>
+
+      <h2>A column is a section with opinions</h2>
+      <p>A dashboard section is a tile that holds other tiles. A Kanban column is a section with
+      one inner column of cards and four extra rules. In the plain board, one list looks like
+      this:</p>
+<pre data-lang="javascript">dashboard({
+  columns: 12, sizing: 'grow', float: false,
+  autoHeight: true,                         // every card as tall as its content
+  canDrop,                                  // WIP limits: a full column refuses a card
+  widgets: COLUMNS.map((c) =&gt; ({
+    id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1,
+    movable: 'row',                         // a column only trades places with its row
+    resizable: false,
+    background: c.tint,
+    stack: true,                            // a list: cards keep their order
+    caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP), background: 'transparent', border: 'none' },
+    maxRows: EMPTY_ROWS,
+    widgets: CARDS[c.id].map(cardSpec),     // { id, kind: 'card', span: 1, rows, data }
+  })),
+  renderWidget: (w, host) =&gt; { if (w.kind === 'card') host.replaceChildren(paintCard(w.data)); },
+  renderCaption: (w, host) =&gt; paintHead(w.id, host),
+});</pre>
+      <p>Everything else, from dragging a card between columns to undoing it, is the
+      dashboard kit doing what it already did for any board.</p>
+
+      <h2>The four opinions</h2>
+      <p><b><code>movable: 'row'</code>: columns only trade places.</b> On an ordinary board a
+      section can go anywhere. A Kanban column cannot: drag "In progress" and it should swap
+      with its neighbours, never drop into another column or below the row. With
+      <code>'row'</code>, the carried column follows your hand, the sections on its row are
+      relaid in the new order from the row's first column, and an order that would collide with
+      something outside the row is not taken. The whole reorder is one undo step.</p>
+      <p><b><code>stack: true</code>: cards keep their order.</b> A dashboard grid normally
+      places a dropped tile in the cell under the pointer. A list should not have cells: a card
+      dropped in the middle goes between the two cards it is between. In a stack the insertion
+      point is before the first card whose middle is below your hand, and the list takes exactly
+      the rows its cards need, growing and giving rows back as cards come and go. That resize is
+      layout, not an edit, so it never appears in the undo history.</p>
+      <p><b><code>autoHeight</code>: cards are as tall as their content.</b> A card with a cover
+      image and three labels needs more height than one with a title. Rather than make you guess
+      rows, the kit measures what was painted and rounds up to whole rows. It measures again
+      when the width changes, when the content changes, after <code>update()</code> and after
+      undo or redo. Like stacking, it is layout. On boards where heights are fixed by design
+      (fit, split, and tab pages) it is ignored, with a single console warning that says
+      why.</p>
+      <p><b><code>canDrop</code>: a full column says no.</b> Work-in-progress limits are one
+      function:</p>
+<pre data-lang="javascript">// cards live in columns, and a column at its limit takes no more
+function canDrop({ to }) {
+  return COLUMNS.some((c) =&gt; c.id === to) &amp;&amp; !isFull(to);
+}</pre>
+      <p>It is asked once per board per drag, never for the board the card came from. A refused
+      card dims, nothing on that board moves out of its way, and on release it glides back home.
+      While you drag, the column it would land in wears a blue ring, and one that refuses it an
+      orange one. Code is trusted: <code>addWidget</code>, <code>moveTo</code> and undo are not
+      asked, so a script can still put a fifth card in a column of four.</p>
+
+      <h2>Bands that belong to the page</h2>
+      <p>The full team board adds an "+ Add a card" band at the bottom of each list:
+      <code>footer: { height: 48 }</code> on the section and a <code>renderFooter</code> to
+      paint it. The kit reserves the height and draws the band, and presses on it belong to the
+      page, so the button is a button, not a drag handle. A card dragged over the band lands at
+      the end of the list. New lists come from <code>addWidget</code> with an empty
+      <code>widgets: []</code>, one undo step like any other add. Inside a card or a caption,
+      inputs and anything marked <code>data-axdb-pass</code> never start a drag, so editing a
+      title in place does not pick the card up.</p>
+
+      <h2>What the boards taught the kit</h2>
+      <p>The plain board started as an experiment whose commit message says why it existed: to
+      find the kit's gaps. It found them in one day. <code>canDrop</code> and
+      <code>autoHeight</code> were the first two. Then came reorder-only sections, stack lists,
+      tints and the drop ring. After that, runtime sections through <code>addWidget</code> and
+      the footer band. Two behaviours came out of watching the board in use: a dropped card now
+      glides home instead of jumping, and a carried list follows the hand. In the engine, a list
+      keeps its order when one of its cards grows. All of it shipped together in
+      <code>@grafloria/element</code> 0.5.1 on October 8.</p>
+      <p>Building the board was the cheapest way to find those gaps. A feature list would not
+      have told us that a refused card should glide home rather than jump, or that a column
+      being carried should stay under the hand; using the board did.</p>
+
+      <h2>The composer that closed itself</h2>
+      <p>The team board has a composer: press "+ Add a card", type a title, press Enter, and
+      the card is added and a fresh composer opens for the next one. Except that on a slow
+      machine the fresh one closed at once.</p>
+      <p>Enter called <code>update()</code> on the draft card, which repainted it, which
+      replaced the draft's textarea with an ordinary card. That blurred the old textarea. Its
+      blur handler waited 150&nbsp;ms and then checked "is there a draft, and is focus outside my textarea?" There was a draft,
+      but it was the <i>new</i> one, and focus was outside the old textarea because the old
+      textarea no longer existed. So it finished the new, empty draft, and finishing an empty
+      draft cancels it.</p>
+<pre data-lang="javascript">// before: any draft
+ta.onblur = () =&gt; setTimeout(() =&gt; { if (draft &amp;&amp; document.activeElement !== ta) finishDraft(); }, 150);
+// after: only the draft this textarea belongs to
+const mine = draft.id;
+ta.onblur = () =&gt; setTimeout(() =&gt; { if (draft?.id === mine &amp;&amp; document.activeElement !== ta) finishDraft(); }, 150);</pre>
+      <p>The page's own check had covered this and passed. It checked that the composer was
+      still open right after Enter, before the 150&nbsp;ms timer had fired. On a fast machine the
+      check ran first and saw an open composer; only slow CI ran it late enough to see the
+      composer close. The check now waits past the timer. A test that asserts before the bug has
+      had a chance to happen is not testing the bug.</p>
+
+      <h2>Try them</h2>
+      <p>The <a href="../../demos/dashboard/kanban-board.html">Kanban board</a> has real
+      Angular, React, Vue and Qwik ports behind its framework tabs. The
+      <a href="../../demos/dashboard/kanban-studio.html">Kanban studio</a> is plain JavaScript,
+      and its tabs say so. Fill "In progress" to its limit and drag a fourth card in, reorder the
+      stages by their headers, and undo a cross-column move in one press. The options above are
+      in <code>@grafloria/element</code> from 0.5.1 and in <code>@grafloria/dashboard</code>,
+      MIT.</p>
+
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../blog/">Blog</a> · <a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

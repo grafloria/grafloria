@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Programming a robot on a timeline — Grafloria engineering</title>
+<meta name="description" content="A worker drags Pick, Place and Close lid onto a timeline and a six-axis cobot does it. How the demo schedules lanes that wait for each other, checks a program before the arm moves, poses the arm as a pure function of time, and the zoom bug our own tests could not see.">
+<link rel="alternate" type="application/rss+xml" title="The Grafloria blog" href="https://grafloria.com/blog/feed.xml">
+<link rel="canonical" href="https://grafloria.com/blog/programming-a-robot-on-a-timeline/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="Programming a robot on a timeline">
+<meta property="og:description" content="A worker drags Pick, Place and Close lid onto a timeline and a six-axis cobot does it. How the demo schedules lanes that wait for each other, checks a program before the arm moves, poses the arm as a pure function of time, and the zoom bug our own tests could not see.">
+<meta property="og:url" content="https://grafloria.com/blog/programming-a-robot-on-a-timeline/">
+<meta property="og:image" content="https://grafloria.com/blog/programming-a-robot-on-a-timeline/og.png">
+<meta name="twitter:image" content="https://grafloria.com/blog/programming-a-robot-on-a-timeline/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Programming a robot on a timeline","description":"A worker drags Pick, Place and Close lid onto a timeline and a six-axis cobot does it. How the demo schedules lanes that wait for each other, checks a program before the arm moves, poses the arm as a pure function of time, and the zoom bug our own tests could not see.","url":"https://grafloria.com/blog/programming-a-robot-on-a-timeline/","datePublished":"2026-10-13","dateModified":"2026-10-13","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/blog/programming-a-robot-on-a-timeline/og.png","mainEntityOfPage":"https://grafloria.com/blog/programming-a-robot-on-a-timeline/","keywords":"robotics, timeline, scheduling, inverse kinematics, three.js, diagrams"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .tags { margin: 2px 0 0; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+    background: var(--indigo-wash); color: var(--indigo-deep); }
+  .tag:hover { background: var(--indigo); color: #fff; text-decoration: none; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../diagrams/">Diagrams</a>
+      <a href="../../dashboards/">Dashboards</a>
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../blog/" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Use cases</p>
+      <h1>Programming a robot on a timeline</h1>
+      <p class="meta">October 13, 2026 · diagrams · robotics</p>
+      <p class="tags"><a class="tag" href="../?tag=diagrams">diagrams</a> <a class="tag" href="../?tag=robotics">robotics</a></p>
+      <p class="lede">On a factory floor, the person who programs a collaborative robot is rarely
+      a programmer. The interfaces that work treat a program as a row of steps: drag
+      <i>Pick</i>, <i>Place</i>, <i>Close lid</i> onto a line, set each one in a popup, press
+      play. We built one as a Grafloria demo, the <a href="../../demos/interaction/robot-timeline.html">robot
+      cell programmer</a>, to find out what a timeline editor asks of a diagram engine. This is
+      how it schedules, how it checks a program before the arm moves, how the arm is posed, and
+      the bug our own tests could not see.</p>
+
+      <h2>What it does</h2>
+      <p>The page has two modes. <b>Simple</b> is one line for one arm: pick a box base, place
+      it on the work pallet, pick an insert and push it in, fetch a lid and close it, stamp the
+      box, carry it to the outfeed pallet. A purple <code>Repeat × 6</code> frame runs those
+      nine steps once per outfeed slot. <b>Advanced</b> is four lanes on a time ruler: a
+      conveyor, two arms and a vision camera. A card is as wide as its duration, and a dashed
+      line between two cards in different lanes means "this one starts only once that one has
+      finished". Press Run and a six-axis cobot in the middle of the page does the job in 3D
+      while the cards light up in turn.</p>
+      <p>Everything a worker edits is the diagram: cards are nodes, loop frames are nodes behind
+      them, the waits are links drawn with the canvas's own connect gesture. Every edit, move
+      and delete is one step on the engine's undo stack.</p>
+
+      <h2>A timeline is a schedule</h2>
+      <p>In Advanced mode a card's place on the ruler is not where someone dropped it; it is
+      computed. One rule decides it: a step starts when the step before it in its lane has
+      finished <i>and</i> every step it waits for has finished. A loop runs its steps
+      <code>times</code> times in a row, so it ends after <code>times × body</code>. Written
+      out, it is a short recursive function:</p>
+<pre data-lang="javascript">// When does an item end? After its lane predecessor and everything it waits for.
+const endOf = (id) =&gt; {
+  if (at.has(id)) return at.get(id).end;
+  if (visiting.has(id)) { stuck.add(id); return Infinity; }   // a wait in a circle
+  visiting.add(id);
+  let start = prevOf(id) ? endOf(prevOf(id)) : 0;
+  for (const w of waitsOf(id)) start = Math.max(start, endOf(w.from));
+  visiting.delete(id);
+  if (!Number.isFinite(start)) { stuck.add(id); return Infinity; }
+  const end = start + secondsOf(item(id));             // a loop: times × its body
+  at.set(id, { start, end });
+  return end;
+};</pre>
+      <p>The interesting line is the circle. If the camera waits for the stamp and the stamp
+      waits for the camera, neither can ever start. A naive scheduler loops forever or picks an
+      arbitrary order; this one marks both as stuck, parks them at the end of their lanes and
+      says "this waits for something that waits for it". The editor goes further and refuses
+      to draw such a wait in the first place, using the engine's connection validator, which
+      also refuses a wait inside one lane (those steps already run in order):</p>
+<pre data-lang="javascript">registerConnectionValidator(({ sourceNode, targetNode }) =&gt; {
+  if (laneOf(sourceNode) === laneOf(targetNode)) return 'Steps in one lane already run in order';
+  const trial = { ...program, syncs: [...syncs, { from: sourceNode.id, to: targetNode.id }] };
+  if (schedule(trial).stuck.length) return 'They would wait for each other forever';
+  return true;
+});</pre>
+      <p>Because the schedule is derived, the layout follows it: delete the camera's wait for
+      the stamp and its card slides to the start of the ruler, with a hatched bar under the
+      lanes that are now idle.</p>
+
+      <h2>Checking the program before the arm moves</h2>
+      <p>A program can be valid as a diagram and wrong as a job. <i>Place</i> with an empty
+      gripper, <i>Insert</i> before there is a box to insert into, a seventh box for a six-slot
+      pallet. The demo finds these by replaying the schedule through a small model of the cell:
+      what each gripper holds, what is on the work pallet, whether a box waits at the conveyor
+      stop, which outfeed slots are full. Each step has a precondition, checked when it starts,
+      and an effect, applied when it ends. Applying effects at the end matters as soon as two
+      lanes overlap in time: the camera may not inspect a stamp that is still being printed.</p>
+<pre data-lang="javascript">case 'insert':
+  if (!held) return { level: 'error', msg: 'The gripper is empty. Pick an insert first.' };
+  if (held.kind !== 'insert') return { level: 'error', msg: `The gripper holds ${a(thing(held))}, not an insert.` };
+  if (!cell.work || cell.work.lid) return { level: 'error', msg: 'There is no open box on the work pallet to insert into.' };
+  if (cell.work.inserts &gt;= 4) return { level: 'error', msg: 'The box is full: it takes four inserts.' };
+  return null;</pre>
+      <p>Our first version reported every problem it met. Move the insert's Pick after the
+      Insert and the board turned red nine times: the Insert had an empty gripper, but on the
+      next pass the arm was still holding the insert, so the first Pick "already held an
+      insert", the Place tried to put an insert on the pallet, and so on around the loop. Every
+      message was true and eight of them were noise. A real cell stops at its first fault, so the
+      replay now does too, and the board shows one red card with the cause. Warnings, such as a
+      box leaving without a stamp, do not stop the replay and do not block Run.</p>
+
+      <h2>A pose is a function of time</h2>
+      <p>The 3D arm is three.js, but the way it is driven is the part worth copying. There is no
+      animation state. Given the run's events and a time <code>t</code>, the arm's six joint
+      angles are computed from scratch: where its last finished step left it, then the running
+      step's profile. A pick reaches above the station for the first 45%, descends until 60%,
+      closes its fingers until 72%, and rises. The joints for a target come from a closed-form
+      inverse kinematics: turn the base toward the target, solve the shoulder and elbow as a
+      two-link arm in that plane, and tilt the wrist so the tool keeps pointing straight
+      down.</p>
+<pre data-lang="javascript">function solve(base, x, y, z) {
+  const a1 = Math.atan2(-(z - base.z), x - base.x);           // turn to face the target
+  const r = Math.hypot(x - base.x, z - base.z);
+  const h = y + TOOL - SHOULDER_HEIGHT;                       // the wrist sits TOOL above the tips
+  const d = clamp(Math.hypot(r, h), Math.abs(L1 - L2) + 1e-3, L1 + L2 - 1e-3);
+  const e = Math.acos((d * d - L1 * L1 - L2 * L2) / (2 * L1 * L2));
+  const s = Math.atan2(h, r) + Math.atan2(L2 * Math.sin(e), L1 + L2 * Math.cos(e));   // elbow up
+  return [a1, s, -e, 0, -Math.PI / 2 - (s - e), 0];           // the wrist keeps the tool vertical
+}</pre>
+      <p>Making the pose a pure function of <code>t</code> buys three things. <i>Step</i> and
+      seeking need no special code: set <code>t</code>, draw. A reload mid-run draws the same
+      arm. And the pose is testable. The page's own checks seek to 60% of the first Pick and
+      require the finger tips to be within 3&nbsp;cm of the stack. To make sure that check could
+      fail, we gave the arm a wrong upper-arm length for one run: the tips missed by 4.7&nbsp;cm
+      and the check went red. A check you have never seen fail is a check you have to take on
+      trust.</p>
+
+      <h2>What we got wrong</h2>
+      <p><b>Drops landed in the wrong place, and every test passed.</b> To turn a mouse position
+      into canvas coordinates, the page first used <code>viewport.x + px / zoom</code>, copied
+      from our own drag-and-drop demo. That is only right at zoom 1: the camera zooms about the
+      middle of the view, so <code>viewport.x</code> is not the world's left edge once the zoom
+      changes. Advanced mode opened at 0.72, where a drop landed about 180 canvas pixels from the
+      pointer. The checks passed because they converted the other way with the same helper: a
+      formula that is wrong in both directions agrees with itself. The fix was one line,
+      <code>api.viewport.clientToWorld(x, y, rect)</code>, the engine's exact inverse of what it
+      draws. The lesson took longer. The checks now take their drop points from where the cards
+      are on screen, and with the old formula put back for one run, the drag check fails as it
+      should. The drag-and-drop demo had the same bug, 224 pixels off at zoom 0.6; it is fixed,
+      with a check that failed first.</p>
+      <p><b>Two selections.</b> Cards are the page's to delete: a card leaves the program, its
+      waits go with it, and one undo brings both back. But a card selected through the engine,
+      by a marquee or a script, was deleted by the engine directly, so the canvas and the
+      program disagreed. There is now one selection, kept in step with the engine's, and Delete
+      always goes through the program.</p>
+
+      <h2>The parts</h2>
+      <p>The cards are HTML inside nodes. Grafloria takes node HTML as a sanitised tree, not a
+      string: plain tags only, no inline SVG and no <code>data-</code> attributes, so the icons
+      are CSS masks and a card is found by its node's <code>data-node-id</code>. The timeline
+      is docked along the bottom of the page and behaves like one: it fills the dock's height,
+      the wheel scrolls it sideways, and it stops at the program's ends. The settings popups are
+      <a href="https://www.npmjs.com/package/@fieldia/viewer">Fieldia</a> forms, the 3D cell is
+      three.js, and the catalog, scheduler, replay, layout, cards and kinematics are about thirteen hundred lines of
+      framework-free JavaScript next to the page.</p>
+      <p>Open the <a href="../../demos/interaction/robot-timeline.html">robot cell
+      programmer</a>, break the program on purpose (drag the insert's Pick after the Insert, or
+      set the loop to seven), then switch to Advanced and delete one of the dashed waits. It
+      runs on <code>@grafloria/element</code> and <code>@grafloria/renderer</code> 0.7, MIT.</p>
+
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../blog/">Blog</a> · <a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>
