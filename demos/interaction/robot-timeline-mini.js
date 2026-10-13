@@ -7,12 +7,13 @@
 // they get a still, mid-run frame and a Play button.
 //
 //   mountRobotStory(host, k)   host: an empty element; k: the grafloria bundle module
+//   → { ready3d }: a promise that settles once the 3D cell is drawn (three.js loads after the
+//     timeline has painted, so a page can show a poster in the meantime)
 
 import { sampleSimple, allSteps, COMMANDS } from './robot-timeline-catalog.js';
 import { schedule, runEvents, cellAt, effect } from './robot-timeline-schedule.js';
 import { layout } from './robot-timeline-layout.js';
 import { cardTree, frameTree, iconCss, icon, esc, SIMPLE } from './robot-timeline-cards.js';
-import { createCell3D } from './robot-timeline-3d.js';
 
 const here = new URL('.', import.meta.url).href;
 const SPEED = 5;                                   // seconds of cell time per second shown
@@ -49,8 +50,14 @@ export async function mountRobotStory(host, k) {
   const numbers = new Map(allSteps(prog).map(({ step }, i) => [step.id, i + 1]));
   const loop = prog.lanes[0].items[0];
 
-  // the landing page is light-only: the story is too; a closer camera for a wide, short stage
-  const cell3d = createCell3D(root.querySelector('.rt-mini-3d'), prog, { dark: false, view: { dist: 2.1, pitch: 0.4, yaw: 0.7 }, target: [0, 0.4, 0] });
+  // The 3D cell (three.js, ~700 KB) loads AFTER the timeline paints. The landing page is
+  // light-only, so the cell is too; a closer camera suits a wide, short stage.
+  let cell3d = null;
+  const ready3d = import('./robot-timeline-3d.js').then(({ createCell3D }) => {
+    cell3d = createCell3D(root.querySelector('.rt-mini-3d'), prog, { dark: false, view: { dist: 2.1, pitch: 0.4, yaw: 0.7 }, target: [0, 0.4, 0] });
+    frameAt(Math.min(t, total));
+    return cell3d;
+  });
 
   // the timeline: a real Grafloria canvas, cards painted from the program
   const api = k.render({ nodes: [], edges: [] }, cv, { interaction: { portVisibility: 'never' } });
@@ -111,14 +118,19 @@ export async function mountRobotStory(host, k) {
   showAt(ext.x0, 0);
   api.renderNow();
 
-  // the run, on a loop
+  // the run, on a loop. The clock waits for the cell and a beat more (or 2.5 s at most), so a
+  // page's poster of the first frame fades into the same pose, not a moving arm.
   let t = 0, last = 0, raf = 0, visible = false, playing = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let waited = false;
+  const go = () => { waited = true; };
+  ready3d.then(() => setTimeout(go, 450), go);
+  setTimeout(go, 2500);
   let status = new Map();
   function frameAt(time) {
     const { cell, running } = cellAt(prog, events, time);
     const seen = JSON.parse(JSON.stringify(cell));
     for (const r of running) if (r.k >= 0.7) effect(seen, r);
-    cell3d.update({ cell: seen, running, events, t: time });
+    cell3d?.update({ cell: seen, running, events, t: time });
     const next = new Map();
     const cur = running.find((r) => r.loop) ?? running[0];
     const pass = cur?.pass ?? 0;
@@ -139,6 +151,7 @@ export async function mountRobotStory(host, k) {
     if (!playing || !visible || document.hidden) return;
     const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
     last = now;
+    if (!waited) { raf = requestAnimationFrame(tick); return; }
     t += dt * SPEED;
     if (t >= total + 2) { t = 0; showAt(ext.x0, 0); }   // a short beat on the finished pallet, then again
     frameAt(Math.min(t, total));
@@ -156,5 +169,5 @@ export async function mountRobotStory(host, k) {
     play.addEventListener('click', () => { playing = true; play.hidden = true; resume(); });
   } else frameAt(0);
 
-  return { api, cell3d, seek: (s) => { t = s; frameAt(Math.min(t, total)); }, total };
+  return { api, ready3d, get cell3d() { return cell3d; }, seek: (s) => { t = s; frameAt(Math.min(t, total)); }, total };
 }
