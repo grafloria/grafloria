@@ -158,6 +158,8 @@ describe('@grafloria/element is the front door — the lock is INVERTED', () => 
     'SetParentCommand',
     'BatchCommand',
     'SwimlaneService',
+    'PoolEditCommand',
+    'layoutPool',
     'InteractionController',
     'KeyboardNavigationController',
     'SelectionToolsController',

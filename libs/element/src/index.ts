@@ -518,9 +518,14 @@ export type {
 } from '@grafloria/renderer';
 
 // Swimlanes / pools / lanes — a whole containment model in the ENGINE that the
-// package re-exported none of. React Flow has no equivalent.
-export { SwimlaneService } from '@grafloria/engine';
-export type { Pool, LaneSpec, CreatePoolOptions, LaneOrientation } from '@grafloria/engine';
+// package re-exported none of. React Flow has no equivalent. `layoutPool` lays a
+// pool out as one unit (steps along the lanes by their links); `PoolEditCommand`
+// is the one undo step every lane edit and lane gesture records.
+export { SwimlaneService, PoolEditCommand, layoutPool } from '@grafloria/engine';
+export type {
+  Pool, LaneSpec, CreatePoolOptions, LaneOrientation,
+  SwimlaneServiceOptions, PoolSnapshot, PoolLayoutOptions,
+} from '@grafloria/engine';
 
 // wave11/gallery BUG FIX — three more authoring seams were not on the embed.
 //

@@ -119,8 +119,15 @@ export class GroupCollapseService {
     });
     placeholder.setMetadata(PROXY_NODE_GROUP_KEY, group.id);
     placeholder.setMetadata('__isGroupProxy', true);
-    if (pool) placeholder.setMetadata(LANE_BAND_KEY, true);
-    placeholder.setData('label', group.name);
+    if (pool) {
+      placeholder.setMetadata(LANE_BAND_KEY, true);
+      // Drawn see-through: the band you see is the folded lane's own frame, under
+      // the links — a placeholder painted over them hid every line crossing the
+      // folded lane, so a link to the lane AFTER it seemed to end at the band.
+      placeholder.setStyle({ fill: 'none', stroke: 'none' });
+    }
+    // A folded lane's name is already on its band (the lane frame's own title).
+    if (!pool) placeholder.setData('label', group.name);
     this.diagram.addNode(placeholder);
 
     // 3) Partition member-incident links and aggregate boundary crossings.
@@ -275,13 +282,16 @@ export class GroupCollapseService {
   }
 
   /** The port on a folded lane's band facing `externalNodeId`, across from its centre. */
-  private bandAnchor(placeholder: NodeModel, externalNodeId: string, band: 'horizontal' | 'vertical'): string | null {
+  private bandAnchor(placeholder: NodeModel, externalNodeId: string, band: 'horizontal' | 'vertical', direction: 'in' | 'out'): string | null {
     const other = this.diagram.getNode(externalNodeId);
     if (!other) return null;
     const c = { x: other.position.x + other.size.width / 2, y: other.position.y + other.size.height / 2 };
     const { x, y } = placeholder.position;
     const { width: w, height: h } = placeholder.size;
-    const along = (v: number, len: number) => Math.round(Math.max(12, Math.min(len - 12, v)));
+    // A link into the lane and one out of it, to the same step, would meet the
+    // band at one point and draw as one line with two arrows: they sit apart.
+    const shift = direction === 'in' ? -12 : 12;
+    const along = (v: number, len: number) => Math.round(Math.max(12, Math.min(len - 12, v + shift)));
     const handle =
       band === 'horizontal'
         ? `${c.y < y + h / 2 ? 'top' : 'bottom'}@${along(c.x - x, w)}`
@@ -358,7 +368,7 @@ export class GroupCollapseService {
           ? placeholder.getPortBySide('right')
           : placeholder.getPortBySide('left');
       const portId =
-        (band && this.bandAnchor(placeholder, externalNodeId, band)) ??
+        (band && this.bandAnchor(placeholder, externalNodeId, band, direction)) ??
         placeholderPort?.id ??
         placeholder.getPorts()[0]?.id;
 

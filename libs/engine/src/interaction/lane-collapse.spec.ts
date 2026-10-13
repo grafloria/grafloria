@@ -147,8 +147,9 @@ describe('collapsing a lane', () => {
     const s0 = diagram.getNode('s0')!, s2 = diagram.getNode('s2')!;
     expect(portOf(into.targetPortId).alignment.side).toBe('top');
     expect(portOf(out.sourcePortId).alignment.side).toBe('bottom');
-    expect(into.targetPortId).toBe(`${proxy.id}__top@${s0.position.x + 50 - proxy.position.x}`);
-    expect(out.sourcePortId).toBe(`${proxy.id}__bottom@${s2.position.x + 50 - proxy.position.x}`);
+    // across from the other step — a link in 12px to one side, a link out 12px to the other
+    expect(into.targetPortId).toBe(`${proxy.id}__top@${s0.position.x + 50 - proxy.position.x - 12}`);
+    expect(out.sourcePortId).toBe(`${proxy.id}__bottom@${s2.position.x + 50 - proxy.position.x + 12}`);
     // the other ends turn to face the band, and the links are pinned port to port while folded
     expect(into.sourcePortId).toBe(s0.getPortBySide('bottom')!.id);
     expect(out.targetPortId).toBe(s2.getPortBySide('top')!.id);
