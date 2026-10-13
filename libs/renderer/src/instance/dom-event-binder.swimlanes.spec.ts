@@ -184,6 +184,64 @@ describe('swimlanes under a real hand', () => {
     expect(proxy.position.y).toBeCloseTo(b[0]!.y);
   });
 
+  // Lanes by hand. pool(): Backlog 60–180, In progress 180–420, Done 420–540 (x 100–1060).
+  it('dragging the line under "Backlog" makes Backlog taller; the pool grows, one undo takes it back', async () => {
+    h = harness();
+    const { pool: p, lanes } = pool(h);
+    const t0 = { ...h.model.getNode('t')!.position };
+    drag(h, { x: 600, y: 180 }, { x: 600, y: 240 });
+    await flush();
+    expect(lanes.map((l) => l.getOuterBounds().height)).toEqual([180, 240, 120]);
+    expect(p.getOuterBounds().height).toBe(540);
+    expect(h.model.getNode('t')!.position.y).toBeCloseTo(t0.y + 60);
+    await h.engine.commandManager.undo();
+    expect(lanes.map((l) => l.getOuterBounds().height)).toEqual([120, 240, 120]);
+    expect(h.engine.commandManager.canUndo()).toBe(false);
+  });
+
+  it("dragging the pool's right edge makes every lane longer", async () => {
+    h = harness();
+    const { lanes } = pool(h);
+    drag(h, { x: 1060, y: 300 }, { x: 1160, y: 300 });
+    await flush();
+    expect(lanes.map((l) => l.getOuterBounds().width)).toEqual([1060, 1060, 1060]);
+  });
+
+  it('dragging "Done" by its title up past "Backlog" moves the lane there, ticket order intact', async () => {
+    h = harness();
+    const { pool: p, lanes } = pool(h);
+    drag(h, { x: 600, y: 430 }, { x: 600, y: 70 });
+    await flush();
+    expect(p.laneConfig!.laneOrder).toEqual([lanes[2]!.id, lanes[0]!.id, lanes[1]!.id]);
+    expect(lanes[1]!.members.has('t')).toBe(true);
+    expect(inside(h.model, 't', lanes[1]!.getInnerBounds())).toBe(true);
+  });
+
+  it('the cursor shows a lane handle before the press: row-resize on a border, grab on a title', () => {
+    h = harness();
+    pool(h);
+    h.container.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 600, clientY: 181 }));
+    expect(h.container.style.cursor).toBe('row-resize');
+    h.container.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 600, clientY: 195 }));
+    expect(h.container.style.cursor).toBe('grab');
+    h.container.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 600, clientY: 300 }));
+    expect(h.container.style.cursor).not.toBe('row-resize');
+  });
+
+  it('Escape in the middle of a border drag puts the pool back', async () => {
+    h = harness();
+    const { pool: p } = pool(h);
+    h.container.dispatchEvent(mouse('mousedown', 600, 180));
+    for (let i = 1; i <= 4; i++) h.container.dispatchEvent(mouse('mousemove', 600, 180 + i * 15));
+    expect(p.getOuterBounds().height).toBeGreaterThan(480);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    h.container.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    h.container.dispatchEvent(mouse('mouseup', 600, 240));
+    await flush();
+    expect(p.getOuterBounds().height).toBe(480);
+    expect(h.engine.commandManager.canUndo()).toBe(false);
+  });
+
   it('a member of a plain confining group cannot be dragged out of it', async () => {
     h = harness();
     applyNodes(h.model, [{ id: 'n', position: { x: 420, y: 220 }, size: { width: 80, height: 40 } }]);

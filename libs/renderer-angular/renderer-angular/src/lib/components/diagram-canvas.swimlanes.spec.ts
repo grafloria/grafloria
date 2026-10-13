@@ -162,6 +162,62 @@ describe('DiagramCanvasComponent — swimlanes under a hand', () => {
     expect(proxy.position.y).toBeCloseTo(band0.y + 40);
   });
 
+  // Lanes by hand. pool(): Backlog 20–140, In progress 140–380, Done 380–500 (x 60–720).
+  const press = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    mouse('mousedown', from.x, from.y);
+    for (let i = 1; i <= 6; i++) mouse('mousemove', from.x + ((to.x - from.x) * i) / 6, from.y + ((to.y - from.y) * i) / 6);
+    mouse('mouseup', to.x, to.y);
+  };
+
+  test('dragging the line under "Backlog" makes Backlog taller; the pool grows; one undo takes it back', async () => {
+    const { pool: p, lanes } = pool();
+    press({ x: 400, y: 140 }, { x: 400, y: 200 });
+    for (let i = 0; i < 5; i++) await flush();
+    expect(lanes.map((l) => l.getOuterBounds().height)).toEqual([180, 240, 120]);
+    expect(p.getOuterBounds().height).toBe(540);
+    await engine.undo();
+    expect(lanes.map((l) => l.getOuterBounds().height)).toEqual([120, 240, 120]);
+    expect(engine.commandManager.canUndo()).toBe(false);
+  });
+
+  test("dragging the pool's right edge makes every lane longer", async () => {
+    const { lanes } = pool();
+    press({ x: 720, y: 300 }, { x: 780, y: 300 });
+    for (let i = 0; i < 5; i++) await flush();
+    expect(lanes.map((l) => l.getOuterBounds().width)).toEqual([720, 720, 720]);
+  });
+
+  test('dragging "Done" by its title up past "Backlog" moves the lane there, its ticket order intact', async () => {
+    const { pool: p, lanes } = pool();
+    press({ x: 400, y: 390 }, { x: 400, y: 30 });
+    for (let i = 0; i < 5; i++) await flush();
+    expect(p.laneConfig!.laneOrder).toEqual([lanes[2]!.id, lanes[0]!.id, lanes[1]!.id]);
+    expect(lanes[1]!.members.has('t')).toBe(true);
+    expect(fullyInside('t', lanes[1]!.getInnerBounds())).toBe(true);
+  });
+
+  test('the cursor shows a lane handle before the press', () => {
+    pool();
+    mouse('mousemove', 400, 141);
+    const cursorOf = () => (component as unknown as { containerRef: { nativeElement: HTMLElement } }).containerRef.nativeElement.style.cursor;
+    expect(cursorOf()).toBe('row-resize');
+    mouse('mousemove', 400, 155);
+    expect(cursorOf()).toBe('grab');
+  });
+
+  test('Escape in the middle of a border drag puts the pool back and records nothing', async () => {
+    const { pool: p } = pool();
+    mouse('mousedown', 400, 140);
+    for (let i = 1; i <= 4; i++) mouse('mousemove', 400, 140 + i * 15);
+    expect(p.getOuterBounds().height).toBeGreaterThan(480);
+    host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    mouse('mouseup', 400, 200);
+    for (let i = 0; i < 5; i++) await flush();
+    expect(p.getOuterBounds().height).toBe(480);
+    expect(engine.commandManager.canUndo()).toBe(false);
+  });
+
   test('a drop from one group into another is ONE undo step', async () => {
     addNode('n', 200, 200);
     const billing = new GroupModel({ id: 'billing', name: 'billing' });

@@ -71,6 +71,9 @@ import {
   type HistoryOwner,
 } from '@grafloria/engine';
 
+/** How near (screen px) a lane border or pool edge a press still grabs it. */
+const LANE_HANDLE_PX = 5;
+
 /** The uniform collab contract every Grafloria wrapper shares. */
 export interface GrafloriaCollabOptions {
   transport: SyncTransport;
@@ -4590,10 +4593,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
           !hasModifier &&
           !diagram.isReadonly() &&
           config.enableGroupDrag !== false &&
-          this.groupDrag.press(diagram, worldX, worldY, event.clientX, event.clientY)
+          this.groupDrag.press(diagram, worldX, worldY, event.clientX, event.clientY, LANE_HANDLE_PX / this.zoom())
         ) {
           event.preventDefault();
-          if (this.containerRef?.nativeElement) this.containerRef.nativeElement.style.cursor = 'move';
+          if (this.containerRef?.nativeElement) this.containerRef.nativeElement.style.cursor = this.groupDrag.activeCursor();
           this.cdr.markForCheck();
           return;
         }
@@ -4785,9 +4788,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         this.interactionHandler.updateHoveredControlPoint(worldX, worldY, selectedLink);
       }
 
-      // Update cursor based on interaction state
+      // Update cursor based on interaction state — and where nothing else claims
+      // the pointer, a pool's lane handle says what a press there does.
       if (this.containerRef?.nativeElement) {
-        this.containerRef.nativeElement.style.cursor = this.interactionHandler.getCursor(this.eng);
+        let cursor = this.interactionHandler.getCursor(this.eng);
+        if (cursor === 'default' && !diagram.isReadonly() && config.enableGroupDrag !== false) {
+          cursor = this.groupDrag.cursorAt(diagram, worldX, worldY, LANE_HANDLE_PX / this.zoom()) ?? cursor;
+        }
+        this.containerRef.nativeElement.style.cursor = cursor;
       }
 
       // PERFORMANCE FIX: Only re-render if something actually changed
@@ -5316,6 +5324,16 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     // Never steal keys from a text field (incl. the inline link-label editor).
     if (this.isTextInput(event.target)) {
+      return;
+    }
+
+    // Escape abandons a held frame / lane gesture (a lane gesture puts the pool back).
+    if (event.key === 'Escape' && this.groupDrag.isActive()) {
+      event.preventDefault();
+      this.groupDrag.cancel();
+      if (this.containerRef?.nativeElement) this.containerRef.nativeElement.style.cursor = 'default';
+      this.scheduleRender();
+      this.cdr.markForCheck();
       return;
     }
 

@@ -3,6 +3,10 @@ import {
   poolOfLane,
   groupDragContents,
   PROXY_NODE_GROUP_KEY,
+  LaneGesture,
+  laneHandleAt,
+  laneHandleCursor,
+  type Command,
   type NodeModel,
   type DiagramModel,
   type GroupFrameMove,
@@ -32,8 +36,23 @@ export class GroupDragController {
     frameFrom: Map<string, GroupFrameSnapshot>;
   } | null = null;
 
+  /** A hand on a pool's lane border, far edge or lane title (engine LaneGesture). */
+  private lane: { gesture: LaneGesture; startClientX: number; startClientY: number; committed: boolean } | null = null;
+
   isActive(): boolean {
-    return this.drag !== null;
+    return this.drag !== null || this.lane !== null;
+  }
+
+  /** The cursor a pool's lane handle under the point shows, or null (the hover cursor). */
+  cursorAt(diagram: DiagramModel, worldX: number, worldY: number, tolerance: number): string | null {
+    const handle = laneHandleAt(diagram, worldX, worldY, tolerance);
+    return handle ? laneHandleCursor(handle) : null;
+  }
+
+  /** The cursor while a gesture is held. */
+  activeCursor(): string {
+    if (!this.lane) return 'move';
+    return this.lane.gesture.handle.kind === 'title' ? 'grabbing' : laneHandleCursor(this.lane.gesture.handle);
   }
 
   /** The innermost group whose outer frame contains the point (deepest, then smallest). */
@@ -58,7 +77,14 @@ export class GroupDragController {
   }
 
   /** Arm a drag of the group under the point (a lane arms its pool). False when there is none. */
-  press(diagram: DiagramModel, worldX: number, worldY: number, clientX: number, clientY: number): boolean {
+  press(diagram: DiagramModel, worldX: number, worldY: number, clientX: number, clientY: number, tolerance = 5): boolean {
+    // A pool's own handles first: a lane border sizes that lane, the far edge
+    // lengthens every lane, a lane's title band carries the lane to another slot.
+    const handle = laneHandleAt(diagram, worldX, worldY, tolerance);
+    if (handle) {
+      this.lane = { gesture: new LaneGesture(diagram, handle, worldX, worldY), startClientX: clientX, startClientY: clientY, committed: false };
+      return true;
+    }
     const hit = this.findGroupAtPoint(diagram, worldX, worldY);
     if (!hit) return false;
     return this.arm(diagram, poolOfLane(diagram, hit) ?? hit, worldX, worldY, clientX, clientY);
@@ -104,6 +130,14 @@ export class GroupDragController {
 
   /** Translate the whole container live. Returns true when something moved. */
   move(diagram: DiagramModel, worldX: number, worldY: number, clientX: number, clientY: number, threshold: number): boolean {
+    const lane = this.lane;
+    if (lane) {
+      if (!lane.committed) {
+        if (Math.hypot(clientX - lane.startClientX, clientY - lane.startClientY) < threshold) return false;
+        lane.committed = true;
+      }
+      return lane.gesture.move(worldX, worldY);
+    }
     const drag = this.drag;
     if (!drag) return false;
     if (!drag.committed) {
@@ -134,7 +168,12 @@ export class GroupDragController {
    * when nothing moved. The state is already at `to`, so executing it only
    * records the history entry.
    */
-  end(diagram: DiagramModel | null | undefined): MoveGroupCommand | null {
+  end(diagram: DiagramModel | null | undefined): Command | null {
+    const lane = this.lane;
+    if (lane) {
+      this.lane = null;
+      return lane.committed ? lane.gesture.end() : null;
+    }
     const drag = this.drag;
     this.drag = null;
     if (!drag || !drag.committed || !diagram) return null;
@@ -152,7 +191,10 @@ export class GroupDragController {
     return command.isNoop() ? null : command;
   }
 
+  /** Abandon the gesture. A lane gesture puts the pool back; a frame drag stays where it is (as the JS canvas). */
   cancel(): void {
+    this.lane?.gesture.cancel();
+    this.lane = null;
     this.drag = null;
   }
 }

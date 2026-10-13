@@ -3,6 +3,7 @@ import type { DiagramEngine, LinkModel, NodeModel, GroupModel, PortModel } from 
 import {
   MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService,
   memberConfinement, clampBoxInto, poolOfLane, settleLaneDrop, groupDragContents, PROXY_NODE_GROUP_KEY,
+  LaneGesture, laneHandleAt, laneHandleCursor,
 } from '@grafloria/engine';
 import type { Command, DropResult, HistoryOwner } from '@grafloria/engine';
 import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
@@ -176,6 +177,9 @@ export interface DomEventBinderOptions {
 }
 
 /** An armed-but-not-yet-committed node drag. */
+/** How near (screen px) a lane border or pool edge a press still grabs it. */
+const LANE_HANDLE_PX = 5;
+
 interface NodeDragState {
   nodeIds: string[];
   startClientX: number;
@@ -266,6 +270,8 @@ export class DomEventBinder {
 
   private nodeDrag: NodeDragState | null = null;
   private groupDrag: GroupDragState | null = null;
+  /** A hand on a pool's lane border, far edge or lane title (engine LaneGesture). */
+  private laneGesture: { gesture: LaneGesture; startClientX: number; startClientY: number; committed: boolean } | null = null;
 
   /**
    * wave12/connect-ergonomics (gap 2): the proximity-connect engine, lazily
@@ -668,6 +674,7 @@ export class DomEventBinder {
     this.pendingEmptyPan = null;
     this.nodeDrag = null;
     this.groupDrag = null;
+    this.laneGesture = null;
     this.spaceKeyPressed = false;
     this.engine()?.setSnapGuides(null);
     this.closeTextEditor(); // T10: never leave a caret floating over a dead canvas
@@ -1224,6 +1231,20 @@ export class DomEventBinder {
       config.enableGroupDrag &&
       !(event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
     ) {
+      // A pool's own handles first: a lane border sizes that lane, the far edge
+      // lengthens every lane, a lane's title band carries the lane to another slot.
+      const laneHandle = laneHandleAt(diagram, worldX, worldY, LANE_HANDLE_PX / this.host.viewport.getZoom());
+      if (laneHandle) {
+        event.preventDefault();
+        this.laneGesture = {
+          gesture: new LaneGesture(diagram, laneHandle, worldX, worldY),
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          committed: false,
+        };
+        this.setCursor(laneHandle.kind === 'title' ? 'grabbing' : laneHandleCursor(laneHandle));
+        return;
+      }
       const group = this.findGroupAtPoint(diagram, worldX, worldY);
       if (group) {
         event.preventDefault();
@@ -1337,6 +1358,20 @@ export class DomEventBinder {
       return;
     }
 
+    if (this.laneGesture) {
+      const lane = this.laneGesture;
+      if (!lane.committed) {
+        if (Math.hypot(event.clientX - lane.startClientX, event.clientY - lane.startClientY) < this.options.dragThreshold) return;
+        lane.committed = true;
+      }
+      const { x, y } = this.toWorld(event);
+      if (lane.gesture.move(x, y)) {
+        this.host.interaction.invalidatePortHitCache();
+        this.host.requestRender();
+      }
+      return;
+    }
+
     if (this.nodeDrag) {
       this.moveNodeDrag(event);
       return;
@@ -1410,7 +1445,14 @@ export class DomEventBinder {
         toolCursor = handle.cursor;
       }
     }
-    this.setCursor(toolCursor ?? this.host.interaction.getCursor(engine));
+    // A pool's lane handles say what a press there does (only where nothing else claims the pointer).
+    let cursor = toolCursor ?? this.host.interaction.getCursor(engine);
+    if (!toolCursor && cursor === 'default' && !this.isReadonly() && config.enableGroupDrag) {
+      const diagram = engine.getDiagram();
+      const handle = diagram ? laneHandleAt(diagram, worldX, worldY, LANE_HANDLE_PX / this.host.viewport.getZoom()) : null;
+      if (handle) cursor = laneHandleCursor(handle);
+    }
+    this.setCursor(cursor);
 
     if (needsRender) this.host.requestRender();
   }
@@ -1563,6 +1605,13 @@ export class DomEventBinder {
       return;
     }
 
+    if (this.laneGesture) {
+      event.preventDefault();
+      this.endLaneGesture(engine);
+      this.setCursor('default');
+      return;
+    }
+
     if (this.nodeDrag) {
       const drag = this.nodeDrag;
       const moved = drag.committed;
@@ -1612,6 +1661,11 @@ export class DomEventBinder {
     if (this.groupDrag) {
       if (engine) this.endGroupDrag(engine);
       else this.groupDrag = null;
+    }
+    // …and a lane gesture the same way: the pool already looks the way it will stay.
+    if (this.laneGesture) {
+      if (engine) this.endLaneGesture(engine);
+      else this.laneGesture = null;
     }
 
     if (this.nodeDrag) {
@@ -1767,6 +1821,11 @@ export class DomEventBinder {
       // node-drag Escape (which also leaves the node where the drag left it).
       this.nodeDrag = null;
       this.groupDrag = null;
+      // A lane gesture is abandoned outright: the pool goes back to how it began.
+      if (this.laneGesture) {
+        this.laneGesture.gesture.cancel();
+        this.laneGesture = null;
+      }
       this.clearProximityPreview(); // (gap 2) Escape never auto-connects
       diagram.clearSelection();
       this.host.requestRender();
@@ -2550,6 +2609,19 @@ export class DomEventBinder {
   /** The move alone, one undo step (a drag the pointer abandoned mid-way). */
   private commitNodeMove(engine: DiagramEngine, drag: NodeDragState): void {
     void this.executeAsOneStep(engine, 'Move nodes', this.moveSteps(engine, drag));
+  }
+
+  /** End a lane gesture: the whole drag becomes ONE undo step (nothing when it changed nothing). */
+  private endLaneGesture(engine: DiagramEngine): void {
+    const lane = this.laneGesture;
+    this.laneGesture = null;
+    if (!lane?.committed) return;
+    const command = lane.gesture.end();
+    if (command) {
+      void engine.commandManager.execute(command);
+      this.emitNodesChange();
+    }
+    this.host.requestRender();
   }
 
   /**

@@ -5,3 +5,4 @@ export * from './GroupCollapseService';
 export * from './SwimlaneService';
 export * from './confinement';
 export * from './SemanticMembershipService';
+export * from './lane-gestures';
