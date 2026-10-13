@@ -99,6 +99,7 @@ const CATEGORY_ORDER = Object.keys(CATEGORY_LABEL);
 // architecture & block). The July React-Flow-parity wave that held it before is
 // old news. Clear this set once this wave is too.
 const NEW_DEMOS = new Set([
+  'grouping/swimlane-flow.html',
   'interaction/robot-timeline.html',
   'interaction/workflow-editor.html',
   'dashboard/kanban-studio.html',

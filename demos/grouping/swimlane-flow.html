@@ -1,0 +1,303 @@
+<meta charset="utf-8">
+<title>Swimlane flow — Grafloria</title>
+<meta name="description" content="An order-to-cash process across four lanes: every step sits in the lane of whoever does it and the connections cross lanes. Move steps between lanes, resize, reorder and fold lanes, lay the pool out; every edit is one undo step.">
+<link rel="canonical" href="https://grafloria.com/demos/grouping/swimlane-flow.html">
+<meta property="og:title" content="Swimlane flow — Grafloria">
+<meta property="og:description" content="An order-to-cash process across four lanes: every step sits in the lane of whoever does it and the connections cross lanes. Move steps between lanes, resize, reorder and fold lanes, lay the pool out; every edit is one undo step.">
+<meta property="og:url" content="https://grafloria.com/demos/grouping/swimlane-flow.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/grouping/swimlane-flow.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/grouping/swimlane-flow.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  #flow-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid rgba(127,127,127,.2);
+    font: 13px/1.3 system-ui, sans-serif; color: #475066; }
+  #flow-bar button { border: 1px solid #c9cfda; background: #fff; border-radius: 7px; padding: 6px 12px; cursor: pointer;
+    font: 500 13px/1.2 system-ui, sans-serif; color: #2b3242; }
+  #flow-bar button:hover:not(:disabled) { border-color: #8d97aa; }
+  #flow-bar button:disabled { opacity: .45; cursor: default; }
+  #flow-bar .sep { width: 1px; align-self: stretch; background: rgba(127,127,127,.25); }
+  #flow-bar .sp { flex: 1; }
+  #flow-log { font-variant-numeric: tabular-nums; }
+  @media (prefers-color-scheme: dark) {
+    #flow-bar { color: #aab2c2; }
+    #flow-bar button { background: #22252d; border-color: #3a3f4b; color: #e6e9ef; }
+  }
+</style>
+<header id="demo-head"></header>
+<div id="flow-bar">
+  <button id="lay-out" type="button" title="Steps along the lanes by their connections, each in its own lane">Lay out</button>
+  <button id="fold" type="button" title="Fold the Finance lane to a band (and back)">Fold Finance</button>
+  <button id="add-lane" type="button">+ Lane</button>
+  <button id="turn" type="button" title="Rebuild the pool with its lanes as columns (or rows)">Vertical pool</button>
+  <span class="sep"></span>
+  <button id="undo" type="button" title="Undo (Ctrl/⌘+Z)">Undo</button>
+  <button id="redo" type="button" title="Redo (Ctrl/⌘+⇧+Z)">Redo</button>
+  <button id="reset" type="button">Reset</button>
+  <span class="sp"></span>
+  <span id="flow-log" aria-live="polite">Drag a step to another lane.</span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render, SwimlaneService, layoutPool } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+
+// A cross-functional process: a POOL whose LANES are the people (or systems)
+// doing the work. A step belongs to the lane it sits in; connections cross
+// lanes. Everything a hand does to the pool — a step to another lane, a lane
+// border, a lane's place, a fold, a layout — is one step on the engine's undo
+// stack, because the SwimlaneService is given the engine's command manager.
+
+const LANES = ['Customer', 'Finance', 'Sales', 'Warehouse'];
+const [CUSTOMER, FINANCE, SALES, WAREHOUSE] = [0, 1, 2, 3];
+const STEP = { width: 150, height: 50 };
+const EVENT = { width: 120, height: 46 };
+const GATE = { width: 120, height: 72 };
+const STEPS = [
+  { id: 'placed', label: 'Ordered', lane: CUSTOMER, size: EVENT, shape: { type: 'terminal' } },
+  { id: 'confirm', label: 'Confirm order', lane: SALES },
+  { id: 'credit', label: 'Check credit', lane: FINANCE },
+  { id: 'ok', label: 'Credit OK?', lane: FINANCE, size: GATE, shape: { type: 'diamond' } },
+  { id: 'reject', label: 'Reject order', lane: SALES },
+  { id: 'pick', label: 'Pick & pack', lane: WAREHOUSE },
+  { id: 'ship', label: 'Ship', lane: WAREHOUSE },
+  { id: 'receive', label: 'Receive goods', lane: CUSTOMER },
+  { id: 'invoice', label: 'Send invoice', lane: FINANCE },
+  { id: 'pay', label: 'Pay invoice', lane: CUSTOMER },
+  { id: 'paid', label: 'Paid', lane: FINANCE, size: EVENT, shape: { type: 'terminal' } },
+];
+const LINKS = [
+  ['placed', 'confirm'], ['confirm', 'credit'], ['credit', 'ok'], ['ok', 'pick', 'yes'], ['ok', 'reject', 'no'],
+  ['pick', 'ship'], ['ship', 'receive'], ['receive', 'invoice'], ['invoice', 'pay'],
+  ['pay', 'paid'],
+];
+const MAIN_PATH = ['placed', 'confirm', 'credit', 'ok', 'pick', 'ship', 'receive', 'invoice', 'pay', 'paid'];
+
+defineDemo({
+  name: 'Swimlane flow',
+  blurb: 'An order-to-cash process across four lanes: every step sits in the lane of whoever does it, and the connections cross lanes. Move a step to another lane, resize a lane by its border, reorder lanes by their titles, fold a lane to a band, lay the pool out: every edit is one undo step.',
+  howTo: [
+    'Read the flow left to right: the Customer orders, Sales confirms, Finance checks the credit and, if it is OK, the Warehouse picks and ships; the Customer receives the goods, Finance invoices and the Customer pays.',
+    'Drag "Send invoice" up into the Sales lane and let go: it now belongs to Sales and sits fully inside it. Press Undo: it is back in Finance.',
+    'Point at the line between two lanes: the cursor turns into a resize arrow. Drag it down: the lane above gets taller, the pool grows with it and the other lanes keep their size.',
+    'Grab a lane by its title strip (the cursor shows a hand) and drag it above another lane: the lane moves there, its steps with it.',
+    'Press Fold Finance: the lane folds to a thin band across the pool, the connections meet the band, and the pool closes up. Press it again to unfold.',
+    'Drag a few steps along their lanes to make a mess, then press Lay out: the steps line up along their connections again, each in its own lane.',
+    'Press Vertical pool: the same process with the lanes as columns, running top to bottom.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const api = render({ nodes: [], edges: [] }, ctx.host);
+    ctx.instance = api;
+    ctx.engine = api.getEngine();
+    ctx.diagram = api.getModel();
+    const model = ctx.diagram, engine = ctx.engine, cm = engine.commandManager;
+    const log = document.getElementById('flow-log');
+    const $ = (id) => document.getElementById(id);
+    let svc, pool, lanes, orientation = 'horizontal';
+
+    const laneOf = (id) => svc.getLanes(pool).find((l) => l.members.has(id));
+    const finance = () => lanes[FINANCE];
+
+    const build = (o = orientation) => {
+      orientation = o;
+      for (const n of [...model.getNodes()]) model.removeNode(n.id);
+      for (const g of [...model.getGroups()]) model.removeGroup(g.id);
+      svc = new SwimlaneService(model, { dispatcher: cm });
+      const plain = new SwimlaneService(model); // building is not an edit: no history
+      ({ pool, lanes } = plain.createPool({
+        name: 'Order to cash', orientation,
+        bounds: orientation === 'horizontal' ? { x: 0, y: 0, width: 1400, height: 640 } : { x: 0, y: 0, width: 760, height: 1300 },
+        lanes: LANES.map((name) => ({ name })),
+        headerSize: 40,
+      }));
+      api.setNodes(STEPS.map((s) => {
+        const b = lanes[s.lane].getInnerBounds();
+        return { id: s.id, label: s.label, position: { x: b.x + 10, y: b.y + 30 }, size: { ...(s.size ?? STEP) }, ...(s.shape ? { shape: s.shape } : {}) };
+      }));
+      for (const s of STEPS) lanes[s.lane].addMember(s.id, model);
+      api.setEdges(LINKS.map(([source, target, label]) => ({ id: `${source}-${target}`, source, target, type: 'orthogonal', ...(label ? { label } : {}) })));
+      layoutPool(model, pool, { rankSpacing: 48 });
+      cm.clear();
+      $('turn').textContent = orientation === 'horizontal' ? 'Vertical pool' : 'Horizontal pool';
+      $('fold').textContent = 'Fold Finance';
+      ctx.svc = svc; ctx.pool = pool; ctx.lanes = lanes;
+      api.fitView(32);
+      api.renderNow();
+      sync();
+    };
+
+    function sync() {
+      $('undo').disabled = !cm.canUndo();
+      $('redo').disabled = !cm.canRedo();
+      $('fold').textContent = finance()?.isCollapsed ? 'Unfold Finance' : 'Fold Finance';
+    }
+    for (const ev of ['command:executed', 'command:undone', 'command:redone', 'command:history-cleared']) engine.eventBus.on(ev, () => sync());
+
+    // Say what a drop did.
+    let where = new Map();
+    const remember = () => { where = new Map(STEPS.map((s) => [s.id, laneOf(s.id)?.name])); };
+    api.on('nodes:change', () => setTimeout(() => {
+      for (const s of STEPS) {
+        const now = laneOf(s.id)?.name;
+        if (now && where.get(s.id) && now !== where.get(s.id)) log.textContent = `"${s.label}" is now done by ${now}.`;
+      }
+      remember();
+      api.renderNow();
+    }, 0));
+
+    $('lay-out').addEventListener('click', () => {
+      svc.editPool(pool, 'Lay out', () => layoutPool(model, pool, { rankSpacing: 48 }));
+      api.renderNow();
+      log.textContent = 'Laid out: steps along their connections, each in its own lane.';
+    });
+    $('fold').addEventListener('click', async () => {
+      const lane = finance();
+      if (lane.isCollapsed) await engine.expandGroup(lane.id);
+      else await engine.collapseGroup(lane.id);
+      api.renderNow();
+      sync();
+      log.textContent = lane.isCollapsed ? 'Finance folded to a band; its steps are hidden.' : 'Finance unfolded where it was.';
+    });
+    let added = 0;
+    $('add-lane').addEventListener('click', () => {
+      added += 1;
+      const lane = svc.addLane(pool, { name: added === 1 ? 'Legal' : `Lane ${LANES.length + added}` });
+      api.renderNow();
+      log.textContent = `Added the "${lane.name}" lane.`;
+    });
+    $('turn').addEventListener('click', () => {
+      build(orientation === 'horizontal' ? 'vertical' : 'horizontal');
+      remember();
+      log.textContent = orientation === 'vertical' ? 'The lanes are columns now; the flow runs top to bottom.' : 'The lanes are rows again.';
+    });
+    $('undo').addEventListener('click', async () => { await cm.undo(); api.renderNow(); remember(); });
+    $('redo').addEventListener('click', async () => { await cm.redo(); api.renderNow(); remember(); });
+    $('reset').addEventListener('click', () => { build('horizontal'); remember(); log.textContent = 'Drag a step to another lane.'; });
+
+    build('horizontal');
+    remember();
+
+    // For the checks: a hand-speed drag in world coordinates, through the real pointer path.
+    ctx.drag = async (from, to, steps = 10) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const fire = (type, w) => {
+        const c = api.viewport.worldToClient(w.x, w.y, rect);
+        const target = document.elementFromPoint(c.x, c.y) || ctx.host;
+        target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0, buttons: type === 'pointerup' ? 0 : 1 }));
+      };
+      fire('pointermove', from); fire('pointerdown', from);
+      for (let i = 1; i <= steps; i++) fire('pointermove', { x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps });
+      fire('pointerup', to);
+      await new Promise((r) => setTimeout(r, 40));
+      api.renderNow();
+    };
+    ctx.laneOf = laneOf;
+    ctx.reset = () => { build('horizontal'); remember(); };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    ctx.reset();
+    const m = ctx.diagram, engine = ctx.engine, cm = engine.commandManager;
+    let svc = ctx.svc, pool = ctx.pool, lanes = ctx.lanes;
+    const box = (id) => { const n = m.getNode(id); return { x: n.position.x, y: n.position.y, w: n.size.width, h: n.size.height }; };
+    const centre = (id) => { const b = box(id); return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; };
+    const inside = (id, lane) => { const b = box(id), r = lane.getInnerBounds(); return b.x >= r.x - 0.5 && b.y >= r.y - 0.5 && b.x + b.w <= r.x + r.width + 0.5 && b.y + b.h <= r.y + r.height + 0.5; };
+    const tiled = () => { const b = svc.getLanes(pool).map((l) => l.getOuterBounds()); return b.every((r, i) => i === 0 || Math.abs(r.y - (b[i - 1].y + b[i - 1].height)) < 1); };
+    const heights = () => svc.getLanes(pool).map((l) => Math.round(l.getOuterBounds().height));
+    const flowReads = () => MAIN_PATH.every((id, i) => i === 0 || box(id).x > box(MAIN_PATH[i - 1]).x);
+    const STEP_LANE = Object.fromEntries(STEPS.map((s) => [s.id, s.lane]));
+    const everyStepHome = () => STEPS.every((s) => ctx.laneOf(s.id) === lanes[s.lane] && inside(s.id, lanes[s.lane]));
+
+    // 1. Four lanes tile the pool; every step is inside its own lane; the main path reads left to right.
+    check(svc.getLanes(pool).map((l) => l.name).join() === LANES.join(), `the lanes should be ${LANES.join(', ')}`);
+    check(tiled(), 'the four lanes should tile the pool');
+    check(everyStepHome(), 'every step should start inside its own lane');
+    check(flowReads(), 'the main path should read left to right');
+
+    // 2. A step dragged into another lane joins it, fully inside; Undo takes it back.
+    const sales = lanes[SALES].getOuterBounds();
+    await ctx.drag(centre('invoice'), { x: centre('invoice').x, y: sales.y + sales.height / 2 + 10 });
+    check(ctx.laneOf('invoice') === lanes[SALES], `"Send invoice" should now be in Sales, it is in ${ctx.laneOf('invoice')?.name}`);
+    check(inside('invoice', lanes[SALES]), '"Send invoice" should sit fully inside Sales');
+    check(!document.getElementById('undo').disabled, 'Undo should be live after a drop');
+    document.getElementById('undo').click();
+    await new Promise((r) => setTimeout(r, 30));
+    check(ctx.laneOf('invoice') === lanes[FINANCE] && inside('invoice', lanes[FINANCE]), 'Undo should put "Send invoice" back in Finance');
+
+    // 3. The line under Customer, dragged down by hand: Customer grows, the pool with it, the others keep their size.
+    const h0 = heights(), p0 = pool.getOuterBounds();
+    const c0 = lanes[CUSTOMER].getOuterBounds();
+    await ctx.drag({ x: c0.x + c0.width - 40, y: c0.y + c0.height }, { x: c0.x + c0.width - 40, y: c0.y + c0.height + 60 });
+    const h1 = heights();
+    check(Math.abs(h1[0] - (h0[0] + 60)) <= 1 && h1.slice(1).join() === h0.slice(1).join(), `dragging Customer's border should make only Customer 60 taller (${h0} → ${h1})`);
+    check(Math.abs(pool.getOuterBounds().height - (p0.height + 60)) <= 1, 'the pool should grow with the lane');
+    check(tiled() && everyStepHome(), 'after a lane resize the lanes should tile and every step stay in its lane');
+    await cm.undo();
+    check(heights().join() === h0.join(), 'one Undo should restore the lane sizes');
+
+    // 4. Finance dragged by its title above Customer: the lane moves, its steps ride along.
+    const f0 = lanes[FINANCE].getOuterBounds();
+    await ctx.drag({ x: f0.x + 300, y: f0.y + 10 }, { x: f0.x + 300, y: pool.getOuterBounds().y + 4 }, 16);
+    check(svc.getLanes(pool).map((l) => l.name).join() === 'Finance,Customer,Sales,Warehouse', `Finance should now come first, got ${svc.getLanes(pool).map((l) => l.name)}`);
+    check(tiled() && everyStepHome(), 'after a reorder the lanes should tile and every step stay in its lane');
+    await cm.undo();
+    check(svc.getLanes(pool).map((l) => l.name).join() === LANES.join(), 'one Undo should put the lanes back in order');
+
+    // 5. Fold Finance: a band, the pool closes up, a drop onto the band goes home; unfold restores.
+    const pf = pool.getOuterBounds().height, ff = lanes[FINANCE].getOuterBounds().height;
+    document.getElementById('fold').click();
+    await new Promise((r) => setTimeout(r, 40));
+    check(lanes[FINANCE].isCollapsed && Math.round(lanes[FINANCE].getOuterBounds().height) === 44, 'Finance should fold to a 44px band');
+    check(Math.abs(pool.getOuterBounds().height - (pf - ff + 44)) <= 1, 'the pool should give the folded space back');
+    check(m.getNode('credit').state.visible === false, "Finance's steps should be hidden while it is folded");
+    const band = lanes[FINANCE].getOuterBounds(), pay0 = { ...m.getNode('pay').position };
+    await ctx.drag(centre('pay'), { x: centre('pay').x, y: band.y + band.height / 2 });
+    check(Math.abs(m.getNode('pay').position.y - pay0.y) < 1 && ctx.laneOf('pay') === lanes[CUSTOMER], 'a step dropped on a folded band should go back where it came from');
+    document.getElementById('fold').click();
+    await new Promise((r) => setTimeout(r, 40));
+    check(!lanes[FINANCE].isCollapsed && Math.abs(pool.getOuterBounds().height - pf) <= 1, 'unfolding should give Finance its size back');
+    check(everyStepHome(), 'after unfolding every step should be in its lane again');
+
+    // 6. A mess, then Lay out: the flow reads again; one Undo brings the mess back.
+    const r0 = lanes[CUSTOMER].getInnerBounds();
+    await ctx.drag(centre('pay'), { x: r0.x + 40, y: centre('pay').y });
+    check(!flowReads(), 'the dragged step should have broken the reading order (precondition)');
+    document.getElementById('lay-out').click();
+    await new Promise((r) => setTimeout(r, 30));
+    check(flowReads() && everyStepHome() && tiled(), 'Lay out should line the steps up along the flow, each in its own lane');
+    await cm.undo();
+    check(!flowReads(), 'one Undo should bring the pre-layout positions back');
+
+    // 7. The engine's own layout keeps the pool whole too.
+    await engine.layout('layered', { direction: 'LR' });
+    check(tiled() && everyStepHome(), 'engine.layout() should keep the lanes tiled and every step in its lane');
+
+    // 8. A full lane refuses a step: it goes home.
+    lanes[WAREHOUSE].capacity = 2; // the Warehouse holds "Pick & pack" and "Ship"
+    const rc0 = { ...m.getNode('receive').position };
+    const wh = lanes[WAREHOUSE].getOuterBounds();
+    await ctx.drag(centre('receive'), { x: centre('receive').x, y: wh.y + wh.height / 2 });
+    check(ctx.laneOf('receive') === lanes[CUSTOMER] && Math.abs(m.getNode('receive').position.y - rc0.y) < 1, 'a full lane should send the step back where it came from');
+    lanes[WAREHOUSE].capacity = undefined;
+
+    // 9. + Lane adds a lane, one Undo takes it away.
+    document.getElementById('add-lane').click();
+    check(svc.getLanes(pool).length === 5 && tiled(), '+ Lane should add a fifth lane that tiles');
+    await new Promise((r) => setTimeout(r, 30)); // the edit reaches the undo stack a moment later
+    await cm.undo();
+    check(svc.getLanes(pool).length === 4, 'one Undo should remove the added lane');
+
+    // 10. The vertical pool: lanes are columns and the flow runs top to bottom.
+    document.getElementById('turn').click();
+    svc = ctx.svc; pool = ctx.pool; lanes = ctx.lanes;
+    const cols = svc.getLanes(pool).map((l) => l.getOuterBounds());
+    check(cols.every((r, i) => i === 0 || Math.abs(r.x - (cols[i - 1].x + cols[i - 1].width)) < 1), 'in the vertical pool the lanes should tile as columns');
+    check(MAIN_PATH.every((id, i) => i === 0 || box(id).y > box(MAIN_PATH[i - 1]).y), 'in the vertical pool the flow should run top to bottom');
+    check(STEPS.every((s) => inside(s.id, lanes[STEP_LANE[s.id]])), 'in the vertical pool every step should be in its lane');
+    ctx.reset();
+  },
+});
+</script>
