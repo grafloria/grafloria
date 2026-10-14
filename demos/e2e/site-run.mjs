@@ -41,7 +41,24 @@ const links = new Map();   // linked URL (with fragment) → the pages that link
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 
+// A SERVER error (5xx) is the host failing, not the site: GitHub Pages answered a
+// single 503 three times in two days (a Qwik chunk, demos-vue/main.js, a gallery
+// thumbnail), each turning the live run red while every page was fine. A page
+// whose check saw one is checked again from a fresh load, up to twice, a moment
+// apart, and the last attempt is the verdict — a script that 503'd breaks its page
+// too, so the whole page is re-read, not just the file. A 404, a page error or a
+// broken link with no 5xx behind it is red at once.
+const isServerError = (m) => /^5\d\d |answered 5\d\d/.test(m);
 async function check(url) {
+  let result = await checkOnce(url);
+  for (let i = 0; i < 2 && result.problems.some(isServerError); i++) {
+    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+    result = await checkOnce(url);
+  }
+  return result;
+}
+
+async function checkOnce(url) {
   const page = await context.newPage();
   const problems = [];
   const bad = (m) => { if (!problems.includes(m)) problems.push(m); };
@@ -161,7 +178,11 @@ const statusOf = new Map();
 for (const href of links.keys()) {
   const k = pageKey(href);
   if (statusOf.has(k) || results.has(k)) continue;
-  const res = await fetch(k, { method: 'GET', redirect: 'follow' }).catch(() => null);
+  let res = await fetch(k, { method: 'GET', redirect: 'follow' }).catch(() => null);
+  for (let i = 0; i < 2 && res && res.status >= 500; i++) { // a 5xx is the host failing: ask again
+    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+    res = await fetch(k, { method: 'GET', redirect: 'follow' }).catch(() => null);
+  }
   statusOf.set(k, res ? res.status : 0);
 }
 const brokenLinks = [];
