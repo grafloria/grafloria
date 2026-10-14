@@ -38,3 +38,55 @@ it('no lane band or wash reaches into the pool border', () => {
     }
   }
 });
+
+it("a folded lane of a VERTICAL pool reads down its band: its title turns to fit the column", async () => {
+  // The title used to start at the 44px column's top-left and run across the
+  // next lanes ("Finance" printed over Sales).
+  const { GroupCollapseService } = await import('@grafloria/engine');
+  const engine = new DiagramEngine();
+  const model = engine.createDiagram();
+  const { lanes } = new SwimlaneService(model).createPool({
+    name: 'Orders', orientation: 'vertical',
+    bounds: { x: 0, y: 0, width: 480, height: 700 },
+    lanes: [{ name: 'Customer' }, { name: 'Finance' }, { name: 'Sales' }],
+    headerSize: 40,
+  });
+  new GroupCollapseService(model).collapse(lanes[1]!);
+  const tree = new SVGRenderer(engine).render({ x: 0, y: 0, width: 1400, height: 900 }, 1);
+  const g = all(tree, (v) => v.props?.['data-group-id'] === lanes[1]!.id)[0]!;
+  const label = all(g, (v) => v.type === 'text')[0]!;
+  const b = lanes[1]!.getOuterBounds();
+  expect(String(label.props!['transform'])).toMatch(/^rotate\(-90/);
+  expect(Number(label.props!['x'])).toBeCloseTo(b.x + b.width / 2);
+  expect(Number(label.props!['y'])).toBeCloseTo(b.y + b.height / 2);
+  // …while a folded lane of a HORIZONTAL pool keeps its title flat at the band's start
+  const h = new DiagramEngine();
+  const hm = h.createDiagram();
+  const made = new SwimlaneService(hm).createPool({
+    name: 'Orders', orientation: 'horizontal', bounds: { x: 0, y: 0, width: 700, height: 480 },
+    lanes: [{ name: 'Customer' }, { name: 'Finance' }], headerSize: 40,
+  });
+  new GroupCollapseService(hm).collapse(made.lanes[1]!);
+  const ht = new SVGRenderer(h).render({ x: 0, y: 0, width: 1400, height: 900 }, 1);
+  const hl = all(all(ht, (v) => v.props?.['data-group-id'] === made.lanes[1]!.id)[0]!, (v) => v.type === 'text')[0]!;
+  expect(hl.props!['transform']).toBeUndefined();
+});
+
+it("a SPLIT lane carries its title in a strip at its start, turned, with a divider against its sub-lanes", () => {
+  const engine = new DiagramEngine();
+  const model = engine.createDiagram();
+  const svc = new SwimlaneService(model);
+  const { pool, lanes } = svc.createPool({
+    name: 'Orders', orientation: 'horizontal', bounds: { x: 0, y: 0, width: 1000, height: 480 },
+    lanes: [{ name: 'Sales' }, { name: 'Warehouse' }, { name: 'Finance' }], headerSize: 40,
+  });
+  svc.splitLane(pool, lanes[1]!.id, [{ name: 'Picking' }, { name: 'Dispatch' }]);
+  const tree = new SVGRenderer(engine).render({ x: 0, y: 0, width: 1400, height: 900 }, 1);
+  const g = all(tree, (v) => v.props?.['data-group-id'] === lanes[1]!.id)[0]!;
+  const label = all(g, (v) => v.type === 'text')[0]!;
+  const b = lanes[1]!.getOuterBounds();
+  expect(String(label.props!['transform'])).toMatch(/^rotate\(-90/);
+  expect(Number(label.props!['x'])).toBeCloseTo(b.x + 15);
+  const divider = all(g, (v) => /group-frame-header-divider/.test(String(v.props?.className)))[0]!;
+  expect(Number(divider.props!['x1'])).toBeCloseTo(b.x + 30);
+});

@@ -4673,9 +4673,15 @@ export class SVGRenderer implements IRenderer {
     // stroke, and the border thinned to a notch beside every lane's title strip.
     const fillBox = laneRole && parent ? insetWithin(bounds, parent.getOuterBounds(), 0.75) : bounds;
 
+    // A SPLIT lane (it tiles sub-lanes) carries its title in a strip at its start,
+    // the way a pool does: turned on the left of a horizontal pool, a band on top
+    // of a vertical one, with a divider against its sub-lanes.
+    const splitLane = !collapsed && group.laneConfig?.role === 'lane' && (group.laneConfig.laneOrder?.length ?? 0) > 0;
     // Label band height: honour an authored header, else a readable default.
     const bandHeight = Math.min(
-      group.headerHeight > 0 ? group.headerHeight : 24,
+      splitLane && group.laneConfig?.orientation === 'vertical'
+        ? group.laneConfig.headerSize ?? 24
+        : group.headerHeight > 0 ? group.headerHeight : 24,
       bounds.height
     );
     const fontSize = this.theme.typography.fontSize.sm;
@@ -4740,7 +4746,7 @@ export class SVGRenderer implements IRenderer {
     // in the strip. Vertical pools and plain groups keep the top band.
     const lc = group.laneConfig;
     const sideStrip =
-      !collapsed && lc?.role === 'pool' && lc.orientation === 'horizontal'
+      !collapsed && (lc?.role === 'pool' || splitLane) && lc?.orientation === 'horizontal'
         ? Math.min(lc.headerSize ?? 0, bounds.width)
         : 0;
 
@@ -4750,7 +4756,7 @@ export class SVGRenderer implements IRenderer {
     // the strip melts into the first lane (live report: "destroyed more now",
     // caught on the full-page visitor view the seam close-ups missed).
     let poolHeaderDivider: VNode | null = null;
-    if (!collapsed && lc?.role === 'pool') {
+    if (!collapsed && lc && (lc.role === 'pool' || splitLane)) {
       const horizontal = lc.orientation === 'horizontal';
       const at = horizontal ? bounds.x + sideStrip : bounds.y + Math.min(lc.headerSize ?? bandHeight, bounds.height);
       poolHeaderDivider = {
@@ -4787,22 +4793,27 @@ export class SVGRenderer implements IRenderer {
       },
     };
 
+    // A FOLDED lane of a vertical pool is a thin column: its title turns to read
+    // down the band, centred, like a horizontal pool's title strip (flat, it ran
+    // from the column's corner across the lanes beside it).
+    const foldedColumn = collapsed && lc?.role === 'lane' && lc.orientation === 'vertical';
+    const turnedAt = sideStrip > 0 ? bounds.x + sideStrip / 2 : bounds.x + bounds.width / 2;
     const label: VNode =
-      sideStrip > 0
+      sideStrip > 0 || foldedColumn
         ? {
             type: 'text',
             key: `group-frame-label-${group.id}`,
             props: {
-              x: bounds.x + sideStrip / 2,
+              x: turnedAt,
               y: bounds.y + bounds.height / 2,
-              transform: `rotate(-90, ${bounds.x + sideStrip / 2}, ${bounds.y + bounds.height / 2})`,
+              transform: `rotate(-90, ${turnedAt}, ${bounds.y + bounds.height / 2})`,
               textAnchor: 'middle',
               dominantBaseline: 'central',
               fontSize,
               fontFamily: this.theme.typography.fontFamily.default,
               fontWeight: this.theme.typography.fontWeight.medium,
               fill: c.text.primary,
-              className: 'group-frame-label group-frame-label-pool',
+              className: sideStrip > 0 ? 'group-frame-label group-frame-label-pool' : 'group-frame-label group-frame-label-folded',
               textContent: group.name,
               'aria-hidden': 'true',
             },
