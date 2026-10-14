@@ -18,6 +18,7 @@ import type { DiagramModel } from '../models/DiagramModel';
 import type { GroupModel } from '../models/GroupModel';
 import type { NodeModel } from '../models/NodeModel';
 import { SwimlaneService, MIN_LANE_SIZE } from './SwimlaneService';
+import { lanesOfPool, bandsOf, hasSubLanes } from './confinement';
 import { LANE_TITLE_SIZE, MIN_POOL_SPAN } from './lane-gestures';
 
 export interface PoolLayoutOptions {
@@ -42,7 +43,8 @@ export function layoutPool(
   const cfg = pool.laneConfig;
   if (cfg?.role !== 'pool') return positions;
   const horizontal = cfg.orientation === 'horizontal';
-  const lanes = (cfg.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g): g is GroupModel => !!g);
+  // The LEAF lanes, in band order: steps live in them (a split lane holds sub-lanes; a folded lane is one band).
+  const lanes = lanesOfPool(diagram, pool);
   if (lanes.length === 0) return positions;
 
   const main = (n: NodeModel) => (horizontal ? n.size.width : n.size.height);
@@ -126,17 +128,35 @@ export function layoutPool(
     return Math.max(laneCross(lane), MIN_LANE_SIZE, tallest ? titleOf(lane) + 2 * pad + tallest : 0);
   });
 
-  // 4. The pool: its length fits the columns; its lanes, pinned at their sizes, tile in order.
+  // 4. The pool: its length fits the columns past the deepest title strip; every
+  //    lane, pinned at its size (a split lane: the sum of its sub-lanes), tiles in order.
   const header = cfg.headerSize ?? 0;
-  const length = Math.max(MIN_POOL_SPAN, pad + colSize.reduce((s, c) => s + c, 0) + rankGap * (ranks - 1) + pad) + header;
-  lanes.forEach((lane, i) => { lane.laneConfig = { ...lane.laneConfig!, fixedSize: sizes[i] }; });
+  const stripsBefore = (lane: GroupModel): number => {
+    let sum = 0;
+    for (let g = lane.parentGroupId ? diagram.getGroup(lane.parentGroupId) : undefined; g && g !== pool; g = g.parentGroupId ? diagram.getGroup(g.parentGroupId) : undefined) {
+      sum += g.laneConfig?.headerSize ?? 0;
+    }
+    return sum;
+  };
+  const indent = Math.max(...lanes.map(stripsBefore));
+  const length = Math.max(MIN_POOL_SPAN, pad + colSize.reduce((s, c) => s + c, 0) + rankGap * (ranks - 1) + pad) + header + indent;
+  const leafSize = new Map(lanes.map((lane, i) => [lane.id, sizes[i]!]));
+  const sizeOf = (lane: GroupModel, depth = 0): number =>
+    leafSize.get(lane.id) ?? (depth > 32 ? 0 : bandsOf(diagram, lane).reduce((sum, l) => sum + sizeOf(l, depth + 1), 0));
+  const pin = (g: GroupModel, depth = 0) => {
+    for (const lane of bandsOf(diagram, g)) {
+      lane.laneConfig = { ...lane.laneConfig!, fixedSize: sizeOf(lane) };
+      if (hasSubLanes(lane) && !lane.isCollapsed && depth < 32) pin(lane, depth + 1);
+    }
+  };
+  pin(pool);
   const p = pool.getOuterBounds();
-  const total = sizes.reduce((s, v) => s + v, 0);
+  const total = bandsOf(diagram, pool).reduce((sum, l) => sum + sizeOf(l), 0);
   pool.setFrame(horizontal ? { ...p, width: length, height: total } : { ...p, width: total, height: length });
   svc.reflow(pool);
 
   const colStart: number[] = [];
-  let at = (horizontal ? p.x : p.y) + header + pad;
+  let at = (horizontal ? p.x : p.y) + header + indent + pad;
   for (let r = 0; r < ranks; r++) {
     colStart.push(at);
     at += colSize[r]! + rankGap;

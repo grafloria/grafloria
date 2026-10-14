@@ -22,18 +22,46 @@ export function containingGroup(diagram: DiagramModel, nodeId: string): GroupMod
   return undefined;
 }
 
-/** The pool a lane belongs to (its parent group with the pool role). */
+/** The pool a lane belongs to — through any lanes it is a sub-lane of. */
 export function poolOfLane(diagram: DiagramModel, lane: GroupModel): GroupModel | undefined {
-  if (lane.laneConfig?.role !== 'lane' || !lane.parentGroupId) return undefined;
-  const pool = diagram.getGroup(lane.parentGroupId);
-  return pool?.laneConfig?.role === 'pool' ? pool : undefined;
+  if (lane.laneConfig?.role !== 'lane') return undefined;
+  const seen = new Set<string>();
+  for (let cur: GroupModel = lane; cur.parentGroupId && !seen.has(cur.id); ) {
+    seen.add(cur.id);
+    const parent = diagram.getGroup(cur.parentGroupId);
+    if (parent?.laneConfig?.role === 'pool') return parent;
+    if (parent?.laneConfig?.role !== 'lane') return undefined;
+    cur = parent;
+  }
+  return undefined;
 }
 
-/** A pool's lanes in band order. */
-export function lanesOfPool(diagram: DiagramModel, pool: GroupModel): GroupModel[] {
-  return (pool.laneConfig?.laneOrder ?? [])
+/** A lane split into SUB-LANES: it tiles lanes of its own (after its title strip) and holds no steps. */
+export function hasSubLanes(lane: GroupModel): boolean {
+  return lane.laneConfig?.role === 'lane' && (lane.laneConfig.laneOrder?.length ?? 0) > 0;
+}
+
+/** The bands a pool or a split lane tiles, in order. */
+export function bandsOf(diagram: DiagramModel, container: GroupModel): GroupModel[] {
+  return (container.laneConfig?.laneOrder ?? [])
     .map((id) => diagram.getGroup(id))
     .filter((g): g is GroupModel => !!g);
+}
+
+/**
+ * A pool's LEAF lanes — the ones that hold steps — in band order, through any
+ * sub-lanes. A folded lane is one band, whatever it holds.
+ */
+export function lanesOfPool(diagram: DiagramModel, pool: GroupModel): GroupModel[] {
+  const out: GroupModel[] = [];
+  const walk = (g: GroupModel, depth: number) => {
+    for (const lane of bandsOf(diagram, g)) {
+      if (hasSubLanes(lane) && !lane.isCollapsed && depth < 32) walk(lane, depth + 1);
+      else out.push(lane);
+    }
+  };
+  walk(pool, 0);
+  return out;
 }
 
 /** The lane whose band contains `point`, or undefined outside every lane. */

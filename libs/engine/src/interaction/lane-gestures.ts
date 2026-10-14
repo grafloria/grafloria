@@ -19,6 +19,7 @@
 import type { DiagramModel } from '../models/DiagramModel';
 import type { GroupModel } from '../models/GroupModel';
 import { SwimlaneService, PoolEditCommand, MIN_LANE_SIZE, type PoolSnapshot } from './SwimlaneService';
+import { lanesOfPool, bandsOf, hasSubLanes } from './confinement';
 
 /** A lane's title band thickness when it declares no header (matches the renderer's label band). */
 export const LANE_TITLE_SIZE = 24;
@@ -30,8 +31,9 @@ export type LaneHandle =
   | { kind: 'pool-edge'; pool: GroupModel; horizontal: boolean }
   | { kind: 'title'; pool: GroupModel; lane: GroupModel; horizontal: boolean };
 
-const lanesOf = (diagram: DiagramModel, pool: GroupModel): GroupModel[] =>
-  (pool.laneConfig?.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g): g is GroupModel => !!g);
+/** Every split lane of a pool, at any depth (their title strips carry them). */
+const splitLanesOf = (diagram: DiagramModel, g: GroupModel, depth = 0): GroupModel[] =>
+  depth > 32 ? [] : bandsOf(diagram, g).filter((l) => hasSubLanes(l) && !l.isCollapsed).flatMap((l) => [l, ...splitLanesOf(diagram, l, depth + 1)]);
 
 /**
  * The lane handle under (`x`, `y`) — world coordinates — or null. `tolerance` is
@@ -46,7 +48,7 @@ export function laneHandleAt(diagram: DiagramModel, x: number, y: number, tolera
     const pb = pool.getOuterBounds();
     const inPool = x >= pb.x - tolerance && x <= pb.x + pb.width + tolerance && y >= pb.y - tolerance && y <= pb.y + pb.height + tolerance;
     if (!inPool) continue;
-    const lanes = lanesOf(diagram, pool);
+    const lanes = lanesOfPool(diagram, pool); // the leaves: a split lane's border is its last sub-lane's
     const cross = horizontal ? y : x;
     const main = horizontal ? x : y;
     for (const lane of lanes) {
@@ -64,6 +66,15 @@ export function laneHandleAt(diagram: DiagramModel, x: number, y: number, tolera
       const b = lane.getOuterBounds();
       const band = lane.headerHeight > 0 ? lane.headerHeight : LANE_TITLE_SIZE;
       if (x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + Math.min(band, b.height)) return { kind: 'title', pool, lane, horizontal };
+    }
+    // A split lane's title strip (at its start, before its sub-lanes) carries the whole lane.
+    for (const lane of splitLanesOf(diagram, pool)) {
+      const b = lane.getOuterBounds();
+      const strip = lane.laneConfig?.headerSize ?? 0;
+      const inStrip = horizontal
+        ? x >= b.x && x <= b.x + strip && y >= b.y && y <= b.y + b.height
+        : y >= b.y && y <= b.y + strip && x >= b.x && x <= b.x + b.width;
+      if (strip > 0 && inStrip) return { kind: 'title', pool, lane, horizontal };
     }
   }
   return null;
@@ -88,6 +99,7 @@ export class LaneGesture {
   private readonly grab: number;
   private readonly others: Array<{ id: string; size: number }>;
   private readonly laneSize: number;
+  private container: GroupModel | undefined;
   private moved = false;
 
   constructor(private readonly diagram: DiagramModel, readonly handle: LaneHandle, x: number, y: number) {
@@ -103,7 +115,9 @@ export class LaneGesture {
       const b = handle.lane.getOuterBounds();
       this.grab = (h ? y - b.y : x - b.x);
       this.laneSize = crossOf(handle.lane);
-      this.others = lanesOf(diagram, handle.pool).filter((l) => l !== handle.lane).map((l) => ({ id: l.id, size: crossOf(l) }));
+      // A lane moves among its SIBLINGS: the pool's lanes, or its split lane's sub-lanes.
+      this.container = diagram.getGroup(handle.lane.parentGroupId ?? '') ?? handle.pool;
+      this.others = bandsOf(diagram, this.container).filter((l) => l !== handle.lane).map((l) => ({ id: l.id, size: crossOf(l) }));
     } else {
       this.grab = 0;
       this.laneSize = 0;
@@ -135,7 +149,8 @@ export class LaneGesture {
     // 'title': the slot the carried lane's middle is over, among the OTHER lanes
     // as they were when the gesture began — never the live layout, which the
     // move itself changes (a lane of a different size would flip back and forth).
-    const origin = h ? this.startPool.y : this.startPool.x;
+    const c = (this.container ?? handle.pool).getOuterBounds();
+    const origin = h ? c.y : c.x;
     const middle = (h ? y : x) - this.grab + this.laneSize / 2;
     let at = origin;
     let index = 0;
@@ -143,7 +158,7 @@ export class LaneGesture {
       if (middle > at + o.size / 2) index++;
       at += o.size;
     }
-    const order = handle.pool.laneConfig?.laneOrder ?? [];
+    const order = (this.container ?? handle.pool).laneConfig?.laneOrder ?? [];
     if (order.indexOf(handle.lane.id) === index) return false;
     this.svc.moveLane(handle.pool, handle.lane.id, index);
     return (this.moved = true);
