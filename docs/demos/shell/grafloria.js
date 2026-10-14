@@ -114736,6 +114736,7 @@ var SwimlaneService = class {
     pool.laneConfig.laneOrder = order;
     this.touch(pool);
     this.reflow(pool);
+    this.makeRoom(pool, lane, spec);
     return lane;
   }
   /**
@@ -114841,6 +114842,7 @@ var SwimlaneService = class {
       parent.laneConfig = { ...parent.laneConfig, laneOrder: order };
       this.touch(parent);
       this.reflow(pool);
+      this.makeRoom(pool, lane, spec);
       return lane;
     });
   }
@@ -114854,23 +114856,40 @@ var SwimlaneService = class {
     this.assertPool(pool);
     const lane = this.diagram.getGroup(laneId);
     if (!lane?.laneConfig || poolOfLane(this.diagram, lane) !== pool) return;
-    this.editPool(pool, "Resize lane", () => {
-      const horizontal = pool.laneConfig.orientation === "horizontal";
-      const cross3 = (g) => horizontal ? g.getOuterBounds().height : g.getOuterBounds().width;
-      for (const l of this.allLanes(pool)) {
-        l.laneConfig = { ...l.laneConfig, fixedSize: cross3(l) };
-        this.touch(l);
-      }
-      let leaf = lane;
-      while (hasSubLanes(leaf) && !leaf.isCollapsed) leaf = bandsOf(this.diagram, leaf).slice(-1)[0];
-      const delta = Math.max(MIN_LANE_SIZE, cross3(leaf) + Math.max(MIN_LANE_SIZE, size) - cross3(lane)) - cross3(leaf);
-      for (let g = leaf; g && g !== pool; g = this.containerOf(g)) {
-        g.laneConfig = { ...g.laneConfig, fixedSize: cross3(g) + delta };
-      }
-      const b = pool.getOuterBounds();
-      pool.setFrame(horizontal ? { ...b, height: b.height + delta } : { ...b, width: b.width + delta });
-      this.reflow(pool);
-    });
+    this.editPool(pool, "Resize lane", () => this.sizeLaneNow(pool, lane, size));
+  }
+  /** {@link setLaneSize}'s work, without a history step of its own (for edits that make one). */
+  sizeLaneNow(pool, lane, size) {
+    const horizontal = pool.laneConfig.orientation === "horizontal";
+    const cross3 = (g) => horizontal ? g.getOuterBounds().height : g.getOuterBounds().width;
+    for (const l of this.allLanes(pool)) {
+      l.laneConfig = { ...l.laneConfig, fixedSize: cross3(l) };
+      this.touch(l);
+    }
+    let leaf = lane;
+    while (hasSubLanes(leaf) && !leaf.isCollapsed) leaf = bandsOf(this.diagram, leaf).slice(-1)[0];
+    const delta = Math.max(MIN_LANE_SIZE, cross3(leaf) + Math.max(MIN_LANE_SIZE, size) - cross3(lane)) - cross3(leaf);
+    for (let g = leaf; g && g !== pool; g = this.containerOf(g)) {
+      g.laneConfig = { ...g.laneConfig, fixedSize: cross3(g) + delta };
+    }
+    const b = pool.getOuterBounds();
+    pool.setFrame(horizontal ? { ...b, height: b.height + delta } : { ...b, width: b.width + delta });
+    this.reflow(pool);
+  }
+  /**
+   * A lane just added where its siblings, all pinned, leave no room (after a
+   * layout or a hand resize) came out 0px wide — invisible until the next
+   * layout (live report). It takes its declared size, else the average of its
+   * siblings, and the pool (and any lane it is a sub-lane of) grows by it.
+   */
+  makeRoom(pool, lane, spec) {
+    const horizontal = pool.laneConfig.orientation === "horizontal";
+    const cross3 = (g) => horizontal ? g.getOuterBounds().height : g.getOuterBounds().width;
+    if (cross3(lane) >= MIN_LANE_SIZE) return;
+    const container = this.containerOf(lane);
+    const siblings = container ? bandsOf(this.diagram, container).filter((l) => l !== lane && !l.isCollapsed) : [];
+    const typical = siblings.length ? Math.round(siblings.reduce((sum3, l) => sum3 + cross3(l), 0) / siblings.length) : 160;
+    this.sizeLaneNow(pool, lane, spec.fixedSize ?? typical);
   }
   /**
    * Resize a lane along the cross axis by pinning its band (fixedSize) and
