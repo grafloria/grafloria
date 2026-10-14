@@ -242,6 +242,18 @@ describe('swimlanes under a real hand', () => {
     expect(h.engine.commandManager.canUndo()).toBe(false);
   });
 
+  it('a CLICK on a lane (or a lane handle) clears the selection, like a click on empty canvas', async () => {
+    h = harness();
+    pool(h);
+    for (const at of [{ x: 600, y: 300 }, { x: 600, y: 181 }, { x: 600, y: 190 }]) { // a lane's body, its border, its title
+      h.model.getNode('t')!.setSelected(true);
+      h.container.dispatchEvent(mouse('mousedown', at.x, at.y));
+      h.container.dispatchEvent(mouse('mouseup', at.x, at.y));
+      await flush();
+      expect(h.model.getSelectedNodes().length).toBe(0);
+    }
+  });
+
   it('a member of a plain confining group cannot be dragged out of it', async () => {
     h = harness();
     applyNodes(h.model, [{ id: 'n', position: { x: 420, y: 220 }, size: { width: 80, height: 40 } }]);
