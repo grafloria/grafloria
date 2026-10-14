@@ -114448,11 +114448,447 @@ var RemoveFromGroupCommand = class extends Command {
   }
 };
 
+// libs/engine/src/interaction/SwimlaneService.ts
+var MIN_LANE_SIZE = 40;
+var PoolEditCommand = class extends Command {
+  constructor(name, before, after) {
+    super(name);
+    this.before = before;
+    this.after = after;
+  }
+  execute(context) {
+    restorePoolSnapshot(context.diagram, this.after, this.before);
+  }
+  undo(context) {
+    restorePoolSnapshot(context.diagram, this.before, this.after);
+  }
+  canExecute(context) {
+    return !!context.diagram;
+  }
+  canUndo(context) {
+    return !!context.diagram;
+  }
+  serialize() {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { before: this.before, after: this.after } };
+  }
+  getDescription() {
+    return this.name;
+  }
+};
+function restorePoolSnapshot(diagram, target, other) {
+  const gone = (a, b) => {
+    const keep = new Set(a.map((e) => e.id));
+    return b.map((e) => e.id).filter((id) => !keep.has(id));
+  };
+  diagram.applyIncremental({
+    format: INCREMENTAL_FORMAT,
+    schemaVersion: DIAGRAM_SCHEMA_VERSION,
+    baseVersion: diagram.version,
+    targetVersion: void 0,
+    // keep this diagram's own counter
+    added: { nodes: [], links: [], groups: [] },
+    removed: { nodes: gone(target.nodes, other.nodes), links: gone(target.links, other.links), groups: gone(target.groups, other.groups) },
+    modified: { nodes: target.nodes, links: target.links, groups: target.groups }
+  });
+}
+var SwimlaneService = class {
+  constructor(diagram, options = {}) {
+    this.diagram = diagram;
+    this.dispatcher = options.dispatcher;
+  }
+  /** Serialize everything an edit of `pool` can touch (see {@link PoolSnapshot}). */
+  snapshot(pool) {
+    const lanes = [...pool.members].map((id) => this.diagram.getGroup(id)).filter((g) => !!g);
+    const nodeIds = /* @__PURE__ */ new Set();
+    for (const lane of lanes) {
+      for (const id of lane.members) if (this.diagram.getNode(id)) nodeIds.add(id);
+      const proxy = lane.collapsedState?.proxyNodeId;
+      if (proxy && this.diagram.getNode(proxy)) nodeIds.add(proxy);
+    }
+    const links = /* @__PURE__ */ new Map();
+    for (const id of nodeIds) for (const link of this.diagram.getLinksForNode(id)) links.set(link.id, link.serialize());
+    return JSON.parse(JSON.stringify({
+      poolId: pool.id,
+      groups: [pool, ...lanes].map((g) => g.serialize()),
+      nodes: [...nodeIds].map((id) => this.diagram.getNode(id).serialize()),
+      links: [...links.values()]
+    }));
+  }
+  /**
+   * Run `edit` on `pool` — any change to the pool, its lanes or their steps (a
+   * host's own edit, `layoutPool`) — and, with a dispatcher, record it as ONE
+   * undo step named `name`.
+   */
+  editPool(pool, name, edit) {
+    if (!this.dispatcher) return edit();
+    const before = this.snapshot(pool);
+    const result = edit();
+    void this.dispatcher.execute(new PoolEditCommand(name, before, this.snapshot(pool)));
+    return result;
+  }
+  /** Create a pool group with N lane bands and tile them. */
+  createPool(options) {
+    const pool = new GroupModel({ id: options.id, name: options.name });
+    pool.laneConfig = {
+      role: "pool",
+      orientation: options.orientation,
+      laneOrder: [],
+      headerSize: options.headerSize ?? 0
+    };
+    pool.setFrame(options.bounds);
+    this.diagram.addGroup(pool);
+    const lanes = [];
+    for (const spec of options.lanes) {
+      const lane = this.buildLane(pool, spec, options.laneHeaderSize ?? 0);
+      lanes.push(lane);
+    }
+    pool.laneConfig.laneOrder = lanes.map((l) => l.id);
+    this.reflow(pool);
+    return { pool, lanes };
+  }
+  /** Add a lane to a pool (optionally at an index) and re-tile. */
+  addLane(pool, spec, atIndex) {
+    this.assertPool(pool);
+    return this.editPool(pool, "Add lane", () => this.addLaneNow(pool, spec, atIndex));
+  }
+  addLaneNow(pool, spec, atIndex) {
+    const lane = this.buildLane(pool, spec, this.firstLaneHeader(pool));
+    const order = pool.laneConfig.laneOrder ?? [];
+    if (atIndex === void 0 || atIndex >= order.length) {
+      order.push(lane.id);
+    } else {
+      order.splice(Math.max(0, atIndex), 0, lane.id);
+    }
+    pool.laneConfig.laneOrder = order;
+    this.touch(pool);
+    this.reflow(pool);
+    return lane;
+  }
+  /**
+   * Remove a lane and re-tile the survivors. Its steps are not deleted with it:
+   * they move to the lane before it (the next one, for the first lane). A folded
+   * lane is unfolded first. A pool keeps at least one lane.
+   */
+  removeLane(pool, laneId) {
+    this.assertPool(pool);
+    const order = pool.laneConfig.laneOrder ?? [];
+    const at = order.indexOf(laneId);
+    const lane = this.diagram.getGroup(laneId);
+    if (at < 0 || !lane || order.length <= 1) return;
+    this.editPool(pool, "Remove lane", () => {
+      if (lane.isCollapsed) new GroupCollapseService(this.diagram).expand(lane);
+      const heir = this.diagram.getGroup(order[at > 0 ? at - 1 : at + 1]);
+      const steps = [...lane.members].filter((id) => this.diagram.getNode(id));
+      for (const id of steps) {
+        lane.removeMember(id, this.diagram);
+        heir.addMember(id, this.diagram);
+      }
+      pool.laneConfig.laneOrder = order.filter((id) => id !== laneId);
+      pool.removeMember(laneId, this.diagram);
+      this.diagram.removeGroup(laneId);
+      this.touch(pool);
+      this.reflow(pool);
+      for (const id of steps) heir.clampChildToExtent(id, this.diagram);
+    });
+  }
+  /** Move a lane to `toIndex` in its pool's band order; every lane takes its steps along. */
+  moveLane(pool, laneId, toIndex) {
+    this.assertPool(pool);
+    const order = [...pool.laneConfig.laneOrder ?? []];
+    const from = order.indexOf(laneId);
+    const to = Math.max(0, Math.min(order.length - 1, Math.round(toIndex)));
+    if (from < 0 || from === to) return;
+    this.editPool(pool, "Move lane", () => {
+      order.splice(from, 1);
+      order.splice(to, 0, laneId);
+      pool.laneConfig.laneOrder = order;
+      this.touch(pool);
+      this.reflow(pool);
+    });
+  }
+  /**
+   * Size one lane the way a hand drags its border: the lane takes `size`, the
+   * pool grows or shrinks by the difference, and every other lane keeps its
+   * size (each is pinned where it is). Never below {@link MIN_LANE_SIZE}.
+   */
+  setLaneSize(pool, laneId, size) {
+    this.assertPool(pool);
+    const lane = this.diagram.getGroup(laneId);
+    if (!lane?.laneConfig || !this.getLanes(pool).includes(lane)) return;
+    this.editPool(pool, "Resize lane", () => {
+      const horizontal = pool.laneConfig.orientation === "horizontal";
+      const cross3 = (g) => horizontal ? g.getOuterBounds().height : g.getOuterBounds().width;
+      const next = Math.max(MIN_LANE_SIZE, size);
+      const delta = next - cross3(lane);
+      for (const l of this.getLanes(pool)) {
+        l.laneConfig = { ...l.laneConfig, fixedSize: l === lane ? next : cross3(l) };
+        this.touch(l);
+      }
+      const b = pool.getOuterBounds();
+      pool.setFrame(horizontal ? { ...b, height: b.height + delta } : { ...b, width: b.width + delta });
+      this.reflow(pool);
+    });
+  }
+  /**
+   * Resize a lane along the cross axis by pinning its band (fixedSize) and
+   * re-laying out the pool so siblings absorb the remaining space.
+   */
+  resizeLane(pool, laneId, crossSize2) {
+    this.assertPool(pool);
+    const lane = this.diagram.getGroup(laneId);
+    if (!lane || !lane.laneConfig) return;
+    this.editPool(pool, "Resize lane", () => {
+      lane.laneConfig = { ...lane.laneConfig, fixedSize: Math.max(0, crossSize2) };
+      this.touch(lane);
+      this.reflow(pool);
+    });
+  }
+  /** Resize the whole pool and re-tile its lanes to the new frame. */
+  resizePool(pool, bounds) {
+    this.assertPool(pool);
+    this.editPool(pool, "Resize pool", () => {
+      pool.setFrame(bounds);
+      this.reflow(pool);
+    });
+  }
+  /** Lanes of a pool in band order. */
+  getLanes(pool) {
+    this.assertPool(pool);
+    return (pool.laneConfig.laneOrder ?? []).map((id) => this.diagram.getGroup(id)).filter((g) => !!g);
+  }
+  /** Is this group a pool? */
+  isPool(group) {
+    return group.laneConfig?.role === "pool";
+  }
+  /** Is this group a lane? */
+  isLane(group) {
+    return group.laneConfig?.role === "lane";
+  }
+  /**
+   * Re-tile a pool's lanes into bands. fixedSize lanes take their pixel size;
+   * the rest split the remaining cross-axis space by weight. Each lane frame is
+   * set (drop-in hit-testing + drag constraints follow automatically).
+   */
+  reflow(pool) {
+    this.assertPool(pool);
+    const cfg = pool.laneConfig;
+    const lanes = this.getLanes(pool);
+    if (lanes.length === 0) return;
+    const rect = pool.getOuterBounds();
+    const header = cfg.headerSize ?? 0;
+    const horizontal = cfg.orientation === "horizontal";
+    const crossTotal = horizontal ? rect.height : rect.width;
+    const mainStart = horizontal ? rect.x + header : rect.y + header;
+    const mainSpan = (horizontal ? rect.width : rect.height) - header;
+    const fixed = lanes.reduce((s, l) => s + (l.laneConfig?.fixedSize ?? 0), 0);
+    const flexible = lanes.filter((l) => l.laneConfig?.fixedSize === void 0);
+    const absorber = flexible.length === 0 ? [...lanes].reverse().find((l) => !l.isCollapsed) : void 0;
+    const spare = crossTotal - fixed;
+    const totalWeight = flexible.reduce((s, l) => s + (l.laneConfig?.weight ?? 1), 0) || 1;
+    const flexSpace = Math.max(0, crossTotal - fixed);
+    let cross3 = horizontal ? rect.y : rect.x;
+    for (const lane of lanes) {
+      const lc = lane.laneConfig;
+      const size = lane === absorber ? Math.max(MIN_LANE_SIZE, lc.fixedSize + spare) : lc.fixedSize !== void 0 ? lc.fixedSize : flexSpace * (lc.weight ?? 1) / totalWeight;
+      const frame = horizontal ? { x: mainStart, y: cross3, width: mainSpan, height: size } : { x: cross3, y: mainStart, width: size, height: mainSpan };
+      const previous = lane.getOuterBounds();
+      lane.setFrame(frame);
+      lane.constrainChildren = true;
+      this.carryMembers(lane, previous, frame);
+      const proxyId = lane.collapsedState?.proxyNodeId;
+      const proxy = proxyId ? this.diagram.getNode(proxyId) : void 0;
+      if (proxy) {
+        proxy.setPosition(frame.x, frame.y);
+        proxy.setSize(frame.width, frame.height);
+      }
+      lane.laneConfig = { ...lc, orientation: cfg.orientation };
+      cross3 += size;
+    }
+  }
+  /** Move a lane's member nodes from its previous band to `next`, then clamp them in. */
+  carryMembers(lane, previous, next) {
+    const hadBand = previous.width > 0 && previous.height > 0;
+    const dx = hadBand ? next.x - previous.x : 0;
+    const dy = hadBand ? next.y - previous.y : 0;
+    for (const id of lane.members) {
+      const node = this.diagram.getNode(id);
+      if (!node) continue;
+      if (dx !== 0 || dy !== 0) node.setPosition(node.position.x + dx, node.position.y + dy);
+      lane.clampChildToExtent(id, this.diagram);
+    }
+  }
+  buildLane(pool, spec, laneHeader) {
+    const lane = new GroupModel({ id: spec.id, name: spec.name });
+    lane.laneConfig = {
+      role: "lane",
+      orientation: pool.laneConfig.orientation,
+      weight: spec.weight,
+      fixedSize: spec.fixedSize
+    };
+    lane.headerHeight = laneHeader;
+    lane.constrainChildren = true;
+    this.diagram.addGroup(lane);
+    pool.addMember(lane.id, this.diagram);
+    return lane;
+  }
+  firstLaneHeader(pool) {
+    const first = this.getLanes(pool)[0];
+    return first?.headerHeight ?? 0;
+  }
+  assertPool(group) {
+    if (group.laneConfig?.role !== "pool") {
+      throw new Error(`Group ${group.id} is not a pool`);
+    }
+  }
+  /** Mark a group changed so the diff-capture serializes laneConfig edits. */
+  touch(group) {
+    group.setMetadata("__laneRev", (group.getMetadata("__laneRev") ?? 0) + 1);
+  }
+};
+
+// libs/engine/src/interaction/confinement.ts
+function containingGroup(diagram, nodeId) {
+  for (const group of diagram.getGroups()) {
+    if (group.members.has(nodeId)) return group;
+  }
+  return void 0;
+}
+function poolOfLane(diagram, lane) {
+  if (lane.laneConfig?.role !== "lane" || !lane.parentGroupId) return void 0;
+  const pool = diagram.getGroup(lane.parentGroupId);
+  return pool?.laneConfig?.role === "pool" ? pool : void 0;
+}
+function lanesOfPool(diagram, pool) {
+  return (pool.laneConfig?.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g) => !!g);
+}
+function laneAtPoint(diagram, pool, point) {
+  for (const lane of lanesOfPool(diagram, pool)) {
+    const r = lane.getOuterBounds();
+    if (point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height) {
+      return lane;
+    }
+  }
+  return void 0;
+}
+function areSiblingLanes(diagram, from, to) {
+  if (!to || from === to) return false;
+  const pool = poolOfLane(diagram, from);
+  return !!pool && poolOfLane(diagram, to) === pool;
+}
+function memberConfinement(diagram, nodeId) {
+  const group = containingGroup(diagram, nodeId);
+  if (!group || group.constrainChildren !== true) return null;
+  const pool = poolOfLane(diagram, group);
+  if (pool) {
+    const lanes = lanesOfPool(diagram, pool);
+    if (lanes.length > 0) {
+      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      for (const lane of lanes) {
+        const r = lane.getInnerBounds();
+        left = Math.min(left, r.x);
+        top = Math.min(top, r.y);
+        right = Math.max(right, r.x + r.width);
+        bottom = Math.max(bottom, r.y + r.height);
+      }
+      return { x: left, y: top, width: right - left, height: bottom - top };
+    }
+  }
+  return group.getInnerBounds();
+}
+function clampBoxInto(rect, x, y, width, height) {
+  const maxX = Math.max(rect.x, rect.x + rect.width - width);
+  const maxY = Math.max(rect.y, rect.y + rect.height - height);
+  return {
+    x: Math.min(Math.max(x, rect.x), maxX),
+    y: Math.min(Math.max(y, rect.y), maxY)
+  };
+}
+function settleLaneDrop(diagram, drops) {
+  const joining = /* @__PURE__ */ new Map();
+  for (const { id, from } of drops) {
+    const node = diagram.getNode(id);
+    if (!node || node.state?.locked) continue;
+    const group = containingGroup(diagram, id);
+    const pool = group ? poolOfLane(diagram, group) : void 0;
+    if (!group || !pool) continue;
+    const lane = laneAtPoint(diagram, pool, {
+      x: node.position.x + node.size.width / 2,
+      y: node.position.y + node.size.height / 2
+    });
+    if (!lane) continue;
+    if (lane !== group) {
+      if (lane.isCollapsed) {
+        node.setPosition(from.x, from.y);
+        continue;
+      }
+      const already = joining.get(lane.id) ?? 0;
+      const full = lane.capacity !== void 0 && lane.members.size + already >= lane.capacity;
+      if (full || !lane.canAddMember(id, diagram)) {
+        node.setPosition(from.x, from.y);
+        continue;
+      }
+      joining.set(lane.id, already + 1);
+    }
+    const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
+    if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
+  }
+}
+function groupDragContents(diagram, group) {
+  const nodeIds = /* @__PURE__ */ new Set();
+  const groupIds = /* @__PURE__ */ new Set();
+  const stack = [group];
+  while (stack.length) {
+    const g = stack.pop();
+    if (groupIds.has(g.id)) continue;
+    groupIds.add(g.id);
+    const proxyId = g.collapsedState?.proxyNodeId;
+    if (proxyId && diagram.getNode(proxyId)) nodeIds.add(proxyId);
+    for (const memberId of g.members) {
+      if (diagram.getNode(memberId)) {
+        nodeIds.add(memberId);
+        continue;
+      }
+      const child = diagram.getGroup(memberId);
+      if (child && !groupIds.has(child.id)) stack.push(child);
+    }
+  }
+  return { nodeIds: [...nodeIds], groupIds: [...groupIds] };
+}
+
+// libs/engine/src/ports/side-anchor.ts
+function parseSideAnchor(handle) {
+  const m = /^(top|right|bottom|left)@(-?\d+(?:\.\d+)?)(%|px)?$/.exec(handle.trim());
+  if (!m) return null;
+  const v = Number(m[2]);
+  return { side: m[1], at: m[3] === "%" ? { pct: v } : { px: v } };
+}
+function sideAnchorPortId(nodeId, handle) {
+  return `${nodeId}__${handle.trim()}`;
+}
+function isSideAnchorPort(portId) {
+  return !!portId && /__(top|right|bottom|left)@-?\d/.test(portId);
+}
+function ensureSideAnchorPort(node, handle) {
+  const anchor = parseSideAnchor(handle);
+  if (!anchor) return null;
+  const id = sideAnchorPortId(node.id, handle);
+  if (node.getPort(id)) return id;
+  const { side, at } = anchor;
+  const along = side === "left" || side === "right" ? node.size.height : node.size.width;
+  const f = at.pct !== void 0 ? at.pct / 100 : along > 0 ? (at.px ?? 0) / along : 0.5;
+  const t = Math.max(0, Math.min(1, f));
+  const xy = side === "left" ? { x: 0, y: t } : side === "right" ? { x: 1, y: t } : side === "top" ? { x: t, y: 0 } : { x: t, y: 1 };
+  node.addPort(new PortModel({ id, type: "bi", side, index: 0, visible: false, layout: { strategy: "absolute", args: { ...xy, units: "fraction" } } }));
+  return id;
+}
+
 // libs/engine/src/interaction/GroupCollapseService.ts
 var PROXY_NODE_GROUP_KEY = "__collapsedGroupId";
 var PROXY_LINK_GROUP_KEY = "__proxyForGroup";
 var PLACEHOLDER_WIDTH = 180;
 var PLACEHOLDER_HEIGHT = 44;
+var COLLAPSED_LANE_SIZE = 44;
+var LANE_BAND_KEY = "__laneBand";
 var GroupCollapseService = class {
   constructor(diagram) {
     this.diagram = diagram;
@@ -114468,7 +114904,8 @@ var GroupCollapseService = class {
       return;
     }
     const memberNodeIds = this.collectMemberNodeIds(group);
-    if (memberNodeIds.size === 0) {
+    const pool = poolOfLane(this.diagram, group);
+    if (memberNodeIds.size === 0 && !pool) {
       group.collapse();
       this.setCollapsedState(group, {
         proxyNodeId: "",
@@ -114492,20 +114929,27 @@ var GroupCollapseService = class {
       }
     }
     const frame = group.getOuterBounds();
+    const horizontal = pool?.laneConfig?.orientation !== "vertical";
+    const placeholderSize = !pool ? { width: PLACEHOLDER_WIDTH, height: PLACEHOLDER_HEIGHT } : horizontal ? { width: frame.width, height: COLLAPSED_LANE_SIZE } : { width: COLLAPSED_LANE_SIZE, height: frame.height };
     const placeholder = new NodeModel({
       type: "group-collapsed",
       position: { x: frame.x, y: frame.y },
-      size: { width: PLACEHOLDER_WIDTH, height: PLACEHOLDER_HEIGHT }
+      size: placeholderSize
     });
     placeholder.setMetadata(PROXY_NODE_GROUP_KEY, group.id);
     placeholder.setMetadata("__isGroupProxy", true);
-    placeholder.setData("label", group.name);
+    if (pool) {
+      placeholder.setMetadata(LANE_BAND_KEY, true);
+      placeholder.setStyle({ fill: "none", stroke: "none" });
+    }
+    if (!pool) placeholder.setData("label", group.name);
     this.diagram.addNode(placeholder);
     const { removedLinks, proxyLinks } = this.rehomeIncidentLinks(
       group,
       memberNodeIds,
       placeholder,
-      options
+      options,
+      pool ? horizontal ? "horizontal" : "vertical" : void 0
     );
     const hiddenNodes = [];
     for (const id of memberNodeIds) {
@@ -114516,20 +114960,30 @@ var GroupCollapseService = class {
       }
     }
     group.collapse();
-    group.setFrame({
-      x: frame.x,
-      y: frame.y,
-      width: PLACEHOLDER_WIDTH,
-      height: PLACEHOLDER_HEIGHT
-    });
+    let lane;
+    if (pool && group.laneConfig) {
+      const crossSize2 = horizontal ? frame.height : frame.width;
+      lane = { poolId: pool.id, crossSize: crossSize2, prevFixedSize: group.laneConfig.fixedSize, origin: { x: frame.x, y: frame.y } };
+      group.laneConfig = { ...group.laneConfig, fixedSize: COLLAPSED_LANE_SIZE };
+      this.growPool(pool, horizontal, COLLAPSED_LANE_SIZE - crossSize2);
+    } else {
+      group.setFrame({
+        x: frame.x,
+        y: frame.y,
+        width: PLACEHOLDER_WIDTH,
+        height: PLACEHOLDER_HEIGHT
+      });
+    }
     this.setCollapsedState(group, {
       proxyNodeId: placeholder.id,
       savedGeometry,
       savedPositions,
       hiddenNodes,
       removedLinks,
-      proxyLinks
+      proxyLinks,
+      ...lane ? { lane } : {}
     });
+    if (pool) new SwimlaneService(this.diagram).reflow(pool);
     this.diagram.reconcilePortConnections();
   }
   /**
@@ -114559,6 +115013,15 @@ var GroupCollapseService = class {
       }
       link.deleteMetadata(PROXY_LINK_GROUP_KEY);
       link.deleteMetadata("__proxyAggregateCount");
+      if (entry.otherPortId !== void 0) {
+        const otherNodeId = this.diagram.getNodeByPortId(entry.otherPortId)?.id;
+        if (entry.end === "source") link.setTargetPort(entry.otherPortId, otherNodeId);
+        else link.setSourcePort(entry.otherPortId, otherNodeId);
+      }
+      if (entry.prevConnectionPoint !== void 0) {
+        if (entry.prevConnectionPoint === null) link.deleteMetadata("connectionPoint");
+        else link.setMetadata("connectionPoint", entry.prevConnectionPoint);
+      }
     }
     for (const data2 of state.removedLinks) {
       this.diagram.restoreLink(data2);
@@ -114566,18 +115029,54 @@ var GroupCollapseService = class {
     if (state.proxyNodeId) {
       this.diagram.removeNode(state.proxyNodeId);
     }
+    const pool = state.lane ? this.diagram.getGroup(state.lane.poolId) : void 0;
+    let shift2 = { x: 0, y: 0 };
+    if (state.lane && pool && group.laneConfig) {
+      const horizontal = pool.laneConfig?.orientation !== "vertical";
+      const now3 = group.getOuterBounds();
+      const { fixedSize: _folded, ...rest } = group.laneConfig;
+      group.laneConfig = state.lane.prevFixedSize === void 0 ? rest : { ...rest, fixedSize: state.lane.prevFixedSize };
+      this.growPool(pool, horizontal, state.lane.crossSize - (horizontal ? now3.height : now3.width));
+      new SwimlaneService(this.diagram).reflow(pool);
+      const back = group.getOuterBounds();
+      shift2 = { x: back.x - state.lane.origin.x, y: back.y - state.lane.origin.y };
+    }
     for (const [nodeId, pos] of Object.entries(state.savedPositions)) {
-      this.diagram.getNode(nodeId)?.setPosition(pos.x, pos.y);
+      this.diagram.getNode(nodeId)?.setPosition(pos.x + shift2.x, pos.y + shift2.y);
     }
     for (const { nodeId, prevVisible } of state.hiddenNodes) {
       this.diagram.getNode(nodeId)?.setState({ visible: prevVisible });
     }
-    if (state.savedGeometry) {
+    if (state.savedGeometry && !(state.lane && pool)) {
       group.restoreGeometry(state.savedGeometry);
     }
     group.expand();
     this.setCollapsedState(group, void 0);
     this.diagram.reconcilePortConnections();
+  }
+  /** The side of `node` that faces a folded lane's band. */
+  sideFacing(node, placeholder, band) {
+    if (band === "horizontal") {
+      return node.position.y + node.size.height / 2 < placeholder.position.y + placeholder.size.height / 2 ? "bottom" : "top";
+    }
+    return node.position.x + node.size.width / 2 < placeholder.position.x + placeholder.size.width / 2 ? "right" : "left";
+  }
+  /** The port on a folded lane's band facing `externalNodeId`, across from its centre. */
+  bandAnchor(placeholder, externalNodeId, band, direction) {
+    const other = this.diagram.getNode(externalNodeId);
+    if (!other) return null;
+    const c = { x: other.position.x + other.size.width / 2, y: other.position.y + other.size.height / 2 };
+    const { x, y } = placeholder.position;
+    const { width: w, height: h } = placeholder.size;
+    const shift2 = direction === "in" ? -12 : 12;
+    const along = (v, len2) => Math.round(Math.max(12, Math.min(len2 - 12, v + shift2)));
+    const handle = band === "horizontal" ? `${c.y < y + h / 2 ? "top" : "bottom"}@${along(c.x - x, w)}` : `${c.x < x + w / 2 ? "left" : "right"}@${along(c.y - y, h)}`;
+    return ensureSideAnchorPort(placeholder, handle);
+  }
+  /** Grow (or shrink, with a negative `by`) a pool along the axis its lanes stack on. */
+  growPool(pool, horizontal, by) {
+    const b = pool.getOuterBounds();
+    pool.setFrame(horizontal ? { ...b, height: Math.max(0, b.height + by) } : { ...b, width: Math.max(0, b.width + by) });
   }
   /**
    * Re-home every member-incident link. Internal links (both ends inside the
@@ -114585,7 +115084,7 @@ var GroupCollapseService = class {
    * (external node, direction); each bucket keeps ONE survivor re-pointed to the
    * placeholder and labelled with the crossing count, and the rest are removed.
    */
-  rehomeIncidentLinks(group, memberNodeIds, placeholder, options) {
+  rehomeIncidentLinks(group, memberNodeIds, placeholder, options, band) {
     const removedLinks = [];
     const buckets = /* @__PURE__ */ new Map();
     for (const link of this.diagram.getLinks()) {
@@ -114618,7 +115117,7 @@ var GroupCollapseService = class {
       const originalPortId = memberEnd === "source" ? survivor.sourcePortId : survivor.targetPortId;
       const originalNodeId = memberEnd === "source" ? survivor.sourceNodeId : survivor.targetNodeId;
       const placeholderPort = direction === "out" ? placeholder.getPortBySide("right") : placeholder.getPortBySide("left");
-      const portId = placeholderPort?.id ?? placeholder.getPorts()[0]?.id;
+      const portId = (band && this.bandAnchor(placeholder, externalNodeId, band, direction)) ?? placeholderPort?.id ?? placeholder.getPorts()[0]?.id;
       if (memberEnd === "source") {
         survivor.setSourcePort(portId, placeholder.id);
       } else {
@@ -114634,12 +115133,26 @@ var GroupCollapseService = class {
       if (labelText) {
         survivor.addLabel({ id: `proxy-agg-${survivor.id}`, text: labelText, position: 0.5 });
       }
+      let pinned = {};
+      if (band) {
+        const other = this.diagram.getNode(externalNodeId);
+        const otherPort = other ? other.getPortBySide(this.sideFacing(other, placeholder, band)) : void 0;
+        const otherEnd = memberEnd === "source" ? "target" : "source";
+        const otherPortId = otherEnd === "source" ? survivor.sourcePortId : survivor.targetPortId;
+        pinned = { otherPortId, prevConnectionPoint: survivor.getMetadata("connectionPoint") ?? null };
+        if (other && otherPort) {
+          if (otherEnd === "source") survivor.setSourcePort(otherPort.id, other.id);
+          else survivor.setTargetPort(otherPort.id, other.id);
+        }
+        survivor.setMetadata("connectionPoint", "port");
+      }
       proxyLinks.push({
         linkId: survivor.id,
         end: memberEnd,
         originalPortId,
         originalNodeId,
-        aggregatedCount: links.length
+        aggregatedCount: links.length,
+        ...pinned
       });
     }
     return { removedLinks, proxyLinks };
@@ -130742,33 +131255,6 @@ function createLayeredLayout(name = "layered") {
   };
 }
 
-// libs/engine/src/ports/side-anchor.ts
-function parseSideAnchor(handle) {
-  const m = /^(top|right|bottom|left)@(-?\d+(?:\.\d+)?)(%|px)?$/.exec(handle.trim());
-  if (!m) return null;
-  const v = Number(m[2]);
-  return { side: m[1], at: m[3] === "%" ? { pct: v } : { px: v } };
-}
-function sideAnchorPortId(nodeId, handle) {
-  return `${nodeId}__${handle.trim()}`;
-}
-function isSideAnchorPort(portId) {
-  return !!portId && /__(top|right|bottom|left)@-?\d/.test(portId);
-}
-function ensureSideAnchorPort(node, handle) {
-  const anchor = parseSideAnchor(handle);
-  if (!anchor) return null;
-  const id = sideAnchorPortId(node.id, handle);
-  if (node.getPort(id)) return id;
-  const { side, at } = anchor;
-  const along = side === "left" || side === "right" ? node.size.height : node.size.width;
-  const f = at.pct !== void 0 ? at.pct / 100 : along > 0 ? (at.px ?? 0) / along : 0.5;
-  const t = Math.max(0, Math.min(1, f));
-  const xy = side === "left" ? { x: 0, y: t } : side === "right" ? { x: 1, y: t } : side === "top" ? { x: t, y: 0 } : { x: t, y: 1 };
-  node.addPort(new PortModel({ id, type: "bi", side, index: 0, visible: false, layout: { strategy: "absolute", args: { ...xy, units: "fraction" } } }));
-  return id;
-}
-
 // libs/engine/src/layout/architecture/text-metrics.ts
 var NARROW = new Set(Array.from("il.,:;'|!`jI"));
 var SLIM = new Set(Array.from('frt()[]{}-/\\"'));
@@ -131906,6 +132392,236 @@ function planTween(before, after) {
   };
 }
 
+// libs/engine/src/interaction/lane-gestures.ts
+var LANE_TITLE_SIZE = 24;
+var MIN_POOL_SPAN = 160;
+var lanesOf = (diagram, pool) => (pool.laneConfig?.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g) => !!g);
+function laneHandleAt(diagram, x, y, tolerance) {
+  for (const pool of diagram.getGroups()) {
+    if (pool.laneConfig?.role !== "pool" || pool.isCollapsed) continue;
+    const horizontal = pool.laneConfig.orientation === "horizontal";
+    const pb = pool.getOuterBounds();
+    const inPool = x >= pb.x - tolerance && x <= pb.x + pb.width + tolerance && y >= pb.y - tolerance && y <= pb.y + pb.height + tolerance;
+    if (!inPool) continue;
+    const lanes = lanesOf(diagram, pool);
+    const cross3 = horizontal ? y : x;
+    const main = horizontal ? x : y;
+    for (const lane of lanes) {
+      if (lane.isCollapsed) continue;
+      const b = lane.getOuterBounds();
+      const [m0, m1] = horizontal ? [b.x, b.x + b.width] : [b.y, b.y + b.height];
+      const end = horizontal ? b.y + b.height : b.x + b.width;
+      if (main >= m0 && main <= m1 && Math.abs(cross3 - end) <= tolerance) return { kind: "border", pool, lane, horizontal };
+    }
+    const far = horizontal ? pb.x + pb.width : pb.y + pb.height;
+    const [c0, c1] = horizontal ? [pb.y, pb.y + pb.height] : [pb.x, pb.x + pb.width];
+    if (Math.abs(main - far) <= tolerance && cross3 >= c0 && cross3 <= c1) return { kind: "pool-edge", pool, horizontal };
+    for (const lane of lanes) {
+      if (lane.isCollapsed) continue;
+      const b = lane.getOuterBounds();
+      const band = lane.headerHeight > 0 ? lane.headerHeight : LANE_TITLE_SIZE;
+      if (x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + Math.min(band, b.height)) return { kind: "title", pool, lane, horizontal };
+    }
+  }
+  return null;
+}
+function laneHandleCursor(handle) {
+  if (handle.kind === "title") return "grab";
+  const alongCross = handle.kind === "border";
+  return handle.horizontal === alongCross ? "row-resize" : "col-resize";
+}
+var LaneGesture = class {
+  constructor(diagram, handle, x, y) {
+    this.diagram = diagram;
+    this.handle = handle;
+    this.moved = false;
+    this.svc = new SwimlaneService(diagram);
+    this.before = this.svc.snapshot(handle.pool);
+    this.start = { x, y };
+    this.startPool = handle.pool.getOuterBounds();
+    const h = handle.horizontal;
+    const crossOf = (g) => h ? g.getOuterBounds().height : g.getOuterBounds().width;
+    this.startSize = handle.kind === "pool-edge" ? h ? this.startPool.width : this.startPool.height : crossOf(handle.lane);
+    this.name = handle.kind === "border" ? "Resize lane" : handle.kind === "pool-edge" ? "Resize pool" : "Move lane";
+    if (handle.kind === "title") {
+      const b = handle.lane.getOuterBounds();
+      this.grab = h ? y - b.y : x - b.x;
+      this.laneSize = crossOf(handle.lane);
+      this.others = lanesOf(diagram, handle.pool).filter((l) => l !== handle.lane).map((l) => ({ id: l.id, size: crossOf(l) }));
+    } else {
+      this.grab = 0;
+      this.laneSize = 0;
+      this.others = [];
+    }
+  }
+  /** Follow the hand to (`x`, `y`). True when the pool changed. */
+  move(x, y) {
+    const { handle } = this;
+    const h = handle.horizontal;
+    if (handle.kind === "border") {
+      const delta = h ? y - this.start.y : x - this.start.x;
+      const size = Math.max(MIN_LANE_SIZE, Math.round(this.startSize + delta));
+      const now3 = h ? handle.lane.getOuterBounds().height : handle.lane.getOuterBounds().width;
+      if (size === now3) return false;
+      this.svc.setLaneSize(handle.pool, handle.lane.id, size);
+      return this.moved = true;
+    }
+    if (handle.kind === "pool-edge") {
+      const delta = h ? x - this.start.x : y - this.start.y;
+      const header = handle.pool.laneConfig?.headerSize ?? 0;
+      const span = Math.max(MIN_POOL_SPAN + header, Math.round(this.startSize + delta));
+      const b = handle.pool.getOuterBounds();
+      if ((h ? b.width : b.height) === span) return false;
+      this.svc.resizePool(handle.pool, h ? { ...b, width: span } : { ...b, height: span });
+      return this.moved = true;
+    }
+    const origin = h ? this.startPool.y : this.startPool.x;
+    const middle = (h ? y : x) - this.grab + this.laneSize / 2;
+    let at = origin;
+    let index = 0;
+    for (const o of this.others) {
+      if (middle > at + o.size / 2) index++;
+      at += o.size;
+    }
+    const order = handle.pool.laneConfig?.laneOrder ?? [];
+    if (order.indexOf(handle.lane.id) === index) return false;
+    this.svc.moveLane(handle.pool, handle.lane.id, index);
+    return this.moved = true;
+  }
+  /** The gesture's one undo step, or null when the pool ends as it began. */
+  end() {
+    if (!this.moved) return null;
+    const after = this.svc.snapshot(this.handle.pool);
+    if (JSON.stringify(after) === JSON.stringify(this.before)) return null;
+    return new PoolEditCommand(this.name, this.before, after);
+  }
+  /** Abandon the gesture: the pool goes back to how it began. */
+  cancel() {
+    if (this.moved) new PoolEditCommand(this.name, this.before, this.svc.snapshot(this.handle.pool)).undo({ diagram: this.diagram });
+    this.moved = false;
+  }
+};
+
+// libs/engine/src/interaction/swimlane-layout.ts
+function layoutPool(diagram, pool, options = {}) {
+  const rankGap = options.rankSpacing ?? 60;
+  const stackGap = options.nodeSpacing ?? 16;
+  const pad = options.padding ?? 24;
+  const positions = /* @__PURE__ */ new Map();
+  const cfg = pool.laneConfig;
+  if (cfg?.role !== "pool") return positions;
+  const horizontal = cfg.orientation === "horizontal";
+  const lanes = (cfg.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g) => !!g);
+  if (lanes.length === 0) return positions;
+  const main = (n3) => horizontal ? n3.size.width : n3.size.height;
+  const cross3 = (n3) => horizontal ? n3.size.height : n3.size.width;
+  const crossAt = (n3) => horizontal ? n3.position.y : n3.position.x;
+  const mainAt = (n3) => horizontal ? n3.position.x : n3.position.y;
+  const laneCross = (l) => horizontal ? l.getOuterBounds().height : l.getOuterBounds().width;
+  const titleOf2 = (l) => l.headerHeight > 0 ? l.headerHeight : LANE_TITLE_SIZE;
+  const laneOf = /* @__PURE__ */ new Map();
+  const steps = [];
+  lanes.forEach((lane, i) => {
+    if (lane.isCollapsed) return;
+    for (const id of lane.members) {
+      const n3 = diagram.getNode(id);
+      if (!n3 || n3.state.visible === false) continue;
+      laneOf.set(id, i);
+      steps.push(n3);
+    }
+  });
+  if (steps.length === 0) return positions;
+  steps.sort((a, b) => laneOf.get(a.id) - laneOf.get(b.id) || mainAt(a) - mainAt(b) || crossAt(a) - crossAt(b) || (a.id < b.id ? -1 : 1));
+  const ends = (portOrNode, nodeId) => nodeId ?? (portOrNode ? diagram.getNodeByPortId(portOrNode)?.id : void 0);
+  const out = new Map(steps.map((n3) => [n3.id, []]));
+  for (const link of diagram.getLinks()) {
+    const a = ends(link.sourcePortId, link.sourceNodeId);
+    const b = ends(link.targetPortId, link.targetNodeId);
+    if (a && b && a !== b && out.has(a) && out.has(b)) out.get(a).push(b);
+  }
+  const state = /* @__PURE__ */ new Map();
+  const forward = new Map(steps.map((n3) => [n3.id, []]));
+  const walk3 = (id) => {
+    state.set(id, 1);
+    for (const next of out.get(id)) {
+      if (state.get(next) === 1) continue;
+      forward.get(id).push(next);
+      if (!state.has(next)) walk3(next);
+    }
+    state.set(id, 2);
+  };
+  for (const n3 of steps) if (!state.has(n3.id)) walk3(n3.id);
+  const rank = /* @__PURE__ */ new Map();
+  const indegree = new Map(steps.map((n3) => [n3.id, 0]));
+  for (const targets of forward.values()) for (const t of targets) indegree.set(t, indegree.get(t) + 1);
+  const queue = steps.filter((n3) => indegree.get(n3.id) === 0).map((n3) => n3.id);
+  for (const id of queue) rank.set(id, 0);
+  while (queue.length) {
+    const id = queue.shift();
+    for (const t of forward.get(id)) {
+      rank.set(t, Math.max(rank.get(t) ?? 0, rank.get(id) + 1));
+      indegree.set(t, indegree.get(t) - 1);
+      if (indegree.get(t) === 0) queue.push(t);
+    }
+  }
+  const ranks = Math.max(...steps.map((n3) => rank.get(n3.id) ?? 0)) + 1;
+  const colSize = new Array(ranks).fill(0);
+  const cells = /* @__PURE__ */ new Map();
+  for (const n3 of steps) {
+    const r = rank.get(n3.id) ?? 0;
+    colSize[r] = Math.max(colSize[r], main(n3));
+    const key = `${laneOf.get(n3.id)}:${r}`;
+    if (!cells.has(key)) cells.set(key, []);
+    cells.get(key).push(n3);
+  }
+  for (const stack of cells.values()) stack.sort((a, b) => crossAt(a) - crossAt(b) || (a.id < b.id ? -1 : 1));
+  const stackSize = (stack) => stack.reduce((s, n3) => s + cross3(n3), 0) + stackGap * (stack.length - 1);
+  const svc = new SwimlaneService(diagram);
+  const sizes = lanes.map((lane, i) => {
+    if (lane.isCollapsed) return laneCross(lane);
+    let tallest = 0;
+    for (let r = 0; r < ranks; r++) {
+      const stack = cells.get(`${i}:${r}`);
+      if (stack) tallest = Math.max(tallest, stackSize(stack));
+    }
+    return Math.max(laneCross(lane), MIN_LANE_SIZE, tallest ? titleOf2(lane) + 2 * pad + tallest : 0);
+  });
+  const header = cfg.headerSize ?? 0;
+  const length = Math.max(MIN_POOL_SPAN, pad + colSize.reduce((s, c) => s + c, 0) + rankGap * (ranks - 1) + pad) + header;
+  lanes.forEach((lane, i) => {
+    lane.laneConfig = { ...lane.laneConfig, fixedSize: sizes[i] };
+  });
+  const p = pool.getOuterBounds();
+  const total = sizes.reduce((s, v) => s + v, 0);
+  pool.setFrame(horizontal ? { ...p, width: length, height: total } : { ...p, width: total, height: length });
+  svc.reflow(pool);
+  const colStart = [];
+  let at = (horizontal ? p.x : p.y) + header + pad;
+  for (let r = 0; r < ranks; r++) {
+    colStart.push(at);
+    at += colSize[r] + rankGap;
+  }
+  lanes.forEach((lane, i) => {
+    if (lane.isCollapsed) return;
+    const band = lane.getOuterBounds();
+    const bandStart = (horizontal ? band.y : band.x) + titleOf2(lane);
+    const room = sizes[i] - titleOf2(lane);
+    for (let r = 0; r < ranks; r++) {
+      const stack = cells.get(`${i}:${r}`);
+      if (!stack) continue;
+      let c = bandStart + Math.max(pad, (room - stackSize(stack)) / 2);
+      for (const n3 of stack) {
+        const m = colStart[r] + (colSize[r] - main(n3)) / 2;
+        const xy = horizontal ? { x: Math.round(m), y: Math.round(c) } : { x: Math.round(c), y: Math.round(m) };
+        n3.setPosition(xy.x, xy.y);
+        positions.set(n3.id, xy);
+        c += cross3(n3) + stackGap;
+      }
+    }
+  });
+  return positions;
+}
+
 // libs/engine/src/layout/CompoundLayoutService.ts
 var byId = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 var CompoundLayoutService = class {
@@ -131933,6 +132649,21 @@ var CompoundLayoutService = class {
       if (group.isCollapsed) {
         result.collapsed.push(group.id);
         result.skipped.push(group.id);
+        result.groupBounds.set(group.id, group.getOuterBounds());
+        continue;
+      }
+      if (group.laneConfig?.role === "lane" && group.parentGroupId && this.diagram.getGroup(group.parentGroupId)?.laneConfig?.role === "pool") {
+        result.groupBounds.set(group.id, group.getOuterBounds());
+        continue;
+      }
+      if (group.laneConfig?.role === "pool") {
+        if (!this.isFixed(group)) {
+          const o = this.resolveLayoutOptions(group);
+          layoutPool(this.diagram, group, { rankSpacing: o.rankSpacing, nodeSpacing: o.nodeSpacing });
+          result.laidOut.push(group.id);
+        } else {
+          result.skipped.push(group.id);
+        }
         result.groupBounds.set(group.id, group.getOuterBounds());
         continue;
       }
@@ -132721,6 +133452,7 @@ function stripNonClonable(options) {
 
 // libs/engine/src/engine/DiagramEngine.ts
 function isRoutingObstacle(node) {
+  if (node.getMetadata(LANE_BAND_KEY) === true) return false;
   return node.getMetadata("shape")?.type !== "text";
 }
 var DiagramEngine = class {
@@ -134034,7 +134766,7 @@ var DiagramEngine = class {
     }
     for (const g of groups) {
       const rect = this.groupObstacleRect(g);
-      if (g.isCollapsed && !hidden.has(g.id) && rect) {
+      if (g.isCollapsed && !hidden.has(g.id) && rect && g.laneConfig?.role !== "lane") {
         this.routingEngine.updateObstacle({ id: g.id, ...rect, kind: "group" });
       } else {
         this.routingEngine.removeObstacle(g.id);
@@ -143651,64 +144383,6 @@ var GridPackEngine = class _GridPackEngine {
   }
 };
 
-// libs/engine/src/interaction/confinement.ts
-function containingGroup(diagram, nodeId) {
-  for (const group of diagram.getGroups()) {
-    if (group.members.has(nodeId)) return group;
-  }
-  return void 0;
-}
-function poolOfLane(diagram, lane) {
-  if (lane.laneConfig?.role !== "lane" || !lane.parentGroupId) return void 0;
-  const pool = diagram.getGroup(lane.parentGroupId);
-  return pool?.laneConfig?.role === "pool" ? pool : void 0;
-}
-function lanesOfPool(diagram, pool) {
-  return (pool.laneConfig?.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g) => !!g);
-}
-function laneAtPoint(diagram, pool, point) {
-  for (const lane of lanesOfPool(diagram, pool)) {
-    const r = lane.getOuterBounds();
-    if (point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height) {
-      return lane;
-    }
-  }
-  return void 0;
-}
-function areSiblingLanes(diagram, from, to) {
-  if (!to || from === to) return false;
-  const pool = poolOfLane(diagram, from);
-  return !!pool && poolOfLane(diagram, to) === pool;
-}
-function memberConfinement(diagram, nodeId) {
-  const group = containingGroup(diagram, nodeId);
-  if (!group || group.constrainChildren !== true) return null;
-  const pool = poolOfLane(diagram, group);
-  if (pool) {
-    const lanes = lanesOfPool(diagram, pool);
-    if (lanes.length > 0) {
-      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
-      for (const lane of lanes) {
-        const r = lane.getInnerBounds();
-        left = Math.min(left, r.x);
-        top = Math.min(top, r.y);
-        right = Math.max(right, r.x + r.width);
-        bottom = Math.max(bottom, r.y + r.height);
-      }
-      return { x: left, y: top, width: right - left, height: bottom - top };
-    }
-  }
-  return group.getInnerBounds();
-}
-function clampBoxInto(rect, x, y, width, height) {
-  const maxX = Math.max(rect.x, rect.x + rect.width - width);
-  const maxY = Math.max(rect.y, rect.y + rect.height - height);
-  return {
-    x: Math.min(Math.max(x, rect.x), maxX),
-    y: Math.min(Math.max(y, rect.y), maxY)
-  };
-}
-
 // libs/engine/src/interaction/GroupMembershipService.ts
 var GroupMembershipService = class {
   constructor(options) {
@@ -143838,6 +144512,29 @@ var GroupMembershipService = class {
     return result;
   }
   /**
+   * {@link planNodeDrop} for every node a drag let go, each judged at its own
+   * centre. One node: exactly planNodeDrop. Several: only LANE members change
+   * what contains them (each joins the lane it landed in); a multi-node drop
+   * anywhere else keeps every node's group, as it always has. Settle the lane
+   * members first ({@link settleLaneDrop}) so a refused one is already home.
+   */
+  planNodesDrop(nodeIds) {
+    const centre2 = (id) => {
+      const n3 = this.diagram.getNode(id);
+      return n3 ? { x: n3.position.x + n3.size.width / 2, y: n3.position.y + n3.size.height / 2 } : null;
+    };
+    const ids = nodeIds.length === 1 ? nodeIds : nodeIds.filter((id) => {
+      const g = this.getContainingGroup(id);
+      return !!g && !!poolOfLane(this.diagram, g);
+    });
+    const plans = [];
+    for (const id of ids) {
+      const at = centre2(id);
+      if (at) plans.push(this.planNodeDrop(id, at));
+    }
+    return plans;
+  }
+  /**
    * After a planned drop's commands have run: refresh both groups' derived
    * bounds (one gained a member, one lost one) and clear the hover highlight.
    */
@@ -143917,161 +144614,6 @@ var GroupMembershipService = class {
   }
   rectArea(rect) {
     return rect.width * rect.height;
-  }
-};
-
-// libs/engine/src/interaction/SwimlaneService.ts
-var SwimlaneService = class {
-  constructor(diagram) {
-    this.diagram = diagram;
-  }
-  /** Create a pool group with N lane bands and tile them. */
-  createPool(options) {
-    const pool = new GroupModel({ id: options.id, name: options.name });
-    pool.laneConfig = {
-      role: "pool",
-      orientation: options.orientation,
-      laneOrder: [],
-      headerSize: options.headerSize ?? 0
-    };
-    pool.setFrame(options.bounds);
-    this.diagram.addGroup(pool);
-    const lanes = [];
-    for (const spec of options.lanes) {
-      const lane = this.buildLane(pool, spec, options.laneHeaderSize ?? 0);
-      lanes.push(lane);
-    }
-    pool.laneConfig.laneOrder = lanes.map((l) => l.id);
-    this.reflow(pool);
-    return { pool, lanes };
-  }
-  /** Add a lane to a pool (optionally at an index) and re-tile. */
-  addLane(pool, spec, atIndex) {
-    this.assertPool(pool);
-    const lane = this.buildLane(pool, spec, this.firstLaneHeader(pool));
-    const order = pool.laneConfig.laneOrder ?? [];
-    if (atIndex === void 0 || atIndex >= order.length) {
-      order.push(lane.id);
-    } else {
-      order.splice(Math.max(0, atIndex), 0, lane.id);
-    }
-    pool.laneConfig.laneOrder = order;
-    this.touch(pool);
-    this.reflow(pool);
-    return lane;
-  }
-  /** Remove a lane from a pool and re-tile the survivors. */
-  removeLane(pool, laneId) {
-    this.assertPool(pool);
-    const order = (pool.laneConfig.laneOrder ?? []).filter((id) => id !== laneId);
-    pool.laneConfig.laneOrder = order;
-    pool.removeMember(laneId, this.diagram);
-    this.diagram.removeGroup(laneId);
-    this.touch(pool);
-    this.reflow(pool);
-  }
-  /**
-   * Resize a lane along the cross axis by pinning its band (fixedSize) and
-   * re-laying out the pool so siblings absorb the remaining space.
-   */
-  resizeLane(pool, laneId, crossSize2) {
-    this.assertPool(pool);
-    const lane = this.diagram.getGroup(laneId);
-    if (!lane || !lane.laneConfig) return;
-    lane.laneConfig = { ...lane.laneConfig, fixedSize: Math.max(0, crossSize2) };
-    this.touch(lane);
-    this.reflow(pool);
-  }
-  /** Resize the whole pool and re-tile its lanes to the new frame. */
-  resizePool(pool, bounds) {
-    this.assertPool(pool);
-    pool.setFrame(bounds);
-    this.reflow(pool);
-  }
-  /** Lanes of a pool in band order. */
-  getLanes(pool) {
-    this.assertPool(pool);
-    return (pool.laneConfig.laneOrder ?? []).map((id) => this.diagram.getGroup(id)).filter((g) => !!g);
-  }
-  /** Is this group a pool? */
-  isPool(group) {
-    return group.laneConfig?.role === "pool";
-  }
-  /** Is this group a lane? */
-  isLane(group) {
-    return group.laneConfig?.role === "lane";
-  }
-  /**
-   * Re-tile a pool's lanes into bands. fixedSize lanes take their pixel size;
-   * the rest split the remaining cross-axis space by weight. Each lane frame is
-   * set (drop-in hit-testing + drag constraints follow automatically).
-   */
-  reflow(pool) {
-    this.assertPool(pool);
-    const cfg = pool.laneConfig;
-    const lanes = this.getLanes(pool);
-    if (lanes.length === 0) return;
-    const rect = pool.getOuterBounds();
-    const header = cfg.headerSize ?? 0;
-    const horizontal = cfg.orientation === "horizontal";
-    const crossTotal = horizontal ? rect.height : rect.width;
-    const mainStart = horizontal ? rect.x + header : rect.y + header;
-    const mainSpan = (horizontal ? rect.width : rect.height) - header;
-    const fixed = lanes.reduce((s, l) => s + (l.laneConfig?.fixedSize ?? 0), 0);
-    const flexible = lanes.filter((l) => l.laneConfig?.fixedSize === void 0);
-    const totalWeight = flexible.reduce((s, l) => s + (l.laneConfig?.weight ?? 1), 0) || 1;
-    const flexSpace = Math.max(0, crossTotal - fixed);
-    let cross3 = horizontal ? rect.y : rect.x;
-    for (const lane of lanes) {
-      const lc = lane.laneConfig;
-      const size = lc.fixedSize !== void 0 ? lc.fixedSize : flexSpace * (lc.weight ?? 1) / totalWeight;
-      const frame = horizontal ? { x: mainStart, y: cross3, width: mainSpan, height: size } : { x: cross3, y: mainStart, width: size, height: mainSpan };
-      const previous = lane.getOuterBounds();
-      lane.setFrame(frame);
-      lane.constrainChildren = true;
-      this.carryMembers(lane, previous, frame);
-      lane.laneConfig = { ...lc, orientation: cfg.orientation };
-      cross3 += size;
-    }
-  }
-  /** Move a lane's member nodes from its previous band to `next`, then clamp them in. */
-  carryMembers(lane, previous, next) {
-    const hadBand = previous.width > 0 && previous.height > 0;
-    const dx = hadBand ? next.x - previous.x : 0;
-    const dy = hadBand ? next.y - previous.y : 0;
-    for (const id of lane.members) {
-      const node = this.diagram.getNode(id);
-      if (!node) continue;
-      if (dx !== 0 || dy !== 0) node.setPosition(node.position.x + dx, node.position.y + dy);
-      lane.clampChildToExtent(id, this.diagram);
-    }
-  }
-  buildLane(pool, spec, laneHeader) {
-    const lane = new GroupModel({ id: spec.id, name: spec.name });
-    lane.laneConfig = {
-      role: "lane",
-      orientation: pool.laneConfig.orientation,
-      weight: spec.weight,
-      fixedSize: spec.fixedSize
-    };
-    lane.headerHeight = laneHeader;
-    lane.constrainChildren = true;
-    this.diagram.addGroup(lane);
-    pool.addMember(lane.id, this.diagram);
-    return lane;
-  }
-  firstLaneHeader(pool) {
-    const first = this.getLanes(pool)[0];
-    return first?.headerHeight ?? 0;
-  }
-  assertPool(group) {
-    if (group.laneConfig?.role !== "pool") {
-      throw new Error(`Group ${group.id} is not a pool`);
-    }
-  }
-  /** Mark a group changed so the diff-capture serializes laneConfig edits. */
-  touch(group) {
-    group.setMetadata("__laneRev", (group.getMetadata("__laneRev") ?? 0) + 1);
   }
 };
 
@@ -192205,6 +192747,7 @@ function delegateWheelToScrollable(event) {
 }
 
 // libs/renderer/src/instance/dom-event-binder.ts
+var LANE_HANDLE_PX = 5;
 var activeBinder = null;
 var DomEventBinder = class {
   constructor(container, host, options = {}) {
@@ -192236,6 +192779,8 @@ var DomEventBinder = class {
     this.lastPanY = 0;
     this.nodeDrag = null;
     this.groupDrag = null;
+    /** A hand on a pool's lane border, far edge or lane title (engine LaneGesture). */
+    this.laneGesture = null;
     /** The proximity candidate currently highlighted mid-drag (for commit on drop). */
     this.proximityCandidate = null;
     // Bound once so removeEventListener gets the SAME function object it added —
@@ -192546,6 +193091,7 @@ var DomEventBinder = class {
     this.pendingEmptyPan = null;
     this.nodeDrag = null;
     this.groupDrag = null;
+    this.laneGesture = null;
     this.spaceKeyPressed = false;
     this.engine()?.setSnapGuides(null);
     this.closeTextEditor();
@@ -192874,6 +193420,14 @@ var DomEventBinder = class {
     const node = this.resolveNode(diagram, worldX, worldY, event);
     if (node) {
       event.preventDefault();
+      if (diagram.isProxyNode(node) && !this.isReadonly() && config.enableGroupDrag) {
+        const folded = diagram.getGroup(String(node.getMetadata(PROXY_NODE_GROUP_KEY)));
+        if (folded) {
+          this.pressGroup(poolOfLane(diagram, folded) ?? folded, diagram, event, worldX, worldY);
+          this.host.emit("node:click", { node, world: { x: worldX, y: worldY } });
+          return;
+        }
+      }
       if (!this.isReadonly() && config.enableEasyConnect && this.easyConnectModifierHeld(event, config)) {
         this.host.interaction.startNodeBodyConnection(node, worldX, worldY, engine);
         this.host.requestRender();
@@ -192885,6 +193439,18 @@ var DomEventBinder = class {
       return;
     }
     if (!this.isReadonly() && config.enableGroupDrag && !(event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)) {
+      const laneHandle = laneHandleAt(diagram, worldX, worldY, LANE_HANDLE_PX / this.host.viewport.getZoom());
+      if (laneHandle) {
+        event.preventDefault();
+        this.laneGesture = {
+          gesture: new LaneGesture(diagram, laneHandle, worldX, worldY),
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          committed: false
+        };
+        this.setCursor(laneHandle.kind === "title" ? "grabbing" : laneHandleCursor(laneHandle));
+        return;
+      }
       const group = this.findGroupAtPoint(diagram, worldX, worldY);
       if (group) {
         event.preventDefault();
@@ -192971,6 +193537,19 @@ var DomEventBinder = class {
       this.moveGroupDrag(event);
       return;
     }
+    if (this.laneGesture) {
+      const lane = this.laneGesture;
+      if (!lane.committed) {
+        if (Math.hypot(event.clientX - lane.startClientX, event.clientY - lane.startClientY) < this.options.dragThreshold) return;
+        lane.committed = true;
+      }
+      const { x, y } = this.toWorld(event);
+      if (lane.gesture.move(x, y)) {
+        this.host.interaction.invalidatePortHitCache();
+        this.host.requestRender();
+      }
+      return;
+    }
     if (this.nodeDrag) {
       this.moveNodeDrag(event);
       return;
@@ -193025,7 +193604,13 @@ var DomEventBinder = class {
         toolCursor = handle.cursor;
       }
     }
-    this.setCursor(toolCursor ?? this.host.interaction.getCursor(engine));
+    let cursor = toolCursor ?? this.host.interaction.getCursor(engine);
+    if (!toolCursor && cursor === "default" && !this.isReadonly() && config.enableGroupDrag) {
+      const diagram = engine.getDiagram();
+      const handle = diagram ? laneHandleAt(diagram, worldX, worldY, LANE_HANDLE_PX / this.host.viewport.getZoom()) : null;
+      if (handle) cursor = laneHandleCursor(handle);
+    }
+    this.setCursor(cursor);
     if (needsRender) this.host.requestRender();
   }
   // ==========================================================================
@@ -193137,6 +193722,12 @@ var DomEventBinder = class {
       this.setCursor("default");
       return;
     }
+    if (this.laneGesture) {
+      event.preventDefault();
+      this.endLaneGesture(engine);
+      this.setCursor("default");
+      return;
+    }
     if (this.nodeDrag) {
       const drag = this.nodeDrag;
       const moved = drag.committed;
@@ -193172,6 +193763,10 @@ var DomEventBinder = class {
     if (this.groupDrag) {
       if (engine) this.endGroupDrag(engine);
       else this.groupDrag = null;
+    }
+    if (this.laneGesture) {
+      if (engine) this.endLaneGesture(engine);
+      else this.laneGesture = null;
     }
     if (this.nodeDrag) {
       const drag = this.nodeDrag;
@@ -193274,6 +193869,10 @@ var DomEventBinder = class {
       }
       this.nodeDrag = null;
       this.groupDrag = null;
+      if (this.laneGesture) {
+        this.laneGesture.gesture.cancel();
+        this.laneGesture = null;
+      }
       this.clearProximityPreview();
       diagram.clearSelection();
       this.host.requestRender();
@@ -193657,31 +194256,6 @@ var DomEventBinder = class {
     }
     return false;
   }
-  /**
-   * Every member NODE (recursively through nested groups) and every group FRAME
-   * (this group + its descendant groups) that a drag of `group` must carry.
-   * Cycle-guarded so a corrupt membership loop can never spin.
-   */
-  collectGroupContents(diagram, group) {
-    const nodeIds = /* @__PURE__ */ new Set();
-    const groupIds = /* @__PURE__ */ new Set();
-    const stack = [group];
-    while (stack.length) {
-      const g = stack.pop();
-      if (groupIds.has(g.id)) continue;
-      groupIds.add(g.id);
-      for (const memberId of g.members) {
-        const node = diagram.getNode(memberId);
-        if (node) {
-          nodeIds.add(memberId);
-          continue;
-        }
-        const child = diagram.getGroup(memberId);
-        if (child && !groupIds.has(child.id)) stack.push(child);
-      }
-    }
-    return { nodeIds: [...nodeIds], groupIds: [...groupIds] };
-  }
   /** Snapshot a group frame's restorable geometry (for undo). */
   snapshotFrame(group) {
     return {
@@ -193692,7 +194266,7 @@ var DomEventBinder = class {
   }
   /** Arm a group drag (threshold-gated, mirroring the node-drag arming). */
   pressGroup(group, diagram, event, worldX, worldY) {
-    const { nodeIds, groupIds } = this.collectGroupContents(diagram, group);
+    const { nodeIds, groupIds } = groupDragContents(diagram, group);
     const nodeFrom = /* @__PURE__ */ new Map();
     for (const id of nodeIds) {
       const node = diagram.getNode(id);
@@ -193807,40 +194381,35 @@ var DomEventBinder = class {
     }
   }
   /**
-   * A lane member is let go: it belongs to the lane its CENTRE landed in (the
-   * membership service makes that so on drop), so move it fully inside that
-   * lane's band — a box straddling two lanes reads as belonging to neither.
+   * Lane members let go: each settles fully inside the lane under its centre, or
+   * goes back where the drag found it when that lane refuses it (the engine's
+   * settleLaneDrop decides, for every renderer).
    */
   settleIntoLanes(engine, drag) {
     const diagram = engine.getDiagram();
-    if (!diagram) return;
-    for (const id of drag.nodeIds) {
-      const node = diagram.getNode(id);
-      if (!node || node.state.locked) continue;
-      const group = containingGroup(diagram, id);
-      const pool = group ? poolOfLane(diagram, group) : void 0;
-      if (!pool) continue;
-      const lane = laneAtPoint(diagram, pool, {
-        x: node.position.x + node.size.width / 2,
-        y: node.position.y + node.size.height / 2
-      });
-      if (!lane) continue;
-      const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
-      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
-    }
+    if (!diagram || !drag.startPositions) return;
+    const drops = drag.nodeIds.flatMap((id) => {
+      const from = drag.startPositions.get(id);
+      return from ? [{ id, from }] : [];
+    });
+    settleLaneDrop(diagram, drops);
   }
   /**
-   * What the drop does to what contains the dragged node — PLANNED, not done:
+   * What the drop does to what contains the dragged nodes — PLANNED, not done:
    * the leave/join commands ride in the drop's own undo step (see commitDrop).
-   * Null when drop-to-join is off, several nodes moved, or the node is locked.
+   * One node: the group or lane under its centre. Several: lane members change
+   * lanes, nothing else changes group. Null when drop-to-join is off.
    */
   planMembershipOnDrop(engine, drag) {
     if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return null;
-    if (drag.nodeIds.length !== 1 || this.isReadonly()) return null;
+    if (this.isReadonly()) return null;
     const diagram = engine.getDiagram();
     if (!diagram) return null;
-    const node = diagram.getNode(drag.nodeIds[0]);
-    if (!node || node.state.locked) return null;
+    const ids = drag.nodeIds.filter((id) => {
+      const n3 = diagram.getNode(id);
+      return !!n3 && !n3.state.locked;
+    });
+    if (ids.length === 0) return null;
     if (!this.membership || this.membership.diagram !== diagram) {
       this.membership = {
         diagram,
@@ -193849,11 +194418,8 @@ var DomEventBinder = class {
     }
     const service = this.membership.service;
     service.refresh();
-    const point = {
-      x: node.position.x + node.size.width / 2,
-      y: node.position.y + node.size.height / 2
-    };
-    return { service, plan: service.planNodeDrop(node.id, point) };
+    const plans = service.planNodesDrop(ids);
+    return { service, plans, changed: plans.some((p) => p.changed), commands: plans.flatMap((p) => p.commands) };
   }
   /** One MoveNodeCommand per dragged node that actually moved (FROM → TO). */
   moveSteps(engine, drag) {
@@ -193889,11 +194455,11 @@ var DomEventBinder = class {
   /** A completed drop: the move plus any membership change, one undo step. */
   commitDrop(engine, drag) {
     const membership = this.planMembershipOnDrop(engine, drag);
-    const steps = [...this.moveSteps(engine, drag), ...membership?.plan.commands ?? []];
-    void this.executeAsOneStep(engine, membership?.plan.changed ? "Move into group" : "Move nodes", steps).then(() => {
+    const steps = [...this.moveSteps(engine, drag), ...membership?.commands ?? []];
+    void this.executeAsOneStep(engine, membership?.changed ? "Move into group" : "Move nodes", steps).then(() => {
       if (!membership) return;
-      membership.service.finishDrop(membership.plan);
-      if (membership.plan.changed) {
+      for (const plan of membership.plans) membership.service.finishDrop(plan);
+      if (membership.changed) {
         this.emitNodesChange();
         this.host.requestRender();
       }
@@ -193902,6 +194468,18 @@ var DomEventBinder = class {
   /** The move alone, one undo step (a drag the pointer abandoned mid-way). */
   commitNodeMove(engine, drag) {
     void this.executeAsOneStep(engine, "Move nodes", this.moveSteps(engine, drag));
+  }
+  /** End a lane gesture: the whole drag becomes ONE undo step (nothing when it changed nothing). */
+  endLaneGesture(engine) {
+    const lane = this.laneGesture;
+    this.laneGesture = null;
+    if (!lane?.committed) return;
+    const command = lane.gesture.end();
+    if (command) {
+      void engine.commandManager.execute(command);
+      this.emitNodesChange();
+    }
+    this.host.requestRender();
   }
   /**
    * End a group drag: commit the whole gesture as ONE undoable MoveGroupCommand
@@ -211950,6 +212528,7 @@ export {
   CAPTION_HEIGHT_TIGHT,
   CAPTION_PASS_THROUGH,
   CASCADE_ORDER,
+  COLLAPSED_LANE_SIZE,
   CONNECTION_POINTS,
   CONNECTORS,
   CanvasRenderer,
@@ -212125,11 +212704,14 @@ export {
   JumpPointRenderer,
   KeyboardNavigationController,
   LABEL_TEMPLATES,
+  LANE_BAND_KEY,
+  LANE_TITLE_SIZE,
   LIGHT_THEME,
   LINK_LABEL_SLOT_POSITIONS,
   LINK_TEMPLATES,
   LabelRenderer,
   LamportClock,
+  LaneGesture,
   LayoutApplicator,
   LayoutDetector,
   LayoutHistory,
@@ -212149,6 +212731,8 @@ export {
   MEDIA_FORCED_COLORS,
   MEDIA_PREFERS_CONTRAST,
   MEDIA_PREFERS_DARK,
+  MIN_LANE_SIZE,
+  MIN_POOL_SPAN,
   MOTION_PREFERENCE_CSS,
   MOTION_PREFERENCE_STYLE_ID,
   MacroCommand,
@@ -212187,6 +212771,7 @@ export {
   PerformanceWarning,
   PieChart,
   PluginManager,
+  PoolEditCommand,
   PortAwareLayoutManager,
   PortGroupRegistry,
   PortModel,
@@ -212621,6 +213206,7 @@ export {
   glyphHalfExtents,
   gridItemFromCell,
   gridLayout,
+  groupDragContents,
   groupFrameRects,
   haloAllows,
   hasAnchor,
@@ -212688,9 +213274,12 @@ export {
   isValidUUID,
   keyActionOf,
   laneAtPoint,
+  laneHandleAt,
+  laneHandleCursor,
   lanesOfPool,
   layoutArchitecture,
   layoutArea,
+  layoutPool,
   layoutService,
   layoutWithComponentPacking,
   lightnessOf,
@@ -212943,6 +213532,7 @@ export {
   serverSvgLayerStyle,
   setDebugLogging,
   setNodePortGroups,
+  settleLaneDrop,
   shadcnBridge,
   shouldSimplifyAnimations,
   sideAnchorPortId,
