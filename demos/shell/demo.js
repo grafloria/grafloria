@@ -39,6 +39,28 @@
 
 const failures = [];
 
+/**
+ * The canvas ends at the window's bottom edge. demo.css sized it `100vh - 78px`,
+ * the header alone; a page with its own toolbar row (swimlanes, layouts, the
+ * collab demos…) ran 10–90px past the window, and 75 of 126 pages scrolled — a
+ * new swimlane added at the bottom of a pool sat under the fold. When the
+ * canvas is the last thing on the page and runs past the window, it takes the
+ * window's height less what sits above it. Pages that size it to fit already,
+ * or put content under it, are left as they are.
+ */
+function fitCanvasToWindow(host) {
+  if (!host) return () => {};
+  const fit = () => {
+    host.style.height = '';
+    const r = host.getBoundingClientRect();
+    const last = document.documentElement.scrollHeight <= Math.ceil(r.bottom + scrollY) + 1;
+    if (last && r.bottom > innerHeight + 1) host.style.height = `calc(100vh - ${Math.ceil(r.top + scrollY)}px)`;
+  };
+  fit();
+  addEventListener('resize', fit);
+  return fit;
+}
+
 /** Assert, with a message that will actually help whoever sees it go red at 3am. */
 export function check(condition, message) {
   if (!condition) {
@@ -778,8 +800,12 @@ export function defineDemo(spec) {
     }
     if (!embedded) buildHowTo(spec); // right-side "how to test" panel (skipped under webdriver)
     if (!embedded) buildCodePanel(spec); // bottom code drawer (skipped under webdriver)
+    // BEFORE setup, so the page fits its view to the real size — and again after,
+    // for a page whose setup grows what sits above the canvas.
+    const refit = embedded ? () => {} : fitCanvasToWindow(host);
 
     await spec.setup(ctx);
+    refit();
 
     // THE HANDLE THE HARNESS PULLS. Exposed on window so Playwright can call it in-page —
     // the assertion must run where the DOM, the events and the renderer actually are, not in
