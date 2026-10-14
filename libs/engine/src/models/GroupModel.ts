@@ -108,17 +108,34 @@ export interface LaneConfig {
    * Set on the pool; lanes carry a copy for convenience.
    */
   orientation: 'horizontal' | 'vertical';
-  /** Pool only: ordered child lane group ids (band order). */
+  /** A pool's lanes, or a SPLIT lane's sub-lanes: ordered child lane group ids (band order). */
   laneOrder?: string[];
   /**
-   * Pool only: title-band thickness reserved along the main axis start (left for
-   * horizontal pools, top for vertical pools).
+   * A pool's (or a split lane's) title-band thickness reserved along the main
+   * axis start (left for horizontal pools, top for vertical pools).
    */
   headerSize?: number;
+  /**
+   * Pool only: PHASES — named stages across every lane, in order (columns along
+   * a horizontal pool's lanes, rows down a vertical pool's). See pool-phases.ts.
+   */
+  phases?: PoolPhase[];
+  /** Pool only: the phase header band's thickness (default 28; on top of a horizontal pool, left of a vertical one). */
+  phaseHeaderSize?: number;
   /** Lane only: relative cross-axis size when not fixed (default 1). */
   weight?: number;
   /** Lane only: absolute cross-axis size (pins the band, overrides weight). */
   fixedSize?: number;
+}
+
+/** One phase of a pool: a named stage across every lane. */
+export interface PoolPhase {
+  id: string;
+  name: string;
+  /** Its size along the lanes, in pixels (pins it). */
+  fixedSize?: number;
+  /** Its share of what the pinned phases leave (default 1). */
+  weight?: number;
 }
 
 /**
@@ -176,6 +193,8 @@ export interface CollapsedState {
     prevFixedSize?: number;
     /** The lane's top-left when it folded. */
     origin: { x: number; y: number };
+    /** A sub-lane: its lane shrank and grows back with it (every lane pinned). */
+    nested?: boolean;
   };
 }
 

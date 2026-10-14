@@ -43,6 +43,11 @@ export class GroupDragController {
     return this.drag !== null || this.lane !== null;
   }
 
+  /** Held but never moved past the threshold: its release is a CLICK on the background. */
+  isClick(): boolean {
+    return this.lane ? !this.lane.committed : this.drag ? !this.drag.committed : false;
+  }
+
   /** The cursor a pool's lane handle under the point shows, or null (the hover cursor). */
   cursorAt(diagram: DiagramModel, worldX: number, worldY: number, tolerance: number): string | null {
     const handle = laneHandleAt(diagram, worldX, worldY, tolerance);

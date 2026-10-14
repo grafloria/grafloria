@@ -218,6 +218,17 @@ describe('DiagramCanvasComponent — swimlanes under a hand', () => {
     expect(engine.commandManager.canUndo()).toBe(false);
   });
 
+  test('a CLICK on a lane (or a lane handle) clears the selection, like a click on empty canvas', async () => {
+    pool();
+    for (const at of [{ x: 400, y: 260 }, { x: 400, y: 141 }, { x: 400, y: 150 }]) { // a lane's body, its border, its title
+      diagram.getNode('t')!.setSelected(true);
+      mouse('mousedown', at.x, at.y);
+      mouse('mouseup', at.x, at.y);
+      for (let i = 0; i < 3; i++) await flush();
+      expect(diagram.getSelectedNodes().length).toBe(0);
+    }
+  });
+
   test('a drop from one group into another is ONE undo step', async () => {
     addNode('n', 200, 200);
     const billing = new GroupModel({ id: 'billing', name: 'billing' });

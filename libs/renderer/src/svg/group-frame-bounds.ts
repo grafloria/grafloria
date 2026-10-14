@@ -14,7 +14,7 @@ import type { Rectangle } from '../types/geometry.types';
 interface FrameGroup {
   name?: string;
   isCollapsed?: boolean;
-  laneConfig?: { role?: string; orientation?: string; headerSize?: number } | null;
+  laneConfig?: { role?: string; orientation?: string; headerSize?: number; laneOrder?: string[] } | null;
   getOuterBounds(): { x: number; y: number; width: number; height: number };
   getMetadata?(key: string): unknown;
 }
@@ -63,10 +63,14 @@ export function groupFrameRects(
         ? (g.getMetadata?.('frameStyle') as { labelPlacement?: string; fontSize?: unknown } | undefined)
         : undefined;
       const lc = g.laneConfig;
+      // As the renderer: a pool's — or a split lane's — title turns inside its strip
+      // on a horizontal pool, and a folded lane's turns inside a vertical pool's column.
+      const splitLane = !g.isCollapsed && lc?.role === 'lane' && (lc.laneOrder?.length ?? 0) > 0;
+      const foldedColumn = !!g.isCollapsed && lc?.role === 'lane' && lc.orientation === 'vertical';
       const sideStrip =
-        !g.isCollapsed && lc?.role === 'pool' && lc.orientation === 'horizontal'
+        !g.isCollapsed && (lc?.role === 'pool' || splitLane) && lc?.orientation === 'horizontal'
           ? Math.min(lc.headerSize ?? 0, b.width)
-          : 0;
+          : foldedColumn ? b.width : 0;
 
       if (zone) {
         // renderZoneFrame: inset 16px from the side it is anchored to.

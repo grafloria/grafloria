@@ -18,6 +18,8 @@ import type { DiagramModel } from '../models/DiagramModel';
 import type { GroupModel } from '../models/GroupModel';
 import type { NodeModel } from '../models/NodeModel';
 import { SwimlaneService, MIN_LANE_SIZE } from './SwimlaneService';
+import { lanesOfPool, bandsOf, hasSubLanes } from './confinement';
+import { phaseBands, phaseHeaderSizeOf, MIN_PHASE_SIZE } from './pool-phases';
 import { LANE_TITLE_SIZE, MIN_POOL_SPAN } from './lane-gestures';
 
 export interface PoolLayoutOptions {
@@ -42,7 +44,8 @@ export function layoutPool(
   const cfg = pool.laneConfig;
   if (cfg?.role !== 'pool') return positions;
   const horizontal = cfg.orientation === 'horizontal';
-  const lanes = (cfg.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g): g is GroupModel => !!g);
+  // The LEAF lanes, in band order: steps live in them (a split lane holds sub-lanes; a folded lane is one band).
+  const lanes = lanesOfPool(diagram, pool);
   if (lanes.length === 0) return positions;
 
   const main = (n: NodeModel) => (horizontal ? n.size.width : n.size.height);
@@ -101,14 +104,30 @@ export function layoutPool(
     }
   }
 
-  // 2–3. Columns and stacks.
-  const ranks = Math.max(...steps.map((n) => rank.get(n.id) ?? 0)) + 1;
-  const colSize = new Array<number>(ranks).fill(0);
+  // 2–3. Columns and stacks. A pool with PHASES keeps every step in the phase it
+  //      sits in: each phase gets the columns of the ranks its steps use, in
+  //      order, and is as long as they need. Without phases there is one.
+  const before = phaseBands(pool);
+  const phaseCount = Math.max(1, before.length);
+  const phaseOf = (n: NodeModel): number => {
+    if (!before.length) return 0;
+    const mid = mainAt(n) + main(n) / 2;
+    const i = before.findIndex((b) => mid >= b.start && mid < b.end);
+    return i >= 0 ? i : mid < before[0]!.start ? 0 : before.length - 1;
+  };
+  const ranksIn = Array.from({ length: phaseCount }, () => new Set<number>());
+  for (const n of steps) ranksIn[phaseOf(n)]!.add(rank.get(n.id) ?? 0);
+  const slotsIn = ranksIn.map((set) => [...set].sort((a, b) => a - b));
+  const slotOf = (n: NodeModel) => {
+    const p = phaseOf(n);
+    return `${p}:${slotsIn[p]!.indexOf(rank.get(n.id) ?? 0)}`;
+  };
+  const colSize = new Map<string, number>();
   const cells = new Map<string, NodeModel[]>();
   for (const n of steps) {
-    const r = rank.get(n.id) ?? 0;
-    colSize[r] = Math.max(colSize[r]!, main(n));
-    const key = `${laneOf.get(n.id)}:${r}`;
+    const slot = slotOf(n);
+    colSize.set(slot, Math.max(colSize.get(slot) ?? 0, main(n)));
+    const key = `${laneOf.get(n.id)}@${slot}`;
     if (!cells.has(key)) cells.set(key, []);
     cells.get(key)!.push(n);
   }
@@ -119,39 +138,68 @@ export function layoutPool(
   const sizes = lanes.map((lane, i) => {
     if (lane.isCollapsed) return laneCross(lane);
     let tallest = 0;
-    for (let r = 0; r < ranks; r++) {
-      const stack = cells.get(`${i}:${r}`);
-      if (stack) tallest = Math.max(tallest, stackSize(stack));
-    }
+    for (const [key, stack] of cells) if (key.startsWith(`${i}@`)) tallest = Math.max(tallest, stackSize(stack));
     return Math.max(laneCross(lane), MIN_LANE_SIZE, tallest ? titleOf(lane) + 2 * pad + tallest : 0);
   });
 
-  // 4. The pool: its length fits the columns; its lanes, pinned at their sizes, tile in order.
+  // 4. The pool: its length fits its phases' columns past the deepest title strip;
+  //    every lane, pinned at its size (a split lane: the sum of its sub-lanes),
+  //    tiles in order under the phase header.
   const header = cfg.headerSize ?? 0;
-  const length = Math.max(MIN_POOL_SPAN, pad + colSize.reduce((s, c) => s + c, 0) + rankGap * (ranks - 1) + pad) + header;
-  lanes.forEach((lane, i) => { lane.laneConfig = { ...lane.laneConfig!, fixedSize: sizes[i] }; });
+  const stripsBefore = (lane: GroupModel): number => {
+    let sum = 0;
+    for (let g = lane.parentGroupId ? diagram.getGroup(lane.parentGroupId) : undefined; g && g !== pool; g = g.parentGroupId ? diagram.getGroup(g.parentGroupId) : undefined) {
+      sum += g.laneConfig?.headerSize ?? 0;
+    }
+    return sum;
+  };
+  const indent = Math.max(...lanes.map(stripsBefore));
+  const content = (p: number) => slotsIn[p]!.reduce((sum, _r, k) => sum + (colSize.get(`${p}:${k}`) ?? 0), 0) + rankGap * Math.max(0, slotsIn[p]!.length - 1);
+  const widths = Array.from({ length: phaseCount }, (_, p) => {
+    const lead = p === 0 ? indent : 0;
+    if (!slotsIn[p]!.length) return before.length ? Math.max(lead + MIN_PHASE_SIZE, before[p]!.end - before[p]!.start) : lead + MIN_POOL_SPAN;
+    return lead + Math.max(before.length ? MIN_PHASE_SIZE : MIN_POOL_SPAN, pad + content(p) + pad);
+  });
+  const length = header + widths.reduce((sum, w) => sum + w, 0);
+  if (before.length) {
+    pool.laneConfig = { ...pool.laneConfig!, phases: (cfg.phases ?? []).map((ph, i) => ({ ...ph, fixedSize: widths[i]! })) };
+  }
+  const leafSize = new Map(lanes.map((lane, i) => [lane.id, sizes[i]!]));
+  const sizeOf = (lane: GroupModel, depth = 0): number =>
+    leafSize.get(lane.id) ?? (depth > 32 ? 0 : bandsOf(diagram, lane).reduce((sum, l) => sum + sizeOf(l, depth + 1), 0));
+  const pin = (g: GroupModel, depth = 0) => {
+    for (const lane of bandsOf(diagram, g)) {
+      lane.laneConfig = { ...lane.laneConfig!, fixedSize: sizeOf(lane) };
+      if (hasSubLanes(lane) && !lane.isCollapsed && depth < 32) pin(lane, depth + 1);
+    }
+  };
+  pin(pool);
   const p = pool.getOuterBounds();
-  const total = sizes.reduce((s, v) => s + v, 0);
+  const total = phaseHeaderSizeOf(pool) + bandsOf(diagram, pool).reduce((sum, l) => sum + sizeOf(l), 0);
   pool.setFrame(horizontal ? { ...p, width: length, height: total } : { ...p, width: total, height: length });
   svc.reflow(pool);
 
-  const colStart: number[] = [];
-  let at = (horizontal ? p.x : p.y) + header + pad;
-  for (let r = 0; r < ranks; r++) {
-    colStart.push(at);
-    at += colSize[r]! + rankGap;
+  const colStart = new Map<string, number>();
+  let phaseStart = (horizontal ? p.x : p.y) + header;
+  for (let ph = 0; ph < phaseCount; ph++) {
+    let at = phaseStart + (ph === 0 ? indent : 0) + pad;
+    slotsIn[ph]!.forEach((_r, k) => {
+      colStart.set(`${ph}:${k}`, at);
+      at += (colSize.get(`${ph}:${k}`) ?? 0) + rankGap;
+    });
+    phaseStart += widths[ph]!;
   }
   lanes.forEach((lane, i) => {
     if (lane.isCollapsed) return;
     const band = lane.getOuterBounds();
     const bandStart = (horizontal ? band.y : band.x) + titleOf(lane);
     const room = sizes[i]! - titleOf(lane);
-    for (let r = 0; r < ranks; r++) {
-      const stack = cells.get(`${i}:${r}`);
-      if (!stack) continue;
+    for (const [key, stack] of cells) {
+      if (!key.startsWith(`${i}@`)) continue;
+      const slot = key.slice(key.indexOf('@') + 1);
       let c = bandStart + Math.max(pad, (room - stackSize(stack)) / 2);
       for (const n of stack) {
-        const m = colStart[r]! + (colSize[r]! - main(n)) / 2;
+        const m = colStart.get(slot)! + (colSize.get(slot)! - main(n)) / 2;
         const xy = horizontal ? { x: Math.round(m), y: Math.round(c) } : { x: Math.round(c), y: Math.round(m) };
         n.setPosition(xy.x, xy.y);
         positions.set(n.id, xy);

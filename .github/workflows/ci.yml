@@ -27,7 +27,9 @@ jobs:
   gates:
     name: Demo gates (browser)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # 40 minutes cancelled a green run: the job took 38.7 of them on 2026-10-14
+    # and every new demo adds to it.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

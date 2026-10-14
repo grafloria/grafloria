@@ -525,6 +525,7 @@ export { SwimlaneService, PoolEditCommand, layoutPool } from '@grafloria/engine'
 export type {
   Pool, LaneSpec, CreatePoolOptions, LaneOrientation,
   SwimlaneServiceOptions, PoolSnapshot, PoolLayoutOptions,
+  PhaseSpec, PhaseBand, PoolPhase,
 } from '@grafloria/engine';
 
 // wave11/gallery BUG FIX — three more authoring seams were not on the embed.

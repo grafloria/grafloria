@@ -156,9 +156,14 @@ export class GroupCollapseService {
     let lane: CollapsedState['lane'];
     if (pool && group.laneConfig) {
       const crossSize = horizontal ? frame.height : frame.width;
-      lane = { poolId: pool.id, crossSize, prevFixedSize: group.laneConfig.fixedSize, origin: { x: frame.x, y: frame.y } };
-      group.laneConfig = { ...group.laneConfig, fixedSize: COLLAPSED_LANE_SIZE };
-      this.growPool(pool, horizontal, COLLAPSED_LANE_SIZE - crossSize);
+      const nested = group.parentGroupId !== pool.id; // a sub-lane: its lane shrinks with the pool
+      lane = { poolId: pool.id, crossSize, prevFixedSize: group.laneConfig.fixedSize, origin: { x: frame.x, y: frame.y }, ...(nested ? { nested } : {}) };
+      if (nested) {
+        new SwimlaneService(this.diagram).setLaneSize(pool, group.id, COLLAPSED_LANE_SIZE);
+      } else {
+        group.laneConfig = { ...group.laneConfig, fixedSize: COLLAPSED_LANE_SIZE };
+        this.growPool(pool, horizontal, COLLAPSED_LANE_SIZE - crossSize);
+      }
     } else {
       group.setFrame({
         x: frame.x,
@@ -246,9 +251,14 @@ export class GroupCollapseService {
     if (state.lane && pool && group.laneConfig) {
       const horizontal = pool.laneConfig?.orientation !== 'vertical';
       const now = group.getOuterBounds();
-      const { fixedSize: _folded, ...rest } = group.laneConfig;
-      group.laneConfig = state.lane.prevFixedSize === undefined ? rest : { ...rest, fixedSize: state.lane.prevFixedSize };
-      this.growPool(pool, horizontal, state.lane.crossSize - (horizontal ? now.height : now.width));
+      if (state.lane.nested) {
+        // A sub-lane gets its band back the way it gave it: its lane and the pool grow.
+        new SwimlaneService(this.diagram).setLaneSize(pool, group.id, state.lane.crossSize);
+      } else {
+        const { fixedSize: _folded, ...rest } = group.laneConfig;
+        group.laneConfig = state.lane.prevFixedSize === undefined ? rest : { ...rest, fixedSize: state.lane.prevFixedSize };
+        this.growPool(pool, horizontal, state.lane.crossSize - (horizontal ? now.height : now.width));
+      }
       new SwimlaneService(this.diagram).reflow(pool);
       const back = group.getOuterBounds();
       shift = { x: back.x - state.lane.origin.x, y: back.y - state.lane.origin.y };
@@ -269,6 +279,8 @@ export class GroupCollapseService {
 
     group.expand();
     this.setCollapsedState(group, undefined);
+    // A split lane's sub-lanes are tiled only while it is unfolded.
+    if (pool) new SwimlaneService(this.diagram).reflow(pool);
 
     this.diagram.reconcilePortConnections();
   }

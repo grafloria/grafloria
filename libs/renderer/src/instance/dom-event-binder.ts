@@ -2611,11 +2611,29 @@ export class DomEventBinder {
     void this.executeAsOneStep(engine, 'Move nodes', this.moveSteps(engine, drag));
   }
 
+  /**
+   * A press on a group frame, a pool or a lane handle that never became a drag
+   * is a click on the BACKGROUND: it clears the selection, as a click on empty
+   * canvas does (it used to keep it — a click beside a selected step inside a
+   * lane left the step selected). Such presses only start without modifiers.
+   */
+  private clickedBackground(engine: DiagramEngine): void {
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+    diagram.clearSelection();
+    diagram.getLinks().forEach((l: LinkModel) => {
+      if (l.state === 'selected') l.setState('default');
+    });
+    this.host.requestRender();
+    this.emitSelectionChange();
+  }
+
   /** End a lane gesture: the whole drag becomes ONE undo step (nothing when it changed nothing). */
   private endLaneGesture(engine: DiagramEngine): void {
     const lane = this.laneGesture;
     this.laneGesture = null;
-    if (!lane?.committed) return;
+    if (!lane) return;
+    if (!lane.committed) return this.clickedBackground(engine);
     const command = lane.gesture.end();
     if (command) {
       void engine.commandManager.execute(command);
@@ -2635,7 +2653,7 @@ export class DomEventBinder {
     this.groupDrag = null;
     if (!drag) return;
 
-    if (!drag.committed) return; // a press with no drag — nothing moved
+    if (!drag.committed) return this.clickedBackground(engine); // a press with no drag — nothing moved
 
     const diagram = engine.getDiagram();
     if (!diagram) return;

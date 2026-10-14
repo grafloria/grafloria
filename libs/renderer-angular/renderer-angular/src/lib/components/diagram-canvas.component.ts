@@ -4868,8 +4868,19 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // A6: commit a frame / lane drag as ONE undo entry.
       if (this.groupDrag.isActive() && this.eng) {
         event.preventDefault();
-        const command = this.groupDrag.end(this.eng.getDiagram());
+        // A press on a group frame or a lane handle that never became a drag is a
+        // click on the BACKGROUND: it clears the selection, as a click on empty
+        // canvas does (the JS canvas does the same).
+        const click = this.groupDrag.isClick();
+        const diagram = this.eng.getDiagram();
+        const command = this.groupDrag.end(diagram);
         if (command) void this.executeCommand(command);
+        else if (click && diagram) {
+          diagram.clearSelection();
+          diagram.getLinks().forEach((link: any) => {
+            if (link.state === 'selected') link.setState('default');
+          });
+        }
         if (this.containerRef?.nativeElement) this.containerRef.nativeElement.style.cursor = 'default';
         this.scheduleRender();
         this.cdr.markForCheck();
