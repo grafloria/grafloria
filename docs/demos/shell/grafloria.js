@@ -114448,304 +114448,6 @@ var RemoveFromGroupCommand = class extends Command {
   }
 };
 
-// libs/engine/src/interaction/SwimlaneService.ts
-var MIN_LANE_SIZE = 40;
-var PoolEditCommand = class extends Command {
-  constructor(name, before, after) {
-    super(name);
-    this.before = before;
-    this.after = after;
-  }
-  execute(context) {
-    restorePoolSnapshot(context.diagram, this.after, this.before);
-  }
-  undo(context) {
-    restorePoolSnapshot(context.diagram, this.before, this.after);
-  }
-  canExecute(context) {
-    return !!context.diagram;
-  }
-  canUndo(context) {
-    return !!context.diagram;
-  }
-  serialize() {
-    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { before: this.before, after: this.after } };
-  }
-  getDescription() {
-    return this.name;
-  }
-};
-function restorePoolSnapshot(diagram, target, other) {
-  const gone = (a, b) => {
-    const keep = new Set(a.map((e) => e.id));
-    return b.map((e) => e.id).filter((id) => !keep.has(id));
-  };
-  diagram.applyIncremental({
-    format: INCREMENTAL_FORMAT,
-    schemaVersion: DIAGRAM_SCHEMA_VERSION,
-    baseVersion: diagram.version,
-    targetVersion: void 0,
-    // keep this diagram's own counter
-    added: { nodes: [], links: [], groups: [] },
-    removed: { nodes: gone(target.nodes, other.nodes), links: gone(target.links, other.links), groups: gone(target.groups, other.groups) },
-    modified: { nodes: target.nodes, links: target.links, groups: target.groups }
-  });
-}
-var SwimlaneService = class {
-  constructor(diagram, options = {}) {
-    this.diagram = diagram;
-    this.dispatcher = options.dispatcher;
-  }
-  /** Serialize everything an edit of `pool` can touch (see {@link PoolSnapshot}). */
-  snapshot(pool) {
-    const lanes = [...pool.members].map((id) => this.diagram.getGroup(id)).filter((g) => !!g);
-    const nodeIds = /* @__PURE__ */ new Set();
-    for (const lane of lanes) {
-      for (const id of lane.members) if (this.diagram.getNode(id)) nodeIds.add(id);
-      const proxy = lane.collapsedState?.proxyNodeId;
-      if (proxy && this.diagram.getNode(proxy)) nodeIds.add(proxy);
-    }
-    const links = /* @__PURE__ */ new Map();
-    for (const id of nodeIds) for (const link of this.diagram.getLinksForNode(id)) links.set(link.id, link.serialize());
-    return JSON.parse(JSON.stringify({
-      poolId: pool.id,
-      groups: [pool, ...lanes].map((g) => g.serialize()),
-      nodes: [...nodeIds].map((id) => this.diagram.getNode(id).serialize()),
-      links: [...links.values()]
-    }));
-  }
-  /**
-   * Run `edit` on `pool` — any change to the pool, its lanes or their steps (a
-   * host's own edit, `layoutPool`) — and, with a dispatcher, record it as ONE
-   * undo step named `name`.
-   */
-  editPool(pool, name, edit) {
-    if (!this.dispatcher) return edit();
-    const before = this.snapshot(pool);
-    const result = edit();
-    void this.dispatcher.execute(new PoolEditCommand(name, before, this.snapshot(pool)));
-    return result;
-  }
-  /** Create a pool group with N lane bands and tile them. */
-  createPool(options) {
-    const pool = new GroupModel({ id: options.id, name: options.name });
-    pool.laneConfig = {
-      role: "pool",
-      orientation: options.orientation,
-      laneOrder: [],
-      headerSize: options.headerSize ?? 0
-    };
-    pool.setFrame(options.bounds);
-    this.diagram.addGroup(pool);
-    const lanes = [];
-    for (const spec of options.lanes) {
-      const lane = this.buildLane(pool, spec, options.laneHeaderSize ?? 0);
-      lanes.push(lane);
-    }
-    pool.laneConfig.laneOrder = lanes.map((l) => l.id);
-    this.reflow(pool);
-    return { pool, lanes };
-  }
-  /** Add a lane to a pool (optionally at an index) and re-tile. */
-  addLane(pool, spec, atIndex) {
-    this.assertPool(pool);
-    return this.editPool(pool, "Add lane", () => this.addLaneNow(pool, spec, atIndex));
-  }
-  addLaneNow(pool, spec, atIndex) {
-    const lane = this.buildLane(pool, spec, this.firstLaneHeader(pool));
-    const order = pool.laneConfig.laneOrder ?? [];
-    if (atIndex === void 0 || atIndex >= order.length) {
-      order.push(lane.id);
-    } else {
-      order.splice(Math.max(0, atIndex), 0, lane.id);
-    }
-    pool.laneConfig.laneOrder = order;
-    this.touch(pool);
-    this.reflow(pool);
-    return lane;
-  }
-  /**
-   * Remove a lane and re-tile the survivors. Its steps are not deleted with it:
-   * they move to the lane before it (the next one, for the first lane). A folded
-   * lane is unfolded first. A pool keeps at least one lane.
-   */
-  removeLane(pool, laneId) {
-    this.assertPool(pool);
-    const order = pool.laneConfig.laneOrder ?? [];
-    const at = order.indexOf(laneId);
-    const lane = this.diagram.getGroup(laneId);
-    if (at < 0 || !lane || order.length <= 1) return;
-    this.editPool(pool, "Remove lane", () => {
-      if (lane.isCollapsed) new GroupCollapseService(this.diagram).expand(lane);
-      const heir = this.diagram.getGroup(order[at > 0 ? at - 1 : at + 1]);
-      const steps = [...lane.members].filter((id) => this.diagram.getNode(id));
-      for (const id of steps) {
-        lane.removeMember(id, this.diagram);
-        heir.addMember(id, this.diagram);
-      }
-      pool.laneConfig.laneOrder = order.filter((id) => id !== laneId);
-      pool.removeMember(laneId, this.diagram);
-      this.diagram.removeGroup(laneId);
-      this.touch(pool);
-      this.reflow(pool);
-      for (const id of steps) heir.clampChildToExtent(id, this.diagram);
-    });
-  }
-  /** Move a lane to `toIndex` in its pool's band order; every lane takes its steps along. */
-  moveLane(pool, laneId, toIndex) {
-    this.assertPool(pool);
-    const order = [...pool.laneConfig.laneOrder ?? []];
-    const from = order.indexOf(laneId);
-    const to = Math.max(0, Math.min(order.length - 1, Math.round(toIndex)));
-    if (from < 0 || from === to) return;
-    this.editPool(pool, "Move lane", () => {
-      order.splice(from, 1);
-      order.splice(to, 0, laneId);
-      pool.laneConfig.laneOrder = order;
-      this.touch(pool);
-      this.reflow(pool);
-    });
-  }
-  /**
-   * Size one lane the way a hand drags its border: the lane takes `size`, the
-   * pool grows or shrinks by the difference, and every other lane keeps its
-   * size (each is pinned where it is). Never below {@link MIN_LANE_SIZE}.
-   */
-  setLaneSize(pool, laneId, size) {
-    this.assertPool(pool);
-    const lane = this.diagram.getGroup(laneId);
-    if (!lane?.laneConfig || !this.getLanes(pool).includes(lane)) return;
-    this.editPool(pool, "Resize lane", () => {
-      const horizontal = pool.laneConfig.orientation === "horizontal";
-      const cross3 = (g) => horizontal ? g.getOuterBounds().height : g.getOuterBounds().width;
-      const next = Math.max(MIN_LANE_SIZE, size);
-      const delta = next - cross3(lane);
-      for (const l of this.getLanes(pool)) {
-        l.laneConfig = { ...l.laneConfig, fixedSize: l === lane ? next : cross3(l) };
-        this.touch(l);
-      }
-      const b = pool.getOuterBounds();
-      pool.setFrame(horizontal ? { ...b, height: b.height + delta } : { ...b, width: b.width + delta });
-      this.reflow(pool);
-    });
-  }
-  /**
-   * Resize a lane along the cross axis by pinning its band (fixedSize) and
-   * re-laying out the pool so siblings absorb the remaining space.
-   */
-  resizeLane(pool, laneId, crossSize2) {
-    this.assertPool(pool);
-    const lane = this.diagram.getGroup(laneId);
-    if (!lane || !lane.laneConfig) return;
-    this.editPool(pool, "Resize lane", () => {
-      lane.laneConfig = { ...lane.laneConfig, fixedSize: Math.max(0, crossSize2) };
-      this.touch(lane);
-      this.reflow(pool);
-    });
-  }
-  /** Resize the whole pool and re-tile its lanes to the new frame. */
-  resizePool(pool, bounds) {
-    this.assertPool(pool);
-    this.editPool(pool, "Resize pool", () => {
-      pool.setFrame(bounds);
-      this.reflow(pool);
-    });
-  }
-  /** Lanes of a pool in band order. */
-  getLanes(pool) {
-    this.assertPool(pool);
-    return (pool.laneConfig.laneOrder ?? []).map((id) => this.diagram.getGroup(id)).filter((g) => !!g);
-  }
-  /** Is this group a pool? */
-  isPool(group) {
-    return group.laneConfig?.role === "pool";
-  }
-  /** Is this group a lane? */
-  isLane(group) {
-    return group.laneConfig?.role === "lane";
-  }
-  /**
-   * Re-tile a pool's lanes into bands. fixedSize lanes take their pixel size;
-   * the rest split the remaining cross-axis space by weight. Each lane frame is
-   * set (drop-in hit-testing + drag constraints follow automatically).
-   */
-  reflow(pool) {
-    this.assertPool(pool);
-    const cfg = pool.laneConfig;
-    const lanes = this.getLanes(pool);
-    if (lanes.length === 0) return;
-    const rect = pool.getOuterBounds();
-    const header = cfg.headerSize ?? 0;
-    const horizontal = cfg.orientation === "horizontal";
-    const crossTotal = horizontal ? rect.height : rect.width;
-    const mainStart = horizontal ? rect.x + header : rect.y + header;
-    const mainSpan = (horizontal ? rect.width : rect.height) - header;
-    const fixed = lanes.reduce((s, l) => s + (l.laneConfig?.fixedSize ?? 0), 0);
-    const flexible = lanes.filter((l) => l.laneConfig?.fixedSize === void 0);
-    const absorber = flexible.length === 0 ? [...lanes].reverse().find((l) => !l.isCollapsed) : void 0;
-    const spare = crossTotal - fixed;
-    const totalWeight = flexible.reduce((s, l) => s + (l.laneConfig?.weight ?? 1), 0) || 1;
-    const flexSpace = Math.max(0, crossTotal - fixed);
-    let cross3 = horizontal ? rect.y : rect.x;
-    for (const lane of lanes) {
-      const lc = lane.laneConfig;
-      const size = lane === absorber ? Math.max(MIN_LANE_SIZE, lc.fixedSize + spare) : lc.fixedSize !== void 0 ? lc.fixedSize : flexSpace * (lc.weight ?? 1) / totalWeight;
-      const frame = horizontal ? { x: mainStart, y: cross3, width: mainSpan, height: size } : { x: cross3, y: mainStart, width: size, height: mainSpan };
-      const previous = lane.getOuterBounds();
-      lane.setFrame(frame);
-      lane.constrainChildren = true;
-      this.carryMembers(lane, previous, frame);
-      const proxyId = lane.collapsedState?.proxyNodeId;
-      const proxy = proxyId ? this.diagram.getNode(proxyId) : void 0;
-      if (proxy) {
-        proxy.setPosition(frame.x, frame.y);
-        proxy.setSize(frame.width, frame.height);
-      }
-      lane.laneConfig = { ...lc, orientation: cfg.orientation };
-      cross3 += size;
-    }
-  }
-  /** Move a lane's member nodes from its previous band to `next`, then clamp them in. */
-  carryMembers(lane, previous, next) {
-    const hadBand = previous.width > 0 && previous.height > 0;
-    const dx = hadBand ? next.x - previous.x : 0;
-    const dy = hadBand ? next.y - previous.y : 0;
-    for (const id of lane.members) {
-      const node = this.diagram.getNode(id);
-      if (!node) continue;
-      if (dx !== 0 || dy !== 0) node.setPosition(node.position.x + dx, node.position.y + dy);
-      lane.clampChildToExtent(id, this.diagram);
-    }
-  }
-  buildLane(pool, spec, laneHeader) {
-    const lane = new GroupModel({ id: spec.id, name: spec.name });
-    lane.laneConfig = {
-      role: "lane",
-      orientation: pool.laneConfig.orientation,
-      weight: spec.weight,
-      fixedSize: spec.fixedSize
-    };
-    lane.headerHeight = laneHeader;
-    lane.constrainChildren = true;
-    this.diagram.addGroup(lane);
-    pool.addMember(lane.id, this.diagram);
-    return lane;
-  }
-  firstLaneHeader(pool) {
-    const first = this.getLanes(pool)[0];
-    return first?.headerHeight ?? 0;
-  }
-  assertPool(group) {
-    if (group.laneConfig?.role !== "pool") {
-      throw new Error(`Group ${group.id} is not a pool`);
-    }
-  }
-  /** Mark a group changed so the diff-capture serializes laneConfig edits. */
-  touch(group) {
-    group.setMetadata("__laneRev", (group.getMetadata("__laneRev") ?? 0) + 1);
-  }
-};
-
 // libs/engine/src/interaction/confinement.ts
 function containingGroup(diagram, nodeId) {
   for (const group of diagram.getGroups()) {
@@ -114754,12 +114456,33 @@ function containingGroup(diagram, nodeId) {
   return void 0;
 }
 function poolOfLane(diagram, lane) {
-  if (lane.laneConfig?.role !== "lane" || !lane.parentGroupId) return void 0;
-  const pool = diagram.getGroup(lane.parentGroupId);
-  return pool?.laneConfig?.role === "pool" ? pool : void 0;
+  if (lane.laneConfig?.role !== "lane") return void 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (let cur = lane; cur.parentGroupId && !seen.has(cur.id); ) {
+    seen.add(cur.id);
+    const parent = diagram.getGroup(cur.parentGroupId);
+    if (parent?.laneConfig?.role === "pool") return parent;
+    if (parent?.laneConfig?.role !== "lane") return void 0;
+    cur = parent;
+  }
+  return void 0;
+}
+function hasSubLanes(lane) {
+  return lane.laneConfig?.role === "lane" && (lane.laneConfig.laneOrder?.length ?? 0) > 0;
+}
+function bandsOf(diagram, container) {
+  return (container.laneConfig?.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g) => !!g);
 }
 function lanesOfPool(diagram, pool) {
-  return (pool.laneConfig?.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g) => !!g);
+  const out = [];
+  const walk3 = (g, depth) => {
+    for (const lane of bandsOf(diagram, g)) {
+      if (hasSubLanes(lane) && !lane.isCollapsed && depth < 32) walk3(lane, depth + 1);
+      else out.push(lane);
+    }
+  };
+  walk3(pool, 0);
+  return out;
 }
 function laneAtPoint(diagram, pool, point) {
   for (const lane of lanesOfPool(diagram, pool)) {
@@ -114854,6 +114577,587 @@ function groupDragContents(diagram, group) {
   }
   return { nodeIds: [...nodeIds], groupIds: [...groupIds] };
 }
+
+// libs/engine/src/interaction/pool-phases.ts
+var PHASE_HEADER_SIZE = 28;
+var MIN_PHASE_SIZE = 80;
+function phaseHeaderSizeOf(pool) {
+  const cfg = pool.laneConfig;
+  if (cfg?.role !== "pool" || !cfg.phases?.length) return 0;
+  return cfg.phaseHeaderSize ?? PHASE_HEADER_SIZE;
+}
+function phaseBands(pool) {
+  const cfg = pool.laneConfig;
+  const phases = cfg?.role === "pool" ? cfg.phases ?? [] : [];
+  if (phases.length === 0) return [];
+  const horizontal = cfg.orientation === "horizontal";
+  const r = pool.getOuterBounds();
+  const header = cfg.headerSize ?? 0;
+  const start = (horizontal ? r.x : r.y) + header;
+  const span = (horizontal ? r.width : r.height) - header;
+  const fixed = phases.reduce((s, p) => s + (p.fixedSize ?? 0), 0);
+  const flexible = phases.filter((p) => p.fixedSize === void 0);
+  const weight = flexible.reduce((s, p) => s + (p.weight ?? 1), 0) || 1;
+  const flex = Math.max(0, span - fixed);
+  const last = phases[phases.length - 1];
+  let at = start;
+  return phases.map((p) => {
+    const size = flexible.length === 0 && p === last ? Math.max(MIN_PHASE_SIZE, start + span - at) : p.fixedSize !== void 0 ? p.fixedSize : flex * (p.weight ?? 1) / weight;
+    const band = { id: p.id, name: p.name, start: at, end: at + size };
+    at += size;
+    return band;
+  });
+}
+function phaseHeaderRect(pool) {
+  const size = phaseHeaderSizeOf(pool);
+  if (!size) return null;
+  const r = pool.getOuterBounds();
+  const header = pool.laneConfig?.headerSize ?? 0;
+  return pool.laneConfig?.orientation === "horizontal" ? { x: r.x + header, y: r.y, width: r.width - header, height: size } : { x: r.x, y: r.y + header, width: size, height: r.height - header };
+}
+function phaseAt(pool, along) {
+  const bands = phaseBands(pool);
+  return bands.find((b) => along >= b.start && along < b.end) ?? (bands.length && along >= bands[bands.length - 1].end ? bands[bands.length - 1] : void 0);
+}
+
+// libs/engine/src/interaction/SwimlaneService.ts
+var MIN_LANE_SIZE = 40;
+var PoolEditCommand = class extends Command {
+  constructor(name, before, after) {
+    super(name);
+    this.before = before;
+    this.after = after;
+  }
+  execute(context) {
+    restorePoolSnapshot(context.diagram, this.after, this.before);
+  }
+  undo(context) {
+    restorePoolSnapshot(context.diagram, this.before, this.after);
+  }
+  canExecute(context) {
+    return !!context.diagram;
+  }
+  canUndo(context) {
+    return !!context.diagram;
+  }
+  serialize() {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { before: this.before, after: this.after } };
+  }
+  getDescription() {
+    return this.name;
+  }
+};
+function restorePoolSnapshot(diagram, target, other) {
+  const gone = (a, b) => {
+    const keep = new Set(a.map((e) => e.id));
+    return b.map((e) => e.id).filter((id) => !keep.has(id));
+  };
+  diagram.applyIncremental({
+    format: INCREMENTAL_FORMAT,
+    schemaVersion: DIAGRAM_SCHEMA_VERSION,
+    baseVersion: diagram.version,
+    targetVersion: void 0,
+    // keep this diagram's own counter
+    added: { nodes: [], links: [], groups: [] },
+    removed: { nodes: gone(target.nodes, other.nodes), links: gone(target.links, other.links), groups: gone(target.groups, other.groups) },
+    modified: { nodes: target.nodes, links: target.links, groups: target.groups }
+  });
+}
+var SwimlaneService = class {
+  constructor(diagram, options = {}) {
+    this.diagram = diagram;
+    this.dispatcher = options.dispatcher;
+  }
+  /** Serialize everything an edit of `pool` can touch (see {@link PoolSnapshot}). */
+  snapshot(pool) {
+    const lanes = this.allLanes(pool);
+    const nodeIds = /* @__PURE__ */ new Set();
+    for (const lane of lanes) {
+      for (const id of lane.members) if (this.diagram.getNode(id)) nodeIds.add(id);
+      const proxy = lane.collapsedState?.proxyNodeId;
+      if (proxy && this.diagram.getNode(proxy)) nodeIds.add(proxy);
+    }
+    const links = /* @__PURE__ */ new Map();
+    for (const id of nodeIds) for (const link of this.diagram.getLinksForNode(id)) links.set(link.id, link.serialize());
+    return JSON.parse(JSON.stringify({
+      poolId: pool.id,
+      groups: [pool, ...lanes].map((g) => g.serialize()),
+      nodes: [...nodeIds].map((id) => this.diagram.getNode(id).serialize()),
+      links: [...links.values()]
+    }));
+  }
+  /**
+   * Run `edit` on `pool` — any change to the pool, its lanes or their steps (a
+   * host's own edit, `layoutPool`) — and, with a dispatcher, record it as ONE
+   * undo step named `name`.
+   */
+  editPool(pool, name, edit) {
+    if (!this.dispatcher) return edit();
+    const before = this.snapshot(pool);
+    const result = edit();
+    void this.dispatcher.execute(new PoolEditCommand(name, before, this.snapshot(pool)));
+    return result;
+  }
+  /** Create a pool group with N lane bands and tile them. */
+  createPool(options) {
+    const pool = new GroupModel({ id: options.id, name: options.name });
+    pool.laneConfig = {
+      role: "pool",
+      orientation: options.orientation,
+      laneOrder: [],
+      headerSize: options.headerSize ?? 0,
+      ...options.phases?.length ? { phases: options.phases.map((p) => this.phase(p)) } : {},
+      ...options.phaseHeaderSize !== void 0 ? { phaseHeaderSize: options.phaseHeaderSize } : {}
+    };
+    pool.setFrame(options.bounds);
+    this.diagram.addGroup(pool);
+    const lanes = [];
+    for (const spec of options.lanes) {
+      const lane = this.buildLane(pool, spec, options.laneHeaderSize ?? 0);
+      lanes.push(lane);
+    }
+    pool.laneConfig.laneOrder = lanes.map((l) => l.id);
+    this.reflow(pool);
+    return { pool, lanes };
+  }
+  /** Add a lane to a pool (optionally at an index) and re-tile. */
+  addLane(pool, spec, atIndex) {
+    this.assertPool(pool);
+    return this.editPool(pool, "Add lane", () => this.addLaneNow(pool, spec, atIndex));
+  }
+  addLaneNow(pool, spec, atIndex) {
+    const lane = this.buildLane(pool, spec, this.firstLaneHeader(pool));
+    const order = pool.laneConfig.laneOrder ?? [];
+    if (atIndex === void 0 || atIndex >= order.length) {
+      order.push(lane.id);
+    } else {
+      order.splice(Math.max(0, atIndex), 0, lane.id);
+    }
+    pool.laneConfig.laneOrder = order;
+    this.touch(pool);
+    this.reflow(pool);
+    return lane;
+  }
+  /**
+   * Remove a lane and re-tile the survivors. Its steps are not deleted with it:
+   * they move to the lane before it (the next one, for the first lane; into its
+   * first leaf when that one is split). Removing the only sub-lane of a split
+   * lane makes that lane whole again, holding the steps. A folded lane is
+   * unfolded first. A pool keeps at least one lane.
+   */
+  removeLane(pool, laneId) {
+    this.assertPool(pool);
+    const lane = this.diagram.getGroup(laneId);
+    const container = lane ? this.containerOf(lane) : void 0;
+    if (!lane || !container || poolOfLane(this.diagram, lane) !== pool) return;
+    const order = container.laneConfig.laneOrder ?? [];
+    const at = order.indexOf(laneId);
+    if (at < 0 || container === pool && order.length <= 1) return;
+    this.editPool(pool, "Remove lane", () => {
+      const fold = new GroupCollapseService(this.diagram);
+      for (const g of [lane, ...this.allLanesUnder(lane)]) if (g.isCollapsed) fold.expand(g);
+      const steps = this.stepsUnder(lane);
+      const whole = order.length === 1;
+      let heir = whole ? container : this.diagram.getGroup(order[at > 0 ? at - 1 : at + 1]);
+      if (!whole) while (hasSubLanes(heir)) heir = bandsOf(this.diagram, heir)[0];
+      for (const { id, from } of steps) {
+        from.removeMember(id, this.diagram);
+        heir.addMember(id, this.diagram);
+      }
+      for (const g of [...this.allLanesUnder(lane)].reverse()) {
+        this.containerOf(g)?.removeMember(g.id, this.diagram);
+        this.diagram.removeGroup(g.id);
+      }
+      container.removeMember(laneId, this.diagram);
+      this.diagram.removeGroup(laneId);
+      if (whole) {
+        const { laneOrder: _gone, headerSize: _strip, ...rest } = container.laneConfig;
+        container.laneConfig = rest;
+      } else {
+        container.laneConfig = { ...container.laneConfig, laneOrder: order.filter((id) => id !== laneId) };
+      }
+      this.touch(container);
+      this.reflow(pool);
+      for (const { id } of steps) heir.clampChildToExtent(id, this.diagram);
+    });
+  }
+  /** Move a lane to `toIndex` among its siblings (a pool's lanes, or a split lane's sub-lanes); every lane takes its steps along. */
+  moveLane(pool, laneId, toIndex) {
+    this.assertPool(pool);
+    const lane = this.diagram.getGroup(laneId);
+    const container = lane ? this.containerOf(lane) : void 0;
+    if (!container || poolOfLane(this.diagram, lane) !== pool) return;
+    const order = [...container.laneConfig.laneOrder ?? []];
+    const from = order.indexOf(laneId);
+    const to = Math.max(0, Math.min(order.length - 1, Math.round(toIndex)));
+    if (from < 0 || from === to) return;
+    this.editPool(pool, "Move lane", () => {
+      order.splice(from, 1);
+      order.splice(to, 0, laneId);
+      container.laneConfig = { ...container.laneConfig, laneOrder: order };
+      this.touch(container);
+      this.reflow(pool);
+    });
+  }
+  /**
+   * Split a lane into SUB-LANES: it keeps a title strip of `headerSize` at its
+   * start and tiles the sub-lanes in the rest, stacked the way the pool stacks
+   * its lanes. Each of its steps joins the sub-lane it now falls in. Returns the
+   * sub-lanes (none for a lane that is folded or already split).
+   */
+  splitLane(pool, laneId, specs, headerSize = 30) {
+    this.assertPool(pool);
+    const lane = this.diagram.getGroup(laneId);
+    if (!lane || poolOfLane(this.diagram, lane) !== pool || hasSubLanes(lane) || lane.isCollapsed || specs.length === 0) return [];
+    return this.editPool(pool, "Split lane", () => {
+      const steps = [...lane.members].filter((id) => this.diagram.getNode(id));
+      for (const id of steps) lane.removeMember(id, this.diagram);
+      const subs = specs.map((spec) => this.buildLane(lane, spec, 0));
+      lane.laneConfig = { ...lane.laneConfig, laneOrder: subs.map((g) => g.id), headerSize };
+      this.touch(lane);
+      this.reflow(pool);
+      for (const id of steps) {
+        const n3 = this.diagram.getNode(id);
+        const c = { x: n3.position.x + n3.size.width / 2, y: n3.position.y + n3.size.height / 2 };
+        const home = subs.find((g) => {
+          const r = g.getOuterBounds();
+          return c.x >= r.x && c.x <= r.x + r.width && c.y >= r.y && c.y <= r.y + r.height;
+        }) ?? subs[0];
+        home.addMember(id, this.diagram);
+        home.clampChildToExtent(id, this.diagram);
+      }
+      return subs;
+    });
+  }
+  /** Add a sub-lane to a lane that is already split (optionally at an index). */
+  addSubLane(pool, parentLaneId, spec, atIndex) {
+    this.assertPool(pool);
+    const parent = this.diagram.getGroup(parentLaneId);
+    if (!parent || !hasSubLanes(parent) || poolOfLane(this.diagram, parent) !== pool) return void 0;
+    return this.editPool(pool, "Add lane", () => {
+      const lane = this.buildLane(parent, spec, 0);
+      const order = [...parent.laneConfig.laneOrder ?? []];
+      order.splice(atIndex === void 0 ? order.length : Math.max(0, Math.min(order.length, atIndex)), 0, lane.id);
+      parent.laneConfig = { ...parent.laneConfig, laneOrder: order };
+      this.touch(parent);
+      this.reflow(pool);
+      return lane;
+    });
+  }
+  /**
+   * Size one lane the way a hand drags its border: the lane takes `size`, the
+   * pool (and any lane it is a sub-lane of) grows or shrinks by the difference,
+   * and every other lane keeps its size — each is pinned where it is. A split
+   * lane passes the change to its last sub-lane. Never below {@link MIN_LANE_SIZE}.
+   */
+  setLaneSize(pool, laneId, size) {
+    this.assertPool(pool);
+    const lane = this.diagram.getGroup(laneId);
+    if (!lane?.laneConfig || poolOfLane(this.diagram, lane) !== pool) return;
+    this.editPool(pool, "Resize lane", () => {
+      const horizontal = pool.laneConfig.orientation === "horizontal";
+      const cross3 = (g) => horizontal ? g.getOuterBounds().height : g.getOuterBounds().width;
+      for (const l of this.allLanes(pool)) {
+        l.laneConfig = { ...l.laneConfig, fixedSize: cross3(l) };
+        this.touch(l);
+      }
+      let leaf = lane;
+      while (hasSubLanes(leaf) && !leaf.isCollapsed) leaf = bandsOf(this.diagram, leaf).slice(-1)[0];
+      const delta = Math.max(MIN_LANE_SIZE, cross3(leaf) + Math.max(MIN_LANE_SIZE, size) - cross3(lane)) - cross3(leaf);
+      for (let g = leaf; g && g !== pool; g = this.containerOf(g)) {
+        g.laneConfig = { ...g.laneConfig, fixedSize: cross3(g) + delta };
+      }
+      const b = pool.getOuterBounds();
+      pool.setFrame(horizontal ? { ...b, height: b.height + delta } : { ...b, width: b.width + delta });
+      this.reflow(pool);
+    });
+  }
+  /**
+   * Resize a lane along the cross axis by pinning its band (fixedSize) and
+   * re-laying out the pool so siblings absorb the remaining space.
+   */
+  resizeLane(pool, laneId, crossSize2) {
+    this.assertPool(pool);
+    const lane = this.diagram.getGroup(laneId);
+    if (!lane || !lane.laneConfig) return;
+    this.editPool(pool, "Resize lane", () => {
+      lane.laneConfig = { ...lane.laneConfig, fixedSize: Math.max(0, crossSize2) };
+      this.touch(lane);
+      this.reflow(pool);
+    });
+  }
+  /** Resize the whole pool and re-tile its lanes to the new frame. */
+  resizePool(pool, bounds) {
+    this.assertPool(pool);
+    this.editPool(pool, "Resize pool", () => {
+      pool.setFrame(bounds);
+      this.reflow(pool);
+    });
+  }
+  // ---- phases ---------------------------------------------------------------
+  /** A pool's phases where they lie along its lanes (none for a pool without phases). */
+  getPhases(pool) {
+    this.assertPool(pool);
+    return phaseBands(pool);
+  }
+  /** Give a pool these phases (replacing any it had); its steps stay where they are. Pass none to drop them. */
+  setPhases(pool, specs) {
+    this.assertPool(pool);
+    this.editPool(pool, "Set phases", () => {
+      const { phases: _old, ...rest } = pool.laneConfig;
+      pool.laneConfig = specs.length ? { ...rest, phases: specs.map((p) => this.phase(p)) } : rest;
+      this.touch(pool);
+      this.reflow(pool);
+    });
+  }
+  /**
+   * Add a phase (at an index, else last). The pool grows by its size (default
+   * 240) along the lanes; every other phase keeps its size and the steps after
+   * it move along with their phases.
+   */
+  addPhase(pool, spec, atIndex) {
+    this.assertPool(pool);
+    return this.editPool(
+      pool,
+      "Add phase",
+      () => this.withStepsInPhases(pool, (phases) => {
+        const phase = this.phase({ ...spec, size: Math.max(MIN_PHASE_SIZE, spec.size ?? 240) });
+        const at = atIndex === void 0 ? phases.length : Math.max(0, Math.min(phases.length, atIndex));
+        phases.splice(at, 0, phase);
+        return { phases, grow: phase.fixedSize, result: phase.id };
+      })
+    );
+  }
+  /**
+   * Remove a phase. Its steps stay where they are and now belong to the phase
+   * before it (the next one, for the first), which takes its room; the pool
+   * keeps its length. Removing the last phase leaves the pool without phases.
+   */
+  removePhase(pool, phaseId) {
+    this.assertPool(pool);
+    const phases = pool.laneConfig?.phases ?? [];
+    const at = phases.findIndex((p) => p.id === phaseId);
+    if (at < 0) return;
+    if (phases.length === 1) return this.setPhases(pool, []);
+    this.editPool(pool, "Remove phase", () => {
+      const bands = phaseBands(pool);
+      const pinned = phases.map((p, i) => ({ ...p, fixedSize: bands[i].end - bands[i].start }));
+      const heir = pinned[at > 0 ? at - 1 : at + 1];
+      heir.fixedSize += pinned[at].fixedSize;
+      pinned.splice(at, 1);
+      pool.laneConfig = { ...pool.laneConfig, phases: pinned };
+      this.touch(pool);
+      this.reflow(pool);
+    });
+  }
+  /**
+   * Size one phase the way a hand drags its border: the pool grows or shrinks
+   * along its lanes by the difference, every other phase keeps its size, and the
+   * steps in later phases move with them. Never below {@link MIN_PHASE_SIZE}.
+   */
+  setPhaseSize(pool, phaseId, size) {
+    this.assertPool(pool);
+    if (!(pool.laneConfig?.phases ?? []).some((p) => p.id === phaseId)) return;
+    this.editPool(
+      pool,
+      "Resize phase",
+      () => this.withStepsInPhases(pool, (phases, sizes) => {
+        const i = phases.findIndex((p) => p.id === phaseId);
+        const next = Math.max(MIN_PHASE_SIZE, Math.round(size));
+        const grow = next - sizes[i];
+        phases[i] = { ...phases[i], fixedSize: next };
+        return { phases, grow, result: void 0 };
+      })
+    );
+  }
+  /** Move a phase to `toIndex`; its steps go with it, keeping their place inside it. */
+  movePhase(pool, phaseId, toIndex) {
+    this.assertPool(pool);
+    const phases = pool.laneConfig?.phases ?? [];
+    const from = phases.findIndex((p) => p.id === phaseId);
+    const to = Math.max(0, Math.min(phases.length - 1, Math.round(toIndex)));
+    if (from < 0 || from === to) return;
+    this.editPool(
+      pool,
+      "Move phase",
+      () => this.withStepsInPhases(pool, (list2) => {
+        const [moved] = list2.splice(from, 1);
+        list2.splice(to, 0, moved);
+        return { phases: list2, grow: 0, result: void 0 };
+      })
+    );
+  }
+  /**
+   * Change a pool's phases with every step riding along in its phase: each step
+   * keeps its offset from its phase's start. `change` gets the phases pinned at
+   * their current sizes (and those sizes) and says how much the pool grows.
+   */
+  withStepsInPhases(pool, change) {
+    const horizontal = pool.laneConfig.orientation === "horizontal";
+    const before = phaseBands(pool);
+    const along = (n3) => horizontal ? n3.position.x : n3.position.y;
+    const steps = this.getLeafLanes(pool).flatMap(
+      (lane) => [...lane.members].map((id) => this.diagram.getNode(id)).filter((n3) => !!n3)
+    );
+    const placed = steps.map((n3) => {
+      const middle = along(n3) + (horizontal ? n3.size.width : n3.size.height) / 2;
+      const band = before.find((b2) => middle >= b2.start && middle < b2.end) ?? before[before.length - 1];
+      return { n: n3, id: band?.id, offset: band ? along(n3) - band.start : 0 };
+    });
+    const sizes = before.map((b2) => b2.end - b2.start);
+    const pinned = (pool.laneConfig.phases ?? []).map((p, i) => ({ ...p, fixedSize: sizes[i] }));
+    const { phases, grow, result } = change(pinned, sizes);
+    pool.laneConfig = { ...pool.laneConfig, phases };
+    const b = pool.getOuterBounds();
+    pool.setFrame(horizontal ? { ...b, width: b.width + grow } : { ...b, height: b.height + grow });
+    this.touch(pool);
+    this.reflow(pool);
+    const after = new Map(phaseBands(pool).map((band) => [band.id, band]));
+    for (const { n: n3, id, offset } of placed) {
+      const band = id ? after.get(id) : void 0;
+      if (!band) continue;
+      const size = horizontal ? n3.size.width : n3.size.height;
+      const at = Math.max(band.start, Math.min(band.end - size, band.start + offset));
+      if (horizontal) n3.setPosition(at, n3.position.y);
+      else n3.setPosition(n3.position.x, at);
+      const lane = this.getLeafLanes(pool).find((l) => l.members.has(n3.id));
+      lane?.clampChildToExtent(n3.id, this.diagram);
+    }
+    return result;
+  }
+  phase(spec) {
+    return {
+      id: spec.id ?? generateId(),
+      name: spec.name,
+      ...spec.size !== void 0 ? { fixedSize: spec.size } : {},
+      ...spec.weight !== void 0 ? { weight: spec.weight } : {}
+    };
+  }
+  /** Lanes of a pool in band order. */
+  getLanes(pool) {
+    this.assertPool(pool);
+    return (pool.laneConfig.laneOrder ?? []).map((id) => this.diagram.getGroup(id)).filter((g) => !!g);
+  }
+  /** A pool's LEAF lanes — the ones that hold steps — in band order, through any sub-lanes (a folded lane counts as one). */
+  getLeafLanes(pool) {
+    this.assertPool(pool);
+    return lanesOfPool(this.diagram, pool);
+  }
+  /** The group a lane tiles inside: its pool, or the lane it is a sub-lane of. */
+  containerOf(lane) {
+    const parent = lane.parentGroupId ? this.diagram.getGroup(lane.parentGroupId) : void 0;
+    return parent?.laneConfig ? parent : void 0;
+  }
+  /** Every lane of a pool at any depth, each before its sub-lanes. */
+  allLanes(pool) {
+    return bandsOf(this.diagram, pool).flatMap((l) => [l, ...this.allLanesUnder(l)]);
+  }
+  allLanesUnder(lane, depth = 0) {
+    if (depth > 32) return [];
+    return bandsOf(this.diagram, lane).flatMap((l) => [l, ...this.allLanesUnder(l, depth + 1)]);
+  }
+  /** The steps anywhere under a lane, with the lane each one is in. */
+  stepsUnder(lane) {
+    return [lane, ...this.allLanesUnder(lane)].flatMap(
+      (g) => [...g.members].filter((id) => this.diagram.getNode(id)).map((id) => ({ id, from: g }))
+    );
+  }
+  /** Is this group a pool? */
+  isPool(group) {
+    return group.laneConfig?.role === "pool";
+  }
+  /** Is this group a lane? */
+  isLane(group) {
+    return group.laneConfig?.role === "lane";
+  }
+  /**
+   * Re-tile a pool's lanes into bands — and every split lane's sub-lanes inside
+   * its band, after its title strip. fixedSize lanes take their pixel size; the
+   * rest split the remaining cross-axis space by weight. Each lane frame is set
+   * (drop-in hit-testing + drag constraints follow automatically).
+   */
+  reflow(pool) {
+    this.assertPool(pool);
+    this.tile(pool, pool.laneConfig.orientation, 0);
+  }
+  tile(container, orientation, depth) {
+    const cfg = container.laneConfig;
+    const lanes = bandsOf(this.diagram, container);
+    if (lanes.length === 0 || depth > 32) return;
+    const outer = container.getOuterBounds();
+    const header = cfg.headerSize ?? 0;
+    const horizontal = orientation === "horizontal";
+    const band = cfg.role === "pool" ? phaseHeaderSizeOf(container) : 0;
+    const rect = horizontal ? { ...outer, y: outer.y + band, height: outer.height - band } : { ...outer, x: outer.x + band, width: outer.width - band };
+    const crossTotal = horizontal ? rect.height : rect.width;
+    const mainStart = horizontal ? rect.x + header : rect.y + header;
+    const mainSpan = (horizontal ? rect.width : rect.height) - header;
+    const fixed = lanes.reduce((s, l) => s + (l.laneConfig?.fixedSize ?? 0), 0);
+    const flexible = lanes.filter((l) => l.laneConfig?.fixedSize === void 0);
+    const absorber = flexible.length === 0 ? [...lanes].reverse().find((l) => !l.isCollapsed) : void 0;
+    const spare = crossTotal - fixed;
+    const totalWeight = flexible.reduce((s, l) => s + (l.laneConfig?.weight ?? 1), 0) || 1;
+    const flexSpace = Math.max(0, crossTotal - fixed);
+    let cross3 = horizontal ? rect.y : rect.x;
+    for (const lane of lanes) {
+      const lc = lane.laneConfig;
+      const size = lane === absorber ? Math.max(MIN_LANE_SIZE, lc.fixedSize + spare) : lc.fixedSize !== void 0 ? lc.fixedSize : flexSpace * (lc.weight ?? 1) / totalWeight;
+      const frame = horizontal ? { x: mainStart, y: cross3, width: mainSpan, height: size } : { x: cross3, y: mainStart, width: size, height: mainSpan };
+      const previous = lane.getOuterBounds();
+      lane.setFrame(frame);
+      lane.constrainChildren = true;
+      this.carryMembers(lane, previous, frame);
+      const proxyId = lane.collapsedState?.proxyNodeId;
+      const proxy = proxyId ? this.diagram.getNode(proxyId) : void 0;
+      if (proxy) {
+        proxy.setPosition(frame.x, frame.y);
+        proxy.setSize(frame.width, frame.height);
+      }
+      lane.laneConfig = { ...lc, orientation };
+      if (hasSubLanes(lane) && !lane.isCollapsed) this.tile(lane, orientation, depth + 1);
+      cross3 += size;
+    }
+  }
+  /** Move a lane's member nodes from its previous band to `next`, then clamp them in. */
+  carryMembers(lane, previous, next) {
+    const hadBand = previous.width > 0 && previous.height > 0;
+    const dx = hadBand ? next.x - previous.x : 0;
+    const dy = hadBand ? next.y - previous.y : 0;
+    for (const id of lane.members) {
+      const node = this.diagram.getNode(id);
+      if (!node) continue;
+      if (dx !== 0 || dy !== 0) node.setPosition(node.position.x + dx, node.position.y + dy);
+      lane.clampChildToExtent(id, this.diagram);
+    }
+  }
+  buildLane(container, spec, laneHeader) {
+    const lane = new GroupModel({ id: spec.id, name: spec.name });
+    lane.laneConfig = {
+      role: "lane",
+      orientation: container.laneConfig.orientation,
+      weight: spec.weight,
+      fixedSize: spec.fixedSize
+    };
+    lane.headerHeight = laneHeader;
+    lane.constrainChildren = true;
+    this.diagram.addGroup(lane);
+    container.addMember(lane.id, this.diagram);
+    return lane;
+  }
+  firstLaneHeader(pool) {
+    const first = this.getLanes(pool)[0];
+    return first?.headerHeight ?? 0;
+  }
+  assertPool(group) {
+    if (group.laneConfig?.role !== "pool") {
+      throw new Error(`Group ${group.id} is not a pool`);
+    }
+  }
+  /** Mark a group changed so the diff-capture serializes laneConfig edits. */
+  touch(group) {
+    group.setMetadata("__laneRev", (group.getMetadata("__laneRev") ?? 0) + 1);
+  }
+};
 
 // libs/engine/src/ports/side-anchor.ts
 function parseSideAnchor(handle) {
@@ -114963,9 +115267,14 @@ var GroupCollapseService = class {
     let lane;
     if (pool && group.laneConfig) {
       const crossSize2 = horizontal ? frame.height : frame.width;
-      lane = { poolId: pool.id, crossSize: crossSize2, prevFixedSize: group.laneConfig.fixedSize, origin: { x: frame.x, y: frame.y } };
-      group.laneConfig = { ...group.laneConfig, fixedSize: COLLAPSED_LANE_SIZE };
-      this.growPool(pool, horizontal, COLLAPSED_LANE_SIZE - crossSize2);
+      const nested = group.parentGroupId !== pool.id;
+      lane = { poolId: pool.id, crossSize: crossSize2, prevFixedSize: group.laneConfig.fixedSize, origin: { x: frame.x, y: frame.y }, ...nested ? { nested } : {} };
+      if (nested) {
+        new SwimlaneService(this.diagram).setLaneSize(pool, group.id, COLLAPSED_LANE_SIZE);
+      } else {
+        group.laneConfig = { ...group.laneConfig, fixedSize: COLLAPSED_LANE_SIZE };
+        this.growPool(pool, horizontal, COLLAPSED_LANE_SIZE - crossSize2);
+      }
     } else {
       group.setFrame({
         x: frame.x,
@@ -115034,9 +115343,13 @@ var GroupCollapseService = class {
     if (state.lane && pool && group.laneConfig) {
       const horizontal = pool.laneConfig?.orientation !== "vertical";
       const now3 = group.getOuterBounds();
-      const { fixedSize: _folded, ...rest } = group.laneConfig;
-      group.laneConfig = state.lane.prevFixedSize === void 0 ? rest : { ...rest, fixedSize: state.lane.prevFixedSize };
-      this.growPool(pool, horizontal, state.lane.crossSize - (horizontal ? now3.height : now3.width));
+      if (state.lane.nested) {
+        new SwimlaneService(this.diagram).setLaneSize(pool, group.id, state.lane.crossSize);
+      } else {
+        const { fixedSize: _folded, ...rest } = group.laneConfig;
+        group.laneConfig = state.lane.prevFixedSize === void 0 ? rest : { ...rest, fixedSize: state.lane.prevFixedSize };
+        this.growPool(pool, horizontal, state.lane.crossSize - (horizontal ? now3.height : now3.width));
+      }
       new SwimlaneService(this.diagram).reflow(pool);
       const back = group.getOuterBounds();
       shift2 = { x: back.x - state.lane.origin.x, y: back.y - state.lane.origin.y };
@@ -115052,6 +115365,7 @@ var GroupCollapseService = class {
     }
     group.expand();
     this.setCollapsedState(group, void 0);
+    if (pool) new SwimlaneService(this.diagram).reflow(pool);
     this.diagram.reconcilePortConnections();
   }
   /** The side of `node` that faces a folded lane's band. */
@@ -132395,7 +132709,7 @@ function planTween(before, after) {
 // libs/engine/src/interaction/lane-gestures.ts
 var LANE_TITLE_SIZE = 24;
 var MIN_POOL_SPAN = 160;
-var lanesOf = (diagram, pool) => (pool.laneConfig?.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g) => !!g);
+var splitLanesOf = (diagram, g, depth = 0) => depth > 32 ? [] : bandsOf(diagram, g).filter((l) => hasSubLanes(l) && !l.isCollapsed).flatMap((l) => [l, ...splitLanesOf(diagram, l, depth + 1)]);
 function laneHandleAt(diagram, x, y, tolerance) {
   for (const pool of diagram.getGroups()) {
     if (pool.laneConfig?.role !== "pool" || pool.isCollapsed) continue;
@@ -132403,9 +132717,16 @@ function laneHandleAt(diagram, x, y, tolerance) {
     const pb = pool.getOuterBounds();
     const inPool = x >= pb.x - tolerance && x <= pb.x + pb.width + tolerance && y >= pb.y - tolerance && y <= pb.y + pb.height + tolerance;
     if (!inPool) continue;
-    const lanes = lanesOf(diagram, pool);
+    const lanes = lanesOfPool(diagram, pool);
     const cross3 = horizontal ? y : x;
     const main = horizontal ? x : y;
+    const header = phaseHeaderRect(pool);
+    if (header && x >= header.x && x <= header.x + header.width && y >= header.y && y <= header.y + header.height) {
+      const bands = phaseBands(pool);
+      for (const b2 of bands.slice(0, -1)) if (Math.abs(main - b2.end) <= tolerance) return { kind: "phase-border", pool, phaseId: b2.id, horizontal };
+      const b = bands.find((band) => main >= band.start && main <= band.end);
+      if (b && Math.abs(main - bands[bands.length - 1].end) > tolerance) return { kind: "phase-title", pool, phaseId: b.id, horizontal };
+    }
     for (const lane of lanes) {
       if (lane.isCollapsed) continue;
       const b = lane.getOuterBounds();
@@ -132422,11 +132743,17 @@ function laneHandleAt(diagram, x, y, tolerance) {
       const band = lane.headerHeight > 0 ? lane.headerHeight : LANE_TITLE_SIZE;
       if (x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + Math.min(band, b.height)) return { kind: "title", pool, lane, horizontal };
     }
+    for (const lane of splitLanesOf(diagram, pool)) {
+      const b = lane.getOuterBounds();
+      const strip = lane.laneConfig?.headerSize ?? 0;
+      const inStrip = horizontal ? x >= b.x && x <= b.x + strip && y >= b.y && y <= b.y + b.height : y >= b.y && y <= b.y + strip && x >= b.x && x <= b.x + b.width;
+      if (strip > 0 && inStrip) return { kind: "title", pool, lane, horizontal };
+    }
   }
   return null;
 }
 function laneHandleCursor(handle) {
-  if (handle.kind === "title") return "grab";
+  if (handle.kind === "title" || handle.kind === "phase-title") return "grab";
   const alongCross = handle.kind === "border";
   return handle.horizontal === alongCross ? "row-resize" : "col-resize";
 }
@@ -132441,17 +132768,44 @@ var LaneGesture = class {
     this.startPool = handle.pool.getOuterBounds();
     const h = handle.horizontal;
     const crossOf = (g) => h ? g.getOuterBounds().height : g.getOuterBounds().width;
-    this.startSize = handle.kind === "pool-edge" ? h ? this.startPool.width : this.startPool.height : crossOf(handle.lane);
-    this.name = handle.kind === "border" ? "Resize lane" : handle.kind === "pool-edge" ? "Resize pool" : "Move lane";
-    if (handle.kind === "title") {
-      const b = handle.lane.getOuterBounds();
-      this.grab = h ? y - b.y : x - b.x;
-      this.laneSize = crossOf(handle.lane);
-      this.others = lanesOf(diagram, handle.pool).filter((l) => l !== handle.lane).map((l) => ({ id: l.id, size: crossOf(l) }));
-    } else {
-      this.grab = 0;
-      this.laneSize = 0;
-      this.others = [];
+    this.grab = 0;
+    this.laneSize = 0;
+    this.others = [];
+    this.origin = 0;
+    switch (handle.kind) {
+      case "pool-edge":
+        this.name = "Resize pool";
+        this.startSize = h ? this.startPool.width : this.startPool.height;
+        break;
+      case "border":
+        this.name = "Resize lane";
+        this.startSize = crossOf(handle.lane);
+        break;
+      case "title": {
+        this.name = "Move lane";
+        this.startSize = crossOf(handle.lane);
+        const b = handle.lane.getOuterBounds();
+        this.grab = h ? y - b.y : x - b.x;
+        this.laneSize = crossOf(handle.lane);
+        this.container = diagram.getGroup(handle.lane.parentGroupId ?? "") ?? handle.pool;
+        const siblings = bandsOf(diagram, this.container);
+        const first = siblings[0]?.getOuterBounds();
+        this.origin = first ? h ? first.y : first.x : 0;
+        this.others = siblings.filter((l) => l !== handle.lane).map((l) => ({ id: l.id, size: crossOf(l) }));
+        break;
+      }
+      case "phase-border":
+      case "phase-title": {
+        const bands = phaseBands(handle.pool);
+        const band = bands.find((b) => b.id === handle.phaseId);
+        this.name = handle.kind === "phase-border" ? "Resize phase" : "Move phase";
+        this.startSize = band.end - band.start;
+        this.grab = (h ? x : y) - band.start;
+        this.laneSize = this.startSize;
+        this.origin = bands[0].start;
+        this.others = bands.filter((b) => b.id !== handle.phaseId).map((b) => ({ id: b.id, size: b.end - b.start }));
+        break;
+      }
     }
   }
   /** Follow the hand to (`x`, `y`). True when the pool changed. */
@@ -132475,15 +132829,28 @@ var LaneGesture = class {
       this.svc.resizePool(handle.pool, h ? { ...b, width: span } : { ...b, height: span });
       return this.moved = true;
     }
-    const origin = h ? this.startPool.y : this.startPool.x;
-    const middle = (h ? y : x) - this.grab + this.laneSize / 2;
-    let at = origin;
+    if (handle.kind === "phase-border") {
+      const delta = h ? x - this.start.x : y - this.start.y;
+      const now3 = phaseBands(handle.pool).find((b) => b.id === handle.phaseId);
+      const size = Math.max(MIN_PHASE_SIZE, Math.round(this.startSize + delta));
+      if (size === now3.end - now3.start) return false;
+      this.svc.setPhaseSize(handle.pool, handle.phaseId, size);
+      return this.moved = true;
+    }
+    const middle = (handle.kind === "phase-title" ? h ? x : y : h ? y : x) - this.grab + this.laneSize / 2;
+    let at = this.origin;
     let index = 0;
     for (const o of this.others) {
       if (middle > at + o.size / 2) index++;
       at += o.size;
     }
-    const order = handle.pool.laneConfig?.laneOrder ?? [];
+    if (handle.kind === "phase-title") {
+      const order2 = (handle.pool.laneConfig?.phases ?? []).map((p) => p.id);
+      if (order2.indexOf(handle.phaseId) === index) return false;
+      this.svc.movePhase(handle.pool, handle.phaseId, index);
+      return this.moved = true;
+    }
+    const order = (this.container ?? handle.pool).laneConfig?.laneOrder ?? [];
     if (order.indexOf(handle.lane.id) === index) return false;
     this.svc.moveLane(handle.pool, handle.lane.id, index);
     return this.moved = true;
@@ -132511,7 +132878,7 @@ function layoutPool(diagram, pool, options = {}) {
   const cfg = pool.laneConfig;
   if (cfg?.role !== "pool") return positions;
   const horizontal = cfg.orientation === "horizontal";
-  const lanes = (cfg.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g) => !!g);
+  const lanes = lanesOfPool(diagram, pool);
   if (lanes.length === 0) return positions;
   const main = (n3) => horizontal ? n3.size.width : n3.size.height;
   const cross3 = (n3) => horizontal ? n3.size.height : n3.size.width;
@@ -132564,13 +132931,27 @@ function layoutPool(diagram, pool, options = {}) {
       if (indegree.get(t) === 0) queue.push(t);
     }
   }
-  const ranks = Math.max(...steps.map((n3) => rank.get(n3.id) ?? 0)) + 1;
-  const colSize = new Array(ranks).fill(0);
+  const before = phaseBands(pool);
+  const phaseCount = Math.max(1, before.length);
+  const phaseOf = (n3) => {
+    if (!before.length) return 0;
+    const mid = mainAt(n3) + main(n3) / 2;
+    const i = before.findIndex((b) => mid >= b.start && mid < b.end);
+    return i >= 0 ? i : mid < before[0].start ? 0 : before.length - 1;
+  };
+  const ranksIn = Array.from({ length: phaseCount }, () => /* @__PURE__ */ new Set());
+  for (const n3 of steps) ranksIn[phaseOf(n3)].add(rank.get(n3.id) ?? 0);
+  const slotsIn = ranksIn.map((set) => [...set].sort((a, b) => a - b));
+  const slotOf2 = (n3) => {
+    const p2 = phaseOf(n3);
+    return `${p2}:${slotsIn[p2].indexOf(rank.get(n3.id) ?? 0)}`;
+  };
+  const colSize = /* @__PURE__ */ new Map();
   const cells = /* @__PURE__ */ new Map();
   for (const n3 of steps) {
-    const r = rank.get(n3.id) ?? 0;
-    colSize[r] = Math.max(colSize[r], main(n3));
-    const key = `${laneOf.get(n3.id)}:${r}`;
+    const slot = slotOf2(n3);
+    colSize.set(slot, Math.max(colSize.get(slot) ?? 0, main(n3)));
+    const key = `${laneOf.get(n3.id)}@${slot}`;
     if (!cells.has(key)) cells.set(key, []);
     cells.get(key).push(n3);
   }
@@ -132580,38 +132961,62 @@ function layoutPool(diagram, pool, options = {}) {
   const sizes = lanes.map((lane, i) => {
     if (lane.isCollapsed) return laneCross(lane);
     let tallest = 0;
-    for (let r = 0; r < ranks; r++) {
-      const stack = cells.get(`${i}:${r}`);
-      if (stack) tallest = Math.max(tallest, stackSize(stack));
-    }
+    for (const [key, stack] of cells) if (key.startsWith(`${i}@`)) tallest = Math.max(tallest, stackSize(stack));
     return Math.max(laneCross(lane), MIN_LANE_SIZE, tallest ? titleOf2(lane) + 2 * pad + tallest : 0);
   });
   const header = cfg.headerSize ?? 0;
-  const length = Math.max(MIN_POOL_SPAN, pad + colSize.reduce((s, c) => s + c, 0) + rankGap * (ranks - 1) + pad) + header;
-  lanes.forEach((lane, i) => {
-    lane.laneConfig = { ...lane.laneConfig, fixedSize: sizes[i] };
+  const stripsBefore = (lane) => {
+    let sum3 = 0;
+    for (let g = lane.parentGroupId ? diagram.getGroup(lane.parentGroupId) : void 0; g && g !== pool; g = g.parentGroupId ? diagram.getGroup(g.parentGroupId) : void 0) {
+      sum3 += g.laneConfig?.headerSize ?? 0;
+    }
+    return sum3;
+  };
+  const indent = Math.max(...lanes.map(stripsBefore));
+  const content = (p2) => slotsIn[p2].reduce((sum3, _r, k) => sum3 + (colSize.get(`${p2}:${k}`) ?? 0), 0) + rankGap * Math.max(0, slotsIn[p2].length - 1);
+  const widths = Array.from({ length: phaseCount }, (_, p2) => {
+    const lead = p2 === 0 ? indent : 0;
+    if (!slotsIn[p2].length) return before.length ? Math.max(lead + MIN_PHASE_SIZE, before[p2].end - before[p2].start) : lead + MIN_POOL_SPAN;
+    return lead + Math.max(before.length ? MIN_PHASE_SIZE : MIN_POOL_SPAN, pad + content(p2) + pad);
   });
+  const length = header + widths.reduce((sum3, w) => sum3 + w, 0);
+  if (before.length) {
+    pool.laneConfig = { ...pool.laneConfig, phases: (cfg.phases ?? []).map((ph, i) => ({ ...ph, fixedSize: widths[i] })) };
+  }
+  const leafSize = new Map(lanes.map((lane, i) => [lane.id, sizes[i]]));
+  const sizeOf = (lane, depth = 0) => leafSize.get(lane.id) ?? (depth > 32 ? 0 : bandsOf(diagram, lane).reduce((sum3, l) => sum3 + sizeOf(l, depth + 1), 0));
+  const pin2 = (g, depth = 0) => {
+    for (const lane of bandsOf(diagram, g)) {
+      lane.laneConfig = { ...lane.laneConfig, fixedSize: sizeOf(lane) };
+      if (hasSubLanes(lane) && !lane.isCollapsed && depth < 32) pin2(lane, depth + 1);
+    }
+  };
+  pin2(pool);
   const p = pool.getOuterBounds();
-  const total = sizes.reduce((s, v) => s + v, 0);
+  const total = phaseHeaderSizeOf(pool) + bandsOf(diagram, pool).reduce((sum3, l) => sum3 + sizeOf(l), 0);
   pool.setFrame(horizontal ? { ...p, width: length, height: total } : { ...p, width: total, height: length });
   svc.reflow(pool);
-  const colStart = [];
-  let at = (horizontal ? p.x : p.y) + header + pad;
-  for (let r = 0; r < ranks; r++) {
-    colStart.push(at);
-    at += colSize[r] + rankGap;
+  const colStart = /* @__PURE__ */ new Map();
+  let phaseStart = (horizontal ? p.x : p.y) + header;
+  for (let ph = 0; ph < phaseCount; ph++) {
+    let at = phaseStart + (ph === 0 ? indent : 0) + pad;
+    slotsIn[ph].forEach((_r, k) => {
+      colStart.set(`${ph}:${k}`, at);
+      at += (colSize.get(`${ph}:${k}`) ?? 0) + rankGap;
+    });
+    phaseStart += widths[ph];
   }
   lanes.forEach((lane, i) => {
     if (lane.isCollapsed) return;
     const band = lane.getOuterBounds();
     const bandStart = (horizontal ? band.y : band.x) + titleOf2(lane);
     const room = sizes[i] - titleOf2(lane);
-    for (let r = 0; r < ranks; r++) {
-      const stack = cells.get(`${i}:${r}`);
-      if (!stack) continue;
+    for (const [key, stack] of cells) {
+      if (!key.startsWith(`${i}@`)) continue;
+      const slot = key.slice(key.indexOf("@") + 1);
       let c = bandStart + Math.max(pad, (room - stackSize(stack)) / 2);
       for (const n3 of stack) {
-        const m = colStart[r] + (colSize[r] - main(n3)) / 2;
+        const m = colStart.get(slot) + (colSize.get(slot) - main(n3)) / 2;
         const xy = horizontal ? { x: Math.round(m), y: Math.round(c) } : { x: Math.round(c), y: Math.round(m) };
         n3.setPosition(xy.x, xy.y);
         positions.set(n3.id, xy);
@@ -142004,6 +142409,48 @@ function buildDiagram(model, warnings) {
   }
   for (const synth of syntheticLabelNodes) {
     if (synth.parent) groupsById.get(synth.parent)?.addMember(synth.id, diagram);
+  }
+  const laneIds = /* @__PURE__ */ new Set();
+  const containerCells = [...cells.values()].filter((c) => groupsById.has(c.id)).sort((a, b) => diagram.getDepth(a.id) - diagram.getDepth(b.id));
+  const near = (a, b) => Math.abs(a - b) < 2;
+  const tilingLanes = (cell, horizontal) => {
+    const children = [...cells.values()].filter((c) => c.parent === cell.id && c.vertex && !isEdgeLabel(c));
+    const laneCells = children.filter((c) => groupsById.has(c.id) && parseStyle(c.style).first === "swimlane");
+    if (laneCells.length === 0 || laneCells.length !== children.length) return null;
+    const p = groupsById.get(cell.id).getOuterBounds();
+    const header = num(parseStyle(cell.style).tokens.get("startSize"), 23);
+    const lanes = laneCells.map((c) => groupsById.get(c.id)).sort((a, b) => horizontal ? a.getOuterBounds().y - b.getOuterBounds().y : a.getOuterBounds().x - b.getOuterBounds().x);
+    const boxes = lanes.map((g) => g.getOuterBounds());
+    const span = horizontal ? boxes.every((b) => near(b.x, p.x + header) && near(b.width, p.width - header)) : boxes.every((b) => near(b.y, p.y + header) && near(b.height, p.height - header));
+    let at = horizontal ? p.y : p.x;
+    const contiguous = boxes.every((b) => {
+      const ok = near(horizontal ? b.y : b.x, at);
+      at = horizontal ? b.y + b.height : b.x + b.width;
+      return ok;
+    }) && near(at, horizontal ? p.y + p.height : p.x + p.width);
+    return span && contiguous ? lanes : null;
+  };
+  const markLanes = (container, cell, lanes, horizontal, depth) => {
+    const orientation = horizontal ? "horizontal" : "vertical";
+    const header = num(parseStyle(cell.style).tokens.get("startSize"), 23);
+    container.laneConfig = { ...container.laneConfig ?? { role: "pool", orientation }, orientation, laneOrder: lanes.map((g) => g.id), headerSize: header };
+    for (const g of lanes) {
+      const b = g.getOuterBounds();
+      g.laneConfig = { role: "lane", orientation, fixedSize: horizontal ? b.height : b.width };
+      g.constrainChildren = true;
+      laneIds.add(g.id);
+      const sub = depth < 8 ? tilingLanes(cells.get(g.id), horizontal) : null;
+      if (sub) markLanes(g, cells.get(g.id), sub, horizontal, depth + 1);
+    }
+  };
+  for (const cell of containerCells) {
+    if (laneIds.has(cell.id)) continue;
+    const style = parseStyle(cell.style);
+    if (style.first !== "swimlane") continue;
+    const horizontal = style.tokens.get("horizontal") === "0";
+    const lanes = tilingLanes(cell, horizontal);
+    if (!lanes) continue;
+    markLanes(groupsById.get(cell.id), cell, lanes, horizontal, 0);
   }
   for (const cell of cells.values()) {
     if (cell.edge) edgeCells.push(cell);
@@ -168181,7 +168628,9 @@ function groupFrameRects(diagram, options = {}) {
     if (name) {
       const zone = !g.isCollapsed ? g.getMetadata?.("frameStyle") : void 0;
       const lc = g.laneConfig;
-      const sideStrip = !g.isCollapsed && lc?.role === "pool" && lc.orientation === "horizontal" ? Math.min(lc.headerSize ?? 0, b.width) : 0;
+      const splitLane = !g.isCollapsed && lc?.role === "lane" && (lc.laneOrder?.length ?? 0) > 0;
+      const foldedColumn = !!g.isCollapsed && lc?.role === "lane" && lc.orientation === "vertical";
+      const sideStrip = !g.isCollapsed && (lc?.role === "pool" || splitLane) && lc?.orientation === "horizontal" ? Math.min(lc.headerSize ?? 0, b.width) : foldedColumn ? b.width : 0;
       if (zone) {
         const size = typeof zone.fontSize === "number" && Number.isFinite(zone.fontSize) ? zone.fontSize : 11;
         const w = captionWidth(name, size);
@@ -178418,8 +178867,9 @@ var _SVGRenderer = class _SVGRenderer {
     const laneRole = !collapsed && group.laneConfig?.role === "lane" && parent ? group.laneConfig : null;
     const radius = laneRole ? 0 : this.theme.effects.borderRadius.md;
     const fillBox = laneRole && parent ? insetWithin(bounds, parent.getOuterBounds(), 0.75) : bounds;
+    const splitLane = !collapsed && group.laneConfig?.role === "lane" && (group.laneConfig.laneOrder?.length ?? 0) > 0;
     const bandHeight = Math.min(
-      group.headerHeight > 0 ? group.headerHeight : 24,
+      splitLane && group.laneConfig?.orientation === "vertical" ? group.laneConfig.headerSize ?? 24 : group.headerHeight > 0 ? group.headerHeight : 24,
       bounds.height
     );
     const fontSize = this.theme.typography.fontSize.sm;
@@ -178469,9 +178919,9 @@ var _SVGRenderer = class _SVGRenderer {
       }
     }
     const lc = group.laneConfig;
-    const sideStrip = !collapsed && lc?.role === "pool" && lc.orientation === "horizontal" ? Math.min(lc.headerSize ?? 0, bounds.width) : 0;
+    const sideStrip = !collapsed && (lc?.role === "pool" || splitLane) && lc?.orientation === "horizontal" ? Math.min(lc.headerSize ?? 0, bounds.width) : 0;
     let poolHeaderDivider = null;
-    if (!collapsed && lc?.role === "pool") {
+    if (!collapsed && lc && (lc.role === "pool" || splitLane)) {
       const horizontal = lc.orientation === "horizontal";
       const at = horizontal ? bounds.x + sideStrip : bounds.y + Math.min(lc.headerSize ?? bandHeight, bounds.height);
       poolHeaderDivider = {
@@ -178506,20 +178956,22 @@ var _SVGRenderer = class _SVGRenderer {
         "aria-hidden": "true"
       }
     };
-    const label = sideStrip > 0 ? {
+    const foldedColumn = collapsed && lc?.role === "lane" && lc.orientation === "vertical";
+    const turnedAt = sideStrip > 0 ? bounds.x + sideStrip / 2 : bounds.x + bounds.width / 2;
+    const label = sideStrip > 0 || foldedColumn ? {
       type: "text",
       key: `group-frame-label-${group.id}`,
       props: {
-        x: bounds.x + sideStrip / 2,
+        x: turnedAt,
         y: bounds.y + bounds.height / 2,
-        transform: `rotate(-90, ${bounds.x + sideStrip / 2}, ${bounds.y + bounds.height / 2})`,
+        transform: `rotate(-90, ${turnedAt}, ${bounds.y + bounds.height / 2})`,
         textAnchor: "middle",
         dominantBaseline: "central",
         fontSize,
         fontFamily: this.theme.typography.fontFamily.default,
         fontWeight: this.theme.typography.fontWeight.medium,
         fill: c.text.primary,
-        className: "group-frame-label group-frame-label-pool",
+        className: sideStrip > 0 ? "group-frame-label group-frame-label-pool" : "group-frame-label group-frame-label-folded",
         textContent: group.name,
         "aria-hidden": "true"
       }
@@ -178560,9 +179012,77 @@ var _SVGRenderer = class _SVGRenderer {
         ...laneSeparator ? [laneSeparator] : [],
         bandRect,
         ...poolHeaderDivider ? [poolHeaderDivider] : [],
-        label
+        label,
+        ...this.renderPhases(group, bounds, collapsed)
       ]
     };
+  }
+  /**
+   * A pool's PHASES: its header band (a named cell per phase, a line between
+   * cells, a divider against the lanes) — and, in each lane that holds steps,
+   * the line after every phase but the last, across the band. Drawn by the lane
+   * so it sits on the lane's wash, not under it.
+   */
+  renderPhases(group, bounds, collapsed) {
+    const lc = group.laneConfig;
+    if (!lc) return [];
+    const stroke = this.theme.colors.node.default.stroke;
+    const line = (key, x1, y1, x2, y2, className) => ({
+      type: "line",
+      key,
+      props: { x1, y1, x2, y2, stroke, strokeWidth: 1, className, "aria-hidden": "true" }
+    });
+    if (lc.role === "pool" && !collapsed) {
+      const head = phaseHeaderRect(group);
+      if (!head) return [];
+      const horizontal = lc.orientation === "horizontal";
+      const out = [
+        {
+          type: "rect",
+          key: `group-phase-band-${group.id}`,
+          props: { ...head, fill: this.theme.colors.background.surface, fillOpacity: 0.9, stroke: "none", className: "group-phase-band", "aria-hidden": "true" }
+        },
+        horizontal ? line(`group-phase-divider-${group.id}`, head.x, head.y + head.height, head.x + head.width, head.y + head.height, "group-phase-divider") : line(`group-phase-divider-${group.id}`, head.x + head.width, head.y, head.x + head.width, head.y + head.height, "group-phase-divider")
+      ];
+      const bands = phaseBands(group);
+      bands.forEach((b, i) => {
+        if (i < bands.length - 1) {
+          out.push(horizontal ? line(`group-phase-cell-${group.id}-${b.id}`, b.end, head.y, b.end, head.y + head.height, "group-phase-cell-line") : line(`group-phase-cell-${group.id}-${b.id}`, head.x, b.end, head.x + head.width, b.end, "group-phase-cell-line"));
+        }
+        const mid = (b.start + b.end) / 2;
+        const cx = horizontal ? mid : head.x + head.width / 2;
+        const cy = horizontal ? head.y + head.height / 2 : mid;
+        out.push({
+          type: "text",
+          key: `group-phase-label-${group.id}-${b.id}`,
+          props: {
+            x: cx,
+            y: cy,
+            ...horizontal ? {} : { transform: `rotate(-90, ${cx}, ${cy})` },
+            textAnchor: "middle",
+            dominantBaseline: "central",
+            fontSize: this.theme.typography.fontSize.sm,
+            fontFamily: this.theme.typography.fontFamily.default,
+            fontWeight: this.theme.typography.fontWeight.medium,
+            fill: this.theme.colors.text.primary,
+            className: "group-phase-label",
+            textContent: b.name,
+            "aria-hidden": "true"
+          }
+        });
+      });
+      return out;
+    }
+    if (lc.role === "lane" && (collapsed || !hasSubLanes(group))) {
+      const diagram = this.engine.getDiagram?.();
+      const pool = diagram ? poolOfLane(diagram, group) : void 0;
+      if (!pool) return [];
+      const horizontal = pool.laneConfig?.orientation === "horizontal";
+      return phaseBands(pool).slice(0, -1).map(
+        (b) => horizontal ? line(`group-phase-line-${group.id}-${b.id}`, b.end, bounds.y, b.end, bounds.y + bounds.height, "group-phase-line") : line(`group-phase-line-${group.id}-${b.id}`, bounds.x, b.end, bounds.x + bounds.width, b.end, "group-phase-line")
+      );
+    }
+    return [];
   }
   /** The canvas's own semantics. */
   rootAriaProps() {
@@ -194469,11 +194989,28 @@ var DomEventBinder = class {
   commitNodeMove(engine, drag) {
     void this.executeAsOneStep(engine, "Move nodes", this.moveSteps(engine, drag));
   }
+  /**
+   * A press on a group frame, a pool or a lane handle that never became a drag
+   * is a click on the BACKGROUND: it clears the selection, as a click on empty
+   * canvas does (it used to keep it — a click beside a selected step inside a
+   * lane left the step selected). Such presses only start without modifiers.
+   */
+  clickedBackground(engine) {
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+    diagram.clearSelection();
+    diagram.getLinks().forEach((l) => {
+      if (l.state === "selected") l.setState("default");
+    });
+    this.host.requestRender();
+    this.emitSelectionChange();
+  }
   /** End a lane gesture: the whole drag becomes ONE undo step (nothing when it changed nothing). */
   endLaneGesture(engine) {
     const lane = this.laneGesture;
     this.laneGesture = null;
-    if (!lane?.committed) return;
+    if (!lane) return;
+    if (!lane.committed) return this.clickedBackground(engine);
     const command = lane.gesture.end();
     if (command) {
       void engine.commandManager.execute(command);
@@ -194491,7 +195028,7 @@ var DomEventBinder = class {
     const drag = this.groupDrag;
     this.groupDrag = null;
     if (!drag) return;
-    if (!drag.committed) return;
+    if (!drag.committed) return this.clickedBackground(engine);
     const diagram = engine.getDiagram();
     if (!diagram) return;
     const nodeMoves = [];
@@ -212732,6 +213269,7 @@ export {
   MEDIA_PREFERS_CONTRAST,
   MEDIA_PREFERS_DARK,
   MIN_LANE_SIZE,
+  MIN_PHASE_SIZE,
   MIN_POOL_SPAN,
   MOTION_PREFERENCE_CSS,
   MOTION_PREFERENCE_STYLE_ID,
@@ -212756,6 +213294,7 @@ export {
   OpLog,
   OrthogonalRouter,
   PAGE_SIZES,
+  PHASE_HEADER_SIZE,
   PORTAL_CLASS,
   PORT_GROUPS_METADATA_KEY,
   PORT_SIDES,
@@ -212924,6 +213463,7 @@ export {
   autoSelectLayout,
   autoSizeDiagram,
   autoSizeNode,
+  bandsOf,
   base64ToBytes,
   beginIncrementalCapture,
   bindCardEditing,
@@ -213222,6 +213762,7 @@ export {
   hasPressure,
   hasShape,
   hasStyle,
+  hasSubLanes,
   hasTool,
   hashString,
   hitTestLink,
@@ -213383,6 +213924,10 @@ export {
   parseValidationPath,
   parseViewBox2 as parseViewBox,
   pathBounds,
+  phaseAt,
+  phaseBands,
+  phaseHeaderRect,
+  phaseHeaderSizeOf,
   pickEngineForScale,
   pickRoot,
   placeFlowNodes,

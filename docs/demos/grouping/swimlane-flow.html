@@ -48,23 +48,26 @@ import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 // border, a lane's place, a fold, a layout — is one step on the engine's undo
 // stack, because the SwimlaneService is given the engine's command manager.
 
-const LANES = ['Customer', 'Finance', 'Sales', 'Warehouse'];
-const [CUSTOMER, FINANCE, SALES, WAREHOUSE] = [0, 1, 2, 3];
+// The Warehouse is split into two SUB-LANES: Picking and Dispatch.
+const LANES = [{ name: 'Customer' }, { name: 'Finance' }, { name: 'Sales' }, { name: 'Warehouse', subs: ['Picking', 'Dispatch'] }];
+const TOP = LANES.map((l) => l.name);
+// Three PHASES run across every lane; each step sits in one.
+const PHASES = [{ id: 'order', name: 'Order' }, { id: 'fulfil', name: 'Fulfil' }, { id: 'bill', name: 'Bill' }];
 const STEP = { width: 150, height: 50 };
 const EVENT = { width: 120, height: 46 };
-const GATE = { width: 120, height: 72 };
+const GATE = { width: 140, height: 88 };
 const STEPS = [
-  { id: 'placed', label: 'Ordered', lane: CUSTOMER, size: EVENT, shape: { type: 'terminal' } },
-  { id: 'confirm', label: 'Confirm order', lane: SALES },
-  { id: 'credit', label: 'Check credit', lane: FINANCE },
-  { id: 'ok', label: 'Credit OK?', lane: FINANCE, size: GATE, shape: { type: 'diamond' } },
-  { id: 'reject', label: 'Reject order', lane: SALES },
-  { id: 'pick', label: 'Pick & pack', lane: WAREHOUSE },
-  { id: 'ship', label: 'Ship', lane: WAREHOUSE },
-  { id: 'receive', label: 'Receive goods', lane: CUSTOMER },
-  { id: 'invoice', label: 'Send invoice', lane: FINANCE },
-  { id: 'pay', label: 'Pay invoice', lane: CUSTOMER },
-  { id: 'paid', label: 'Paid', lane: FINANCE, size: EVENT, shape: { type: 'terminal' } },
+  { id: 'placed', label: 'Ordered', lane: 'Customer', phase: 'order', size: EVENT, shape: { type: 'terminal' } },
+  { id: 'confirm', label: 'Confirm order', lane: 'Sales', phase: 'order' },
+  { id: 'credit', label: 'Check credit', lane: 'Finance', phase: 'order' },
+  { id: 'ok', label: 'Credit OK?', lane: 'Finance', phase: 'order', size: GATE, shape: { type: 'diamond' } },
+  { id: 'reject', label: 'Reject order', lane: 'Sales', phase: 'order' },
+  { id: 'pick', label: 'Pick & pack', lane: 'Picking', phase: 'fulfil' },
+  { id: 'ship', label: 'Ship', lane: 'Dispatch', phase: 'fulfil' },
+  { id: 'receive', label: 'Receive goods', lane: 'Customer', phase: 'fulfil' },
+  { id: 'invoice', label: 'Send invoice', lane: 'Finance', phase: 'bill' },
+  { id: 'pay', label: 'Pay invoice', lane: 'Customer', phase: 'bill' },
+  { id: 'paid', label: 'Paid', lane: 'Finance', phase: 'bill', size: EVENT, shape: { type: 'terminal' } },
 ];
 const LINKS = [
   ['placed', 'confirm'], ['confirm', 'credit'], ['credit', 'ok'], ['ok', 'pick', 'yes'], ['ok', 'reject', 'no'],
@@ -75,14 +78,16 @@ const MAIN_PATH = ['placed', 'confirm', 'credit', 'ok', 'pick', 'ship', 'receive
 
 defineDemo({
   name: 'Swimlane flow',
-  blurb: 'An order-to-cash process across four lanes: every step sits in the lane of whoever does it, and the connections cross lanes. Move a step to another lane, resize a lane by its border, reorder lanes by their titles, fold a lane to a band, lay the pool out: every edit is one undo step.',
+  blurb: 'An order-to-cash process across four lanes, the Warehouse split into two sub-lanes, in three phases: every step sits in the lane of whoever does it and the phase it belongs to, and the connections cross lanes. Move a step to another lane, resize or reorder lanes and phases by hand, fold a lane to a band, lay the pool out: every edit is one undo step.',
   howTo: [
-    'Read the flow left to right: the Customer orders, Sales confirms, Finance checks the credit and, if it is OK, the Warehouse picks and ships; the Customer receives the goods, Finance invoices and the Customer pays.',
+    'Read the flow left to right: the Customer orders, Sales confirms, Finance checks the credit and, if it is OK, the Warehouse picks and ships; the Customer receives the goods, Finance invoices and the Customer pays. The Warehouse is split into two sub-lanes, Picking and Dispatch, with its title in a strip on the left.',
     'Drag "Send invoice" up into the Sales lane and let go: it now belongs to Sales and sits fully inside it. Press Undo: it is back in Finance.',
     'Point at the line between two lanes: the cursor turns into a resize arrow. Drag it down: the lane above gets taller, the pool grows with it and the other lanes keep their size.',
     'Grab a lane by its title strip (the cursor shows a hand) and drag it above another lane: the lane moves there, its steps with it.',
+    'Drag "Ship" up from Dispatch into Picking: it belongs to Picking now. Grab Dispatch by its title and drag it above Picking: the two sub-lanes swap inside the Warehouse, which stays where it is. Grab the Warehouse by its strip on the left to move the whole lane, sub-lanes and all.',
+    'The band along the top names the phases: Order, Fulfil, Bill. Drag the line between two phase names: that phase gets longer, the pool with it, and the steps after it move along. Drag a phase by its name to move it, its steps with it.',
     'Press Fold Finance: the lane folds to a thin band across the pool, the connections meet the band, and the pool closes up. Press it again to unfold.',
-    'Drag a few steps along their lanes to make a mess, then press Lay out: the steps line up along their connections again, each in its own lane.',
+    'Drag a few steps along their lanes to make a mess, then press Lay out: the steps line up along their connections again, each in its own lane and its own phase.',
     'Press Vertical pool: the same process with the lanes as columns, running top to bottom.',
   ],
   reactflow: null,
@@ -97,8 +102,10 @@ defineDemo({
     const $ = (id) => document.getElementById(id);
     let svc, pool, lanes, orientation = 'horizontal';
 
-    const laneOf = (id) => svc.getLanes(pool).find((l) => l.members.has(id));
-    const finance = () => lanes[FINANCE];
+    const laneOf = (id) => svc.getLeafLanes(pool).find((l) => l.members.has(id));
+    /** A lane by name, at any depth (a top lane or a sub-lane). */
+    const laneNamed = (name) => [...svc.getLanes(pool), ...svc.getLeafLanes(pool)].find((l) => l.name === name);
+    const finance = () => laneNamed('Finance');
 
     const build = (o = orientation) => {
       orientation = o;
@@ -109,14 +116,19 @@ defineDemo({
       ({ pool, lanes } = plain.createPool({
         name: 'Order to cash', orientation,
         bounds: orientation === 'horizontal' ? { x: 0, y: 0, width: 1400, height: 640 } : { x: 0, y: 0, width: 760, height: 1300 },
-        lanes: LANES.map((name) => ({ name })),
+        lanes: LANES.map(({ name }) => ({ name })),
         headerSize: 40,
+        phases: PHASES,
       }));
+      for (const l of LANES) if (l.subs) plain.splitLane(pool, lanes.find((x) => x.name === l.name).id, l.subs.map((name) => ({ name })));
+      const phaseStart = Object.fromEntries(plain.getPhases(pool).map((ph) => [ph.id, ph.start]));
       api.setNodes(STEPS.map((s) => {
-        const b = lanes[s.lane].getInnerBounds();
-        return { id: s.id, label: s.label, position: { x: b.x + 10, y: b.y + 30 }, size: { ...(s.size ?? STEP) }, ...(s.shape ? { shape: s.shape } : {}) };
+        const b = laneNamed(s.lane).getInnerBounds();
+        // each step starts in its phase; the layout then keeps it there
+        const at = orientation === 'horizontal' ? { x: Math.max(b.x, phaseStart[s.phase]) + 10, y: b.y + 30 } : { x: b.x + 10, y: Math.max(b.y, phaseStart[s.phase]) + 10 };
+        return { id: s.id, label: s.label, position: at, size: { ...(s.size ?? STEP) }, ...(s.shape ? { shape: s.shape } : {}) };
       }));
-      for (const s of STEPS) lanes[s.lane].addMember(s.id, model);
+      for (const s of STEPS) laneNamed(s.lane).addMember(s.id, model);
       api.setEdges(LINKS.map(([source, target, label]) => ({ id: `${source}-${target}`, source, target, type: 'orthogonal', ...(label ? { label } : {}) })));
       layoutPool(model, pool, { rankSpacing: 48 });
       cm.clear();
@@ -194,6 +206,7 @@ defineDemo({
       api.renderNow();
     };
     ctx.laneOf = laneOf;
+    ctx.lane = laneNamed;
     ctx.reset = () => { build('horizontal'); remember(); };
     await ctx.tick();
   },
@@ -201,35 +214,42 @@ defineDemo({
   async assert(ctx) {
     ctx.reset();
     const m = ctx.diagram, engine = ctx.engine, cm = engine.commandManager;
-    let svc = ctx.svc, pool = ctx.pool, lanes = ctx.lanes;
+    let svc = ctx.svc, pool = ctx.pool;
+    const lane = (name) => ctx.lane(name);
     const box = (id) => { const n = m.getNode(id); return { x: n.position.x, y: n.position.y, w: n.size.width, h: n.size.height }; };
     const centre = (id) => { const b = box(id); return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; };
-    const inside = (id, lane) => { const b = box(id), r = lane.getInnerBounds(); return b.x >= r.x - 0.5 && b.y >= r.y - 0.5 && b.x + b.w <= r.x + r.width + 0.5 && b.y + b.h <= r.y + r.height + 0.5; };
+    const inside = (id, l) => { const b = box(id), r = l.getInnerBounds(); return b.x >= r.x - 0.5 && b.y >= r.y - 0.5 && b.x + b.w <= r.x + r.width + 0.5 && b.y + b.h <= r.y + r.height + 0.5; };
     const tiled = () => { const b = svc.getLanes(pool).map((l) => l.getOuterBounds()); return b.every((r, i) => i === 0 || Math.abs(r.y - (b[i - 1].y + b[i - 1].height)) < 1); };
     const heights = () => svc.getLanes(pool).map((l) => Math.round(l.getOuterBounds().height));
     const flowReads = () => MAIN_PATH.every((id, i) => i === 0 || box(id).x > box(MAIN_PATH[i - 1]).x);
-    const STEP_LANE = Object.fromEntries(STEPS.map((s) => [s.id, s.lane]));
-    const everyStepHome = () => STEPS.every((s) => ctx.laneOf(s.id) === lanes[s.lane] && inside(s.id, lanes[s.lane]));
+    const everyStepHome = () => STEPS.every((s) => ctx.laneOf(s.id) === lane(s.lane) && inside(s.id, lane(s.lane)));
+    const phase = (id) => svc.getPhases(pool).find((p) => p.id === id);
+    const inPhase = (s) => { const p = phase(s.phase), b = box(s.id); return b.x >= p.start - 0.5 && b.x + b.w <= p.end + 0.5; };
+    const everyStepInPhase = () => STEPS.every(inPhase);
+    const pause = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-    // 1. Four lanes tile the pool; every step is inside its own lane; the main path reads left to right.
-    check(svc.getLanes(pool).map((l) => l.name).join() === LANES.join(), `the lanes should be ${LANES.join(', ')}`);
+    // 1. Four lanes tile the pool, the Warehouse split into Picking and Dispatch; every step in its own lane; the main path reads left to right.
+    check(svc.getLanes(pool).map((l) => l.name).join() === TOP.join(), `the lanes should be ${TOP.join(', ')}`);
+    check(svc.getLeafLanes(pool).map((l) => l.name).join() === 'Customer,Finance,Sales,Picking,Dispatch', 'the Warehouse should be split into Picking and Dispatch');
     check(tiled(), 'the four lanes should tile the pool');
     check(everyStepHome(), 'every step should start inside its own lane');
     check(flowReads(), 'the main path should read left to right');
+    check(svc.getPhases(pool).map((p) => p.name).join() === 'Order,Fulfil,Bill', 'the pool should have the phases Order, Fulfil, Bill');
+    check(everyStepInPhase(), 'every step should start inside its own phase');
 
     // 2. A step dragged into another lane joins it, fully inside; Undo takes it back.
-    const sales = lanes[SALES].getOuterBounds();
+    const sales = lane('Sales').getOuterBounds();
     await ctx.drag(centre('invoice'), { x: centre('invoice').x, y: sales.y + sales.height / 2 + 10 });
-    check(ctx.laneOf('invoice') === lanes[SALES], `"Send invoice" should now be in Sales, it is in ${ctx.laneOf('invoice')?.name}`);
-    check(inside('invoice', lanes[SALES]), '"Send invoice" should sit fully inside Sales');
+    check(ctx.laneOf('invoice') === lane('Sales'), `"Send invoice" should now be in Sales, it is in ${ctx.laneOf('invoice')?.name}`);
+    check(inside('invoice', lane('Sales')), '"Send invoice" should sit fully inside Sales');
     check(!document.getElementById('undo').disabled, 'Undo should be live after a drop');
     document.getElementById('undo').click();
-    await new Promise((r) => setTimeout(r, 30));
-    check(ctx.laneOf('invoice') === lanes[FINANCE] && inside('invoice', lanes[FINANCE]), 'Undo should put "Send invoice" back in Finance');
+    await pause();
+    check(ctx.laneOf('invoice') === lane('Finance') && inside('invoice', lane('Finance')), 'Undo should put "Send invoice" back in Finance');
 
     // 3. The line under Customer, dragged down by hand: Customer grows, the pool with it, the others keep their size.
     const h0 = heights(), p0 = pool.getOuterBounds();
-    const c0 = lanes[CUSTOMER].getOuterBounds();
+    const c0 = lane('Customer').getOuterBounds();
     await ctx.drag({ x: c0.x + c0.width - 40, y: c0.y + c0.height }, { x: c0.x + c0.width - 40, y: c0.y + c0.height + 60 });
     const h1 = heights();
     check(Math.abs(h1[0] - (h0[0] + 60)) <= 1 && h1.slice(1).join() === h0.slice(1).join(), `dragging Customer's border should make only Customer 60 taller (${h0} → ${h1})`);
@@ -239,64 +259,94 @@ defineDemo({
     check(heights().join() === h0.join(), 'one Undo should restore the lane sizes');
 
     // 4. Finance dragged by its title above Customer: the lane moves, its steps ride along.
-    const f0 = lanes[FINANCE].getOuterBounds();
+    const f0 = lane('Finance').getOuterBounds();
     await ctx.drag({ x: f0.x + 300, y: f0.y + 10 }, { x: f0.x + 300, y: pool.getOuterBounds().y + 4 }, 16);
     check(svc.getLanes(pool).map((l) => l.name).join() === 'Finance,Customer,Sales,Warehouse', `Finance should now come first, got ${svc.getLanes(pool).map((l) => l.name)}`);
     check(tiled() && everyStepHome(), 'after a reorder the lanes should tile and every step stay in its lane');
     await cm.undo();
-    check(svc.getLanes(pool).map((l) => l.name).join() === LANES.join(), 'one Undo should put the lanes back in order');
+    check(svc.getLanes(pool).map((l) => l.name).join() === TOP.join(), 'one Undo should put the lanes back in order');
 
-    // 5. Fold Finance: a band, the pool closes up, a drop onto the band goes home; unfold restores.
-    const pf = pool.getOuterBounds().height, ff = lanes[FINANCE].getOuterBounds().height;
+    // 5. Sub-lanes: "Ship" dragged from Dispatch into Picking joins it; Dispatch dragged by its title above Picking swaps the two inside the Warehouse.
+    const pk = lane('Picking').getOuterBounds();
+    await ctx.drag(centre('ship'), { x: centre('ship').x, y: pk.y + pk.height / 2 + 10 });
+    check(ctx.laneOf('ship') === lane('Picking') && inside('ship', lane('Picking')), `"Ship" should now be in Picking, it is in ${ctx.laneOf('ship')?.name}`);
+    await cm.undo();
+    check(ctx.laneOf('ship') === lane('Dispatch'), 'one Undo should put "Ship" back in Dispatch');
+    const d0 = lane('Dispatch').getOuterBounds();
+    await ctx.drag({ x: d0.x + 400, y: d0.y + 10 }, { x: d0.x + 400, y: lane('Picking').getOuterBounds().y + 4 }, 16);
+    check(svc.getLeafLanes(pool).map((l) => l.name).join() === 'Customer,Finance,Sales,Dispatch,Picking', `Dispatch should now come before Picking, got ${svc.getLeafLanes(pool).map((l) => l.name)}`);
+    check(svc.getLanes(pool).map((l) => l.name).join() === TOP.join(), 'swapping sub-lanes should leave the lanes where they are');
+    check(everyStepHome(), 'after swapping sub-lanes every step should stay in its lane');
+    await cm.undo();
+    check(svc.getLeafLanes(pool).map((l) => l.name).join() === 'Customer,Finance,Sales,Picking,Dispatch', 'one Undo should swap them back');
+
+    // 5b. Phases by hand: the line after Order, dragged right in the header, makes Order longer; the pool grows and the later steps move along.
+    const o0 = phase('order'), w0 = pool.getOuterBounds().width, inv0 = box('invoice').x, conf0 = box('confirm').x;
+    const headY = pool.getOuterBounds().y + 10;
+    await ctx.drag({ x: o0.end, y: headY }, { x: o0.end + 80, y: headY });
+    check(Math.abs(phase('order').end - (o0.end + 80)) <= 1 && Math.abs(pool.getOuterBounds().width - (w0 + 80)) <= 1, 'dragging the line after Order should make Order (and the pool) 80 longer');
+    check(Math.abs(box('invoice').x - (inv0 + 80)) <= 1 && Math.abs(box('confirm').x - conf0) <= 1, 'the steps after Order should move along; the ones in it should stay');
+    await cm.undo();
+    check(Math.abs(phase('order').end - o0.end) <= 1 && Math.abs(box('invoice').x - inv0) <= 1, 'one Undo should give Order its length back');
+    // …and Bill, dragged by its name in front of Order, takes its steps with it.
+    const bill0 = phase('bill');
+    await ctx.drag({ x: bill0.start + 30, y: headY }, { x: phase('order').start + 10, y: headY }, 20);
+    check(svc.getPhases(pool).map((p) => p.name).join() === 'Bill,Order,Fulfil', `Bill should now come first, got ${svc.getPhases(pool).map((p) => p.name)}`);
+    check(everyStepInPhase() && everyStepHome(), 'after moving a phase every step should still be in its phase and its lane');
+    await cm.undo();
+    check(svc.getPhases(pool).map((p) => p.name).join() === 'Order,Fulfil,Bill' && everyStepInPhase(), 'one Undo should put the phases (and their steps) back');
+
+    // 6. Fold Finance: a band, the pool closes up, a drop onto the band goes home; unfold restores.
+    const pf = pool.getOuterBounds().height, ff = lane('Finance').getOuterBounds().height;
     document.getElementById('fold').click();
-    await new Promise((r) => setTimeout(r, 40));
-    check(lanes[FINANCE].isCollapsed && Math.round(lanes[FINANCE].getOuterBounds().height) === 44, 'Finance should fold to a 44px band');
+    await pause(40);
+    check(lane('Finance').isCollapsed && Math.round(lane('Finance').getOuterBounds().height) === 44, 'Finance should fold to a 44px band');
     check(Math.abs(pool.getOuterBounds().height - (pf - ff + 44)) <= 1, 'the pool should give the folded space back');
     check(m.getNode('credit').state.visible === false, "Finance's steps should be hidden while it is folded");
-    const band = lanes[FINANCE].getOuterBounds(), pay0 = { ...m.getNode('pay').position };
+    const band = lane('Finance').getOuterBounds(), pay0 = { ...m.getNode('pay').position };
     await ctx.drag(centre('pay'), { x: centre('pay').x, y: band.y + band.height / 2 });
-    check(Math.abs(m.getNode('pay').position.y - pay0.y) < 1 && ctx.laneOf('pay') === lanes[CUSTOMER], 'a step dropped on a folded band should go back where it came from');
+    check(Math.abs(m.getNode('pay').position.y - pay0.y) < 1 && ctx.laneOf('pay') === lane('Customer'), 'a step dropped on a folded band should go back where it came from');
     document.getElementById('fold').click();
-    await new Promise((r) => setTimeout(r, 40));
-    check(!lanes[FINANCE].isCollapsed && Math.abs(pool.getOuterBounds().height - pf) <= 1, 'unfolding should give Finance its size back');
+    await pause(40);
+    check(!lane('Finance').isCollapsed && Math.abs(pool.getOuterBounds().height - pf) <= 1, 'unfolding should give Finance its size back');
     check(everyStepHome(), 'after unfolding every step should be in its lane again');
 
-    // 6. A mess, then Lay out: the flow reads again; one Undo brings the mess back.
-    const r0 = lanes[CUSTOMER].getInnerBounds();
-    await ctx.drag(centre('pay'), { x: r0.x + 40, y: centre('pay').y });
+    // 7. A mess, then Lay out: the flow reads again; one Undo brings the mess back.
+    // (inside its own phase: a step dragged into another phase belongs to that one)
+    await ctx.drag(centre('pay'), { x: phase('bill').start + 70, y: centre('pay').y });
     check(!flowReads(), 'the dragged step should have broken the reading order (precondition)');
     document.getElementById('lay-out').click();
-    await new Promise((r) => setTimeout(r, 30));
-    check(flowReads() && everyStepHome() && tiled(), 'Lay out should line the steps up along the flow, each in its own lane');
+    await pause();
+    check(flowReads() && everyStepHome() && tiled() && everyStepInPhase(), 'Lay out should line the steps up along the flow, each in its own lane and phase');
     await cm.undo();
     check(!flowReads(), 'one Undo should bring the pre-layout positions back');
 
-    // 7. The engine's own layout keeps the pool whole too.
+    // 8. The engine's own layout keeps the pool whole too.
     await engine.layout('layered', { direction: 'LR' });
     check(tiled() && everyStepHome(), 'engine.layout() should keep the lanes tiled and every step in its lane');
 
-    // 8. A full lane refuses a step: it goes home.
-    lanes[WAREHOUSE].capacity = 2; // the Warehouse holds "Pick & pack" and "Ship"
+    // 9. A full lane refuses a step: it goes home.
+    lane('Picking').capacity = 1; // Picking holds "Pick & pack"
     const rc0 = { ...m.getNode('receive').position };
-    const wh = lanes[WAREHOUSE].getOuterBounds();
-    await ctx.drag(centre('receive'), { x: centre('receive').x, y: wh.y + wh.height / 2 });
-    check(ctx.laneOf('receive') === lanes[CUSTOMER] && Math.abs(m.getNode('receive').position.y - rc0.y) < 1, 'a full lane should send the step back where it came from');
-    lanes[WAREHOUSE].capacity = undefined;
+    const pkb = lane('Picking').getOuterBounds();
+    await ctx.drag(centre('receive'), { x: centre('receive').x, y: pkb.y + pkb.height / 2 });
+    check(ctx.laneOf('receive') === lane('Customer') && Math.abs(m.getNode('receive').position.y - rc0.y) < 1, 'a full lane should send the step back where it came from');
+    lane('Picking').capacity = undefined;
 
-    // 9. + Lane adds a lane, one Undo takes it away.
+    // 10. + Lane adds a lane, one Undo takes it away.
     document.getElementById('add-lane').click();
     check(svc.getLanes(pool).length === 5 && tiled(), '+ Lane should add a fifth lane that tiles');
-    await new Promise((r) => setTimeout(r, 30)); // the edit reaches the undo stack a moment later
+    await pause(); // the edit reaches the undo stack a moment later
     await cm.undo();
     check(svc.getLanes(pool).length === 4, 'one Undo should remove the added lane');
 
-    // 10. The vertical pool: lanes are columns and the flow runs top to bottom.
+    // 11. The vertical pool: lanes are columns (the Warehouse's sub-lanes too) and the flow runs top to bottom.
     document.getElementById('turn').click();
-    svc = ctx.svc; pool = ctx.pool; lanes = ctx.lanes;
+    svc = ctx.svc; pool = ctx.pool;
     const cols = svc.getLanes(pool).map((l) => l.getOuterBounds());
     check(cols.every((r, i) => i === 0 || Math.abs(r.x - (cols[i - 1].x + cols[i - 1].width)) < 1), 'in the vertical pool the lanes should tile as columns');
     check(MAIN_PATH.every((id, i) => i === 0 || box(id).y > box(MAIN_PATH[i - 1]).y), 'in the vertical pool the flow should run top to bottom');
-    check(STEPS.every((s) => inside(s.id, lanes[STEP_LANE[s.id]])), 'in the vertical pool every step should be in its lane');
+    check(STEPS.every((s) => inside(s.id, lane(s.lane))), 'in the vertical pool every step should be in its lane');
     ctx.reset();
   },
 });
