@@ -140,6 +140,13 @@ defineDemo({
       sync();
     };
 
+    /** An edit that grows the pool past the view (a new lane, a layout) brings the whole pool back into view. */
+    const keepInView = () => {
+      const b = pool.getOuterBounds(), v = api.viewport.getViewBox();
+      if (b.x < v.x || b.y < v.y || b.x + b.width > v.x + v.width || b.y + b.height > v.y + v.height) api.fitView(32);
+      api.renderNow();
+    };
+
     function sync() {
       $('undo').disabled = !cm.canUndo();
       $('redo').disabled = !cm.canRedo();
@@ -161,7 +168,7 @@ defineDemo({
 
     $('lay-out').addEventListener('click', () => {
       svc.editPool(pool, 'Lay out', () => layoutPool(model, pool, { rankSpacing: 48 }));
-      api.renderNow();
+      keepInView();
       log.textContent = 'Laid out: steps along their connections, each in its own lane.';
     });
     $('fold').addEventListener('click', async () => {
@@ -176,7 +183,7 @@ defineDemo({
     $('add-lane').addEventListener('click', () => {
       added += 1;
       const lane = svc.addLane(pool, { name: added === 1 ? 'Legal' : `Lane ${LANES.length + added}` });
-      api.renderNow();
+      keepInView();
       log.textContent = `Added the "${lane.name}" lane.`;
     });
     $('turn').addEventListener('click', () => {
@@ -184,8 +191,8 @@ defineDemo({
       remember();
       log.textContent = orientation === 'vertical' ? 'The lanes are columns now; the flow runs top to bottom.' : 'The lanes are rows again.';
     });
-    $('undo').addEventListener('click', async () => { await cm.undo(); api.renderNow(); remember(); });
-    $('redo').addEventListener('click', async () => { await cm.redo(); api.renderNow(); remember(); });
+    $('undo').addEventListener('click', async () => { await cm.undo(); keepInView(); remember(); });
+    $('redo').addEventListener('click', async () => { await cm.redo(); keepInView(); remember(); });
     $('reset').addEventListener('click', () => { build('horizontal'); remember(); log.textContent = 'Drag a step to another lane.'; });
 
     build('horizontal');
@@ -335,8 +342,22 @@ defineDemo({
 
     // 10. + Lane adds a lane, one Undo takes it away.
     document.getElementById('add-lane').click();
+    await pause();
+    const fifth = svc.getLanes(pool)[4];
     check(svc.getLanes(pool).length === 5 && tiled(), '+ Lane should add a fifth lane that tiles');
-    await pause(); // the edit reaches the undo stack a moment later
+    // …and that you can SEE (live report: it came out 0px tall after a layout, until the next Lay out).
+    check(!!fifth && fifth.getOuterBounds().height >= 40, `the new lane should be a band you can see, it is ${Math.round(fifth?.getOuterBounds().height ?? 0)}px tall`);
+    const drawn = fifth && document.querySelector(`[data-group-id="${fifth.id}"]`)?.getBoundingClientRect();
+    check(!!drawn && drawn.height >= 20, 'the new lane should be drawn on the canvas');
+    // a second one too, and both in view (the pool grows past the view; the view follows)
+    document.getElementById('add-lane').click();
+    await pause();
+    const host = ctx.host.getBoundingClientRect();
+    const sixth = svc.getLanes(pool)[5];
+    const r6 = sixth && document.querySelector(`[data-group-id="${sixth.id}"]`)?.getBoundingClientRect();
+    check(!!r6 && r6.height >= 20 && r6.top >= host.top - 1 && r6.bottom <= host.bottom + 1, 'a second new lane should be drawn, and in view');
+    await cm.undo();
+    await pause();
     await cm.undo();
     check(svc.getLanes(pool).length === 4, 'one Undo should remove the added lane');
 
