@@ -90,3 +90,25 @@ it("a SPLIT lane carries its title in a strip at its start, turned, with a divid
   const divider = all(g, (v) => /group-frame-header-divider/.test(String(v.props?.className)))[0]!;
   expect(Number(divider.props!['x1'])).toBeCloseTo(b.x + 30);
 });
+
+it("a pool's PHASES: a header band with a named cell each, and the line after each phase across every lane", () => {
+  const engine = new DiagramEngine();
+  const model = engine.createDiagram();
+  const svc = new SwimlaneService(model);
+  const { pool, lanes } = svc.createPool({
+    name: 'Orders', orientation: 'horizontal', bounds: { x: 0, y: 0, width: 1000, height: 400 },
+    lanes: [{ name: 'Sales' }, { name: 'Warehouse' }], headerSize: 40,
+    phases: [{ name: 'Order', size: 300 }, { name: 'Fulfil', size: 360 }, { name: 'Bill' }],
+  });
+  // the lanes start under the 28px phase header
+  expect(lanes[0]!.getOuterBounds().y).toBe(28);
+  const tree = new SVGRenderer(engine).render({ x: 0, y: 0, width: 1400, height: 900 }, 1);
+  const poolFrame = all(tree, (v) => v.props?.['data-group-id'] === pool.id)[0]!;
+  const labels = all(poolFrame, (v) => /group-phase-label/.test(String(v.props?.className))).map((v) => v.props!['textContent']);
+  expect(labels).toEqual(['Order', 'Fulfil', 'Bill']);
+  for (const lane of lanes) {
+    const g = all(tree, (v) => v.props?.['data-group-id'] === lane.id)[0]!;
+    const xs = all(g, (v) => /group-phase-line/.test(String(v.props?.className))).map((v) => Number(v.props!['x1']));
+    expect(xs).toEqual([340, 700]);
+  }
+});

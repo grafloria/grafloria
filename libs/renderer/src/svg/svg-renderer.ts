@@ -5,6 +5,7 @@ import { linkLabelPosition, DiagramSerializer, debugLog } from '@grafloria/engin
 // wave8/dirty — the O(1) "has anything changed?" counter every model mutation
 // bumps. See the FRAME GATE in render().
 import { getMutationEpoch } from '@grafloria/engine';
+import { phaseBands, phaseHeaderRect, poolOfLane, hasSubLanes } from '@grafloria/engine';
 import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 // Wave 5 Card 4: corridor separation for DIFFERENT-pair edges sharing a channel.
 import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
@@ -4857,8 +4858,83 @@ export class SVGRenderer implements IRenderer {
         bandRect,
         ...(poolHeaderDivider ? [poolHeaderDivider] : []),
         label,
+        ...this.renderPhases(group, bounds, collapsed),
       ],
     };
+  }
+
+  /**
+   * A pool's PHASES: its header band (a named cell per phase, a line between
+   * cells, a divider against the lanes) — and, in each lane that holds steps,
+   * the line after every phase but the last, across the band. Drawn by the lane
+   * so it sits on the lane's wash, not under it.
+   */
+  private renderPhases(group: GroupModel, bounds: Rectangle, collapsed: boolean): VNode[] {
+    const lc = group.laneConfig;
+    if (!lc) return [];
+    const stroke = this.theme.colors.node.default.stroke;
+    const line = (key: string, x1: number, y1: number, x2: number, y2: number, className: string): VNode => ({
+      type: 'line',
+      key,
+      props: { x1, y1, x2, y2, stroke, strokeWidth: 1, className, 'aria-hidden': 'true' },
+    });
+    if (lc.role === 'pool' && !collapsed) {
+      const head = phaseHeaderRect(group);
+      if (!head) return [];
+      const horizontal = lc.orientation === 'horizontal';
+      const out: VNode[] = [
+        {
+          type: 'rect',
+          key: `group-phase-band-${group.id}`,
+          props: { ...head, fill: this.theme.colors.background.surface, fillOpacity: 0.9, stroke: 'none', className: 'group-phase-band', 'aria-hidden': 'true' },
+        },
+        horizontal
+          ? line(`group-phase-divider-${group.id}`, head.x, head.y + head.height, head.x + head.width, head.y + head.height, 'group-phase-divider')
+          : line(`group-phase-divider-${group.id}`, head.x + head.width, head.y, head.x + head.width, head.y + head.height, 'group-phase-divider'),
+      ];
+      const bands = phaseBands(group);
+      bands.forEach((b, i) => {
+        if (i < bands.length - 1) {
+          out.push(horizontal
+            ? line(`group-phase-cell-${group.id}-${b.id}`, b.end, head.y, b.end, head.y + head.height, 'group-phase-cell-line')
+            : line(`group-phase-cell-${group.id}-${b.id}`, head.x, b.end, head.x + head.width, b.end, 'group-phase-cell-line'));
+        }
+        const mid = (b.start + b.end) / 2;
+        const cx = horizontal ? mid : head.x + head.width / 2;
+        const cy = horizontal ? head.y + head.height / 2 : mid;
+        out.push({
+          type: 'text',
+          key: `group-phase-label-${group.id}-${b.id}`,
+          props: {
+            x: cx,
+            y: cy,
+            ...(horizontal ? {} : { transform: `rotate(-90, ${cx}, ${cy})` }),
+            textAnchor: 'middle',
+            dominantBaseline: 'central',
+            fontSize: this.theme.typography.fontSize.sm,
+            fontFamily: this.theme.typography.fontFamily.default,
+            fontWeight: this.theme.typography.fontWeight.medium,
+            fill: this.theme.colors.text.primary,
+            className: 'group-phase-label',
+            textContent: b.name,
+            'aria-hidden': 'true',
+          },
+        });
+      });
+      return out;
+    }
+    if (lc.role === 'lane' && (collapsed || !hasSubLanes(group))) {
+      const diagram = this.engine.getDiagram?.();
+      const pool = diagram ? poolOfLane(diagram, group) : undefined;
+      if (!pool) return [];
+      const horizontal = pool.laneConfig?.orientation === 'horizontal';
+      return phaseBands(pool).slice(0, -1).map((b) =>
+        horizontal
+          ? line(`group-phase-line-${group.id}-${b.id}`, b.end, bounds.y, b.end, bounds.y + bounds.height, 'group-phase-line')
+          : line(`group-phase-line-${group.id}-${b.id}`, bounds.x, b.end, bounds.x + bounds.width, b.end, 'group-phase-line')
+      );
+    }
+    return [];
   }
 
   /** The canvas's own semantics. */
