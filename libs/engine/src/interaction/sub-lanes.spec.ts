@@ -111,6 +111,17 @@ describe('sub-lanes', () => {
     expect(inside(d, 'ship', dispatch.getInnerBounds())).toBe(true);
   });
 
+  it('adding a sub-lane to a pinned split lane gives it room: its lane and the pool grow by it', () => {
+    const d = new DiagramModel();
+    const { svc, pool, warehouse, picking, dispatch } = setup(d);
+    svc.setLaneSize(pool, picking.id, 80); // pins every lane at every depth
+    const packing = svc.addSubLane(pool, warehouse.id, { name: 'Packing' })!;
+    expect(packing.getOuterBounds().height).toBe(80);
+    expect(warehouse.getOuterBounds().height).toBe(240);
+    expect(pool.getOuterBounds().height).toBe(560);
+    expect([picking, dispatch].map((l) => l.getOuterBounds().height)).toEqual([80, 80]);
+  });
+
   it('removing a sub-lane hands its steps to its sibling; removing the last one makes the lane whole again', () => {
     const d = new DiagramModel();
     const { svc, pool, warehouse, picking, dispatch } = setup(d);

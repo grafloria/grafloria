@@ -68,6 +68,19 @@ describe('lane edits', () => {
     expect(heights(svc, pool)).toEqual([160, 160, 260]);
   });
 
+  it('adding a lane after a layout (every lane pinned, no room left) gives it room: the pool grows by it, the others keep their size', () => {
+    // Live report: "clicking on add lane doesn't show anything until I click on layout" — the
+    // new lane was weighted into a pool its pinned lanes filled exactly, and got 0px.
+    const diagram = new DiagramModel();
+    const svc = new SwimlaneService(diagram);
+    const { pool, lanes } = setup(svc, diagram);
+    svc.setLaneSize(pool, lanes[0]!.id, 200); // pins every lane: 200, 160, 160
+    const added = svc.addLane(pool, { name: 'Finance' });
+    expect(heights(svc, pool)).toEqual([200, 160, 160, 173]); // the average of the others
+    expect(added.getOuterBounds().height).toBe(173);
+    expect(pool.getOuterBounds().height).toBe(520 + 173);
+  });
+
   it('removeLane hands its steps to the lane before it; the last lane cannot be removed', () => {
     const diagram = new DiagramModel();
     const svc = new SwimlaneService(diagram);
