@@ -591,6 +591,71 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
     if (synth.parent) groupsById.get(synth.parent)?.addMember(synth.id, diagram);
   }
 
+  // -- pass 3b: POOLS → the engine's pools and lanes ----------------------------
+  // A draw.io pool is a swimlane container stacking swimlane LANES (its
+  // stackLayout), the steps children of the lanes. As plain groups it was
+  // frames inside frames: no lane could be resized, reordered, folded or laid
+  // out. Recognised by its shape, the two draw.io pool templates: the title
+  // strip on the LEFT (horizontal=0) with lanes as rows filling the rest, or the
+  // title strip on TOP with lanes as columns — swimlanes only, tiling the pool
+  // edge to edge; a lane tiled the same way by swimlanes of its own is split into
+  // SUB-LANES. Anything else stays a plain group. Nothing moves: the lanes
+  // already sit where they were drawn, and so do their steps.
+  const laneIds = new Set<string>();
+  const containerCells = [...cells.values()]
+    .filter((c) => groupsById.has(c.id))
+    .sort((a, b) => diagram.getDepth(a.id) - diagram.getDepth(b.id));
+  const near = (a: number, b: number) => Math.abs(a - b) < 2;
+  /**
+   * The swimlanes tiling `cell` after its title strip — rows after a strip on
+   * the left, or columns under a strip on top — in order; null when its
+   * children are anything else.
+   */
+  const tilingLanes = (cell: RawCell, horizontal: boolean): GroupModel[] | null => {
+    const children = [...cells.values()].filter((c) => c.parent === cell.id && c.vertex && !isEdgeLabel(c));
+    const laneCells = children.filter((c) => groupsById.has(c.id) && parseStyle(c.style).first === 'swimlane');
+    if (laneCells.length === 0 || laneCells.length !== children.length) return null;
+    const p = groupsById.get(cell.id)!.getOuterBounds();
+    const header = num(parseStyle(cell.style).tokens.get('startSize'), 23);
+    const lanes = laneCells
+      .map((c) => groupsById.get(c.id)!)
+      .sort((a, b) => (horizontal ? a.getOuterBounds().y - b.getOuterBounds().y : a.getOuterBounds().x - b.getOuterBounds().x));
+    const boxes = lanes.map((g) => g.getOuterBounds());
+    const span = horizontal
+      ? boxes.every((b) => near(b.x, p.x + header) && near(b.width, p.width - header))
+      : boxes.every((b) => near(b.y, p.y + header) && near(b.height, p.height - header));
+    let at = horizontal ? p.y : p.x;
+    const contiguous = boxes.every((b) => {
+      const ok = near(horizontal ? b.y : b.x, at);
+      at = horizontal ? b.y + b.height : b.x + b.width;
+      return ok;
+    }) && near(at, horizontal ? p.y + p.height : p.x + p.width);
+    return span && contiguous ? lanes : null;
+  };
+  /** Mark `lanes` as the bands of `container` — and any of them split into sub-lanes in turn. */
+  const markLanes = (container: GroupModel, cell: RawCell, lanes: GroupModel[], horizontal: boolean, depth: number): void => {
+    const orientation = horizontal ? 'horizontal' : 'vertical';
+    const header = num(parseStyle(cell.style).tokens.get('startSize'), 23);
+    container.laneConfig = { ...(container.laneConfig ?? { role: 'pool', orientation }), orientation, laneOrder: lanes.map((g) => g.id), headerSize: header };
+    for (const g of lanes) {
+      const b = g.getOuterBounds();
+      g.laneConfig = { role: 'lane', orientation, fixedSize: horizontal ? b.height : b.width };
+      g.constrainChildren = true;
+      laneIds.add(g.id);
+      const sub = depth < 8 ? tilingLanes(cells.get(g.id)!, horizontal) : null;
+      if (sub) markLanes(g, cells.get(g.id)!, sub, horizontal, depth + 1);
+    }
+  };
+  for (const cell of containerCells) {
+    if (laneIds.has(cell.id)) continue;
+    const style = parseStyle(cell.style);
+    if (style.first !== 'swimlane') continue;
+    const horizontal = style.tokens.get('horizontal') === '0';
+    const lanes = tilingLanes(cell, horizontal);
+    if (!lanes) continue;
+    markLanes(groupsById.get(cell.id)!, cell, lanes, horizontal, 0);
+  }
+
   // -- pass 4: edges → LinkModels ---------------------------------------------
   for (const cell of cells.values()) {
     if (cell.edge) edgeCells.push(cell);
