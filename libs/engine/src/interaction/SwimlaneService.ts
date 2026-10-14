@@ -20,6 +20,9 @@ import { INCREMENTAL_FORMAT } from '../serialization/Incremental';
 import { DIAGRAM_SCHEMA_VERSION } from '../serialization/DiagramMigrations';
 import { GroupCollapseService } from './GroupCollapseService';
 import { poolOfLane, hasSubLanes, bandsOf, lanesOfPool } from './confinement';
+import { phaseBands, phaseHeaderSizeOf, MIN_PHASE_SIZE, type PhaseBand } from './pool-phases';
+import type { PoolPhase } from '../models/GroupModel';
+import { generateId } from '../utils/id';
 
 export type LaneOrientation = 'horizontal' | 'vertical';
 
@@ -44,6 +47,20 @@ export interface CreatePoolOptions {
   headerSize?: number;
   /** Reserve a header band inside each lane (its `headerHeight`). Default 0. */
   laneHeaderSize?: number;
+  /** PHASES across every lane, in order (see pool-phases.ts). */
+  phases?: PhaseSpec[];
+  /** The phase header band's thickness (default 28). */
+  phaseHeaderSize?: number;
+}
+
+export interface PhaseSpec {
+  /** Optional explicit id (else generated). */
+  id?: string;
+  name: string;
+  /** Its size along the lanes, in pixels (pins it). */
+  size?: number;
+  /** Its share of what pinned phases leave (default 1). */
+  weight?: number;
 }
 
 export interface Pool {
@@ -184,6 +201,8 @@ export class SwimlaneService {
       orientation: options.orientation,
       laneOrder: [],
       headerSize: options.headerSize ?? 0,
+      ...(options.phases?.length ? { phases: options.phases.map((p) => this.phase(p)) } : {}),
+      ...(options.phaseHeaderSize !== undefined ? { phaseHeaderSize: options.phaseHeaderSize } : {}),
     };
     pool.setFrame(options.bounds);
     this.diagram.addGroup(pool);
@@ -379,6 +398,151 @@ export class SwimlaneService {
     });
   }
 
+  // ---- phases ---------------------------------------------------------------
+
+  /** A pool's phases where they lie along its lanes (none for a pool without phases). */
+  getPhases(pool: GroupModel): PhaseBand[] {
+    this.assertPool(pool);
+    return phaseBands(pool);
+  }
+
+  /** Give a pool these phases (replacing any it had); its steps stay where they are. Pass none to drop them. */
+  setPhases(pool: GroupModel, specs: PhaseSpec[]): void {
+    this.assertPool(pool);
+    this.editPool(pool, 'Set phases', () => {
+      const { phases: _old, ...rest } = pool.laneConfig!;
+      pool.laneConfig = specs.length ? { ...rest, phases: specs.map((p) => this.phase(p)) } : rest;
+      this.touch(pool);
+      this.reflow(pool);
+    });
+  }
+
+  /**
+   * Add a phase (at an index, else last). The pool grows by its size (default
+   * 240) along the lanes; every other phase keeps its size and the steps after
+   * it move along with their phases.
+   */
+  addPhase(pool: GroupModel, spec: PhaseSpec, atIndex?: number): string {
+    this.assertPool(pool);
+    return this.editPool(pool, 'Add phase', () =>
+      this.withStepsInPhases(pool, (phases) => {
+        const phase = this.phase({ ...spec, size: Math.max(MIN_PHASE_SIZE, spec.size ?? 240) });
+        const at = atIndex === undefined ? phases.length : Math.max(0, Math.min(phases.length, atIndex));
+        phases.splice(at, 0, phase);
+        return { phases, grow: phase.fixedSize!, result: phase.id };
+      })
+    );
+  }
+
+  /**
+   * Remove a phase. Its steps stay where they are and now belong to the phase
+   * before it (the next one, for the first), which takes its room; the pool
+   * keeps its length. Removing the last phase leaves the pool without phases.
+   */
+  removePhase(pool: GroupModel, phaseId: string): void {
+    this.assertPool(pool);
+    const phases = pool.laneConfig?.phases ?? [];
+    const at = phases.findIndex((p) => p.id === phaseId);
+    if (at < 0) return;
+    if (phases.length === 1) return this.setPhases(pool, []);
+    this.editPool(pool, 'Remove phase', () => {
+      const bands = phaseBands(pool);
+      const pinned = phases.map((p, i) => ({ ...p, fixedSize: bands[i]!.end - bands[i]!.start }));
+      const heir = pinned[at > 0 ? at - 1 : at + 1]!;
+      heir.fixedSize! += pinned[at]!.fixedSize!;
+      pinned.splice(at, 1);
+      pool.laneConfig = { ...pool.laneConfig!, phases: pinned };
+      this.touch(pool);
+      this.reflow(pool);
+    });
+  }
+
+  /**
+   * Size one phase the way a hand drags its border: the pool grows or shrinks
+   * along its lanes by the difference, every other phase keeps its size, and the
+   * steps in later phases move with them. Never below {@link MIN_PHASE_SIZE}.
+   */
+  setPhaseSize(pool: GroupModel, phaseId: string, size: number): void {
+    this.assertPool(pool);
+    if (!(pool.laneConfig?.phases ?? []).some((p) => p.id === phaseId)) return;
+    this.editPool(pool, 'Resize phase', () =>
+      this.withStepsInPhases(pool, (phases, sizes) => {
+        const i = phases.findIndex((p) => p.id === phaseId);
+        const next = Math.max(MIN_PHASE_SIZE, Math.round(size));
+        const grow = next - sizes[i]!;
+        phases[i] = { ...phases[i]!, fixedSize: next };
+        return { phases, grow, result: undefined };
+      })
+    );
+  }
+
+  /** Move a phase to `toIndex`; its steps go with it, keeping their place inside it. */
+  movePhase(pool: GroupModel, phaseId: string, toIndex: number): void {
+    this.assertPool(pool);
+    const phases = pool.laneConfig?.phases ?? [];
+    const from = phases.findIndex((p) => p.id === phaseId);
+    const to = Math.max(0, Math.min(phases.length - 1, Math.round(toIndex)));
+    if (from < 0 || from === to) return;
+    this.editPool(pool, 'Move phase', () =>
+      this.withStepsInPhases(pool, (list) => {
+        const [moved] = list.splice(from, 1);
+        list.splice(to, 0, moved!);
+        return { phases: list, grow: 0, result: undefined };
+      })
+    );
+  }
+
+  /**
+   * Change a pool's phases with every step riding along in its phase: each step
+   * keeps its offset from its phase's start. `change` gets the phases pinned at
+   * their current sizes (and those sizes) and says how much the pool grows.
+   */
+  private withStepsInPhases<T>(
+    pool: GroupModel,
+    change: (phases: PoolPhase[], sizes: number[]) => { phases: PoolPhase[]; grow: number; result: T }
+  ): T {
+    const horizontal = pool.laneConfig!.orientation === 'horizontal';
+    const before = phaseBands(pool);
+    const along = (n: { position: { x: number; y: number } }) => (horizontal ? n.position.x : n.position.y);
+    const steps = this.getLeafLanes(pool).flatMap((lane) =>
+      [...lane.members].map((id) => this.diagram.getNode(id)).filter((n): n is NonNullable<typeof n> => !!n)
+    );
+    const placed = steps.map((n) => {
+      const middle = along(n) + (horizontal ? n.size.width : n.size.height) / 2;
+      const band = before.find((b) => middle >= b.start && middle < b.end) ?? before[before.length - 1];
+      return { n, id: band?.id, offset: band ? along(n) - band.start : 0 };
+    });
+    const sizes = before.map((b) => b.end - b.start);
+    const pinned = (pool.laneConfig!.phases ?? []).map((p, i) => ({ ...p, fixedSize: sizes[i] }));
+    const { phases, grow, result } = change(pinned, sizes);
+    pool.laneConfig = { ...pool.laneConfig!, phases };
+    const b = pool.getOuterBounds();
+    pool.setFrame(horizontal ? { ...b, width: b.width + grow } : { ...b, height: b.height + grow });
+    this.touch(pool);
+    this.reflow(pool);
+    const after = new Map(phaseBands(pool).map((band) => [band.id, band]));
+    for (const { n, id, offset } of placed) {
+      const band = id ? after.get(id) : undefined;
+      if (!band) continue;
+      const size = horizontal ? n.size.width : n.size.height;
+      const at = Math.max(band.start, Math.min(band.end - size, band.start + offset));
+      if (horizontal) n.setPosition(at, n.position.y);
+      else n.setPosition(n.position.x, at);
+      const lane = this.getLeafLanes(pool).find((l) => l.members.has(n.id));
+      lane?.clampChildToExtent(n.id, this.diagram);
+    }
+    return result;
+  }
+
+  private phase(spec: PhaseSpec): PoolPhase {
+    return {
+      id: spec.id ?? generateId(),
+      name: spec.name,
+      ...(spec.size !== undefined ? { fixedSize: spec.size } : {}),
+      ...(spec.weight !== undefined ? { weight: spec.weight } : {}),
+    };
+  }
+
   /** Lanes of a pool in band order. */
   getLanes(pool: GroupModel): GroupModel[] {
     this.assertPool(pool);
@@ -442,9 +606,16 @@ export class SwimlaneService {
     const lanes = bandsOf(this.diagram, container);
     if (lanes.length === 0 || depth > 32) return;
 
-    const rect = container.getOuterBounds();
+    const outer = container.getOuterBounds();
     const header = cfg.headerSize ?? 0;
     const horizontal = orientation === 'horizontal';
+    // A pool's phase header band runs across the start of the cross axis (along
+    // the top of a horizontal pool, down the left of a vertical one): its lanes
+    // tile what is left.
+    const band = cfg.role === 'pool' ? phaseHeaderSizeOf(container) : 0;
+    const rect = horizontal
+      ? { ...outer, y: outer.y + band, height: outer.height - band }
+      : { ...outer, x: outer.x + band, width: outer.width - band };
 
     // Cross axis = the axis lanes are stacked along; main axis = the span each
     // lane fills. Horizontal lanes (rows) stack along Y and span X; vertical

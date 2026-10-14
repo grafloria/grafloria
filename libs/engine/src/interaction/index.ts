@@ -7,3 +7,4 @@ export * from './confinement';
 export * from './SemanticMembershipService';
 export * from './lane-gestures';
 export * from './swimlane-layout';
+export * from './pool-phases';
