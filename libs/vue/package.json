@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/vue",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Vue 3 bindings for Grafloria Diagrams and Grafloria Dashboards — an MIT diagram and dashboard engine: routing, auto-layout, undo, collaboration and dashboard layouts, native in Vue.",
   "license": "MIT",
   "author": "Ramy Othman",
@@ -40,7 +40,7 @@
     "@grafloria/engine": "^0.6.0",
     "@grafloria/renderer": "^0.7.0",
     "vue": "^3.4.0",
-    "@grafloria/element": "^0.7.0"
+    "@grafloria/element": "^0.8.0"
   },
   "files": [
     "src/**/*.js",
