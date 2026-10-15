@@ -14,7 +14,7 @@
 <meta property="og:url" content="https://grafloria.com/learn/javascript-dashboards/">
 <meta property="og:image" content="https://grafloria.com/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Dashboards in plain JavaScript \u2014 dashboard(), the handle, the round trip","description":"The Grafloria dashboard kit in depth: every dashboard() option, the widget spec, six built-in widget kinds and their data contracts, renderWidget, the live DashboardHandle, and the toJSON round trip.","url":"https://grafloria.com/learn/javascript-dashboards/","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"datePublished":"2026-08-04","dateModified":"2026-08-19","mainEntityOfPage":"https://grafloria.com/learn/javascript-dashboards/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Learn","item":"https://grafloria.com/learn/"},{"@type":"ListItem","position":2,"name":"Dashboards in plain JavaScript \u2014 dashboard(), the handle, the round trip","item":"https://grafloria.com/learn/javascript-dashboards/"}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Dashboards in plain JavaScript \u2014 dashboard(), the handle, the round trip","description":"The Grafloria dashboard kit in depth: every dashboard() option, the widget spec, six built-in widget kinds and their data contracts, renderWidget, the live DashboardHandle, and the toJSON round trip.","url":"https://grafloria.com/learn/javascript-dashboards/","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"datePublished":"2026-08-04","dateModified":"2026-10-15","mainEntityOfPage":"https://grafloria.com/learn/javascript-dashboards/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Learn","item":"https://grafloria.com/learn/"},{"@type":"ListItem","position":2,"name":"Dashboards in plain JavaScript \u2014 dashboard(), the handle, the round trip","item":"https://grafloria.com/learn/javascript-dashboards/"}]}]}</script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="../learn.css">
 </head>
@@ -203,6 +203,13 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
         <tr><td><code>renderWidget</code></td><td>built-ins</td>
           <td>Your chart painter — called <b>once per widget when it mounts</b>; the host
           is reused across re-renders, so this is not a per-frame hook</td></tr>
+        <tr><td><code>unmountWidget</code></td><td>—</td>
+          <td>The twin of <code>renderWidget</code>: <code>(widgetId, host) =&gt;</code>, called
+          once for each host it painted, just before the board drops it — the widget was
+          removed (by the API, the person, or an undo of its add), its section was removed, or
+          the board was disposed. Unmount what <code>renderWidget</code> mounted there. A widget
+          an undo brings back is painted into a new host. <code>fromDocument()</code> takes it
+          too</td></tr>
         <tr><td><code>onLayoutChange</code></td><td>—</td>
           <td>Fires with the view whose layout changed — after a pointer gesture, an
           API call (<code>moveTo</code>, <code>resize</code>, <code>addWidget</code>,
@@ -423,8 +430,8 @@ render(SPEC2, host);</pre>
       reload. Two carried limits, both because the datum is not in the document:
       <code>responsive</code> is a runtime seam and is never serialised, and
       <code>renderWidget</code>/<code>onLayoutChange</code> are functions — pass
-      <code>renderWidget</code> to <code>fromDocument</code> again or the reload silently
-      drops your chrome.</p>
+      <code>renderWidget</code> (and <code>unmountWidget</code>, if you use it) to
+      <code>fromDocument</code> again or the reload silently drops your chrome.</p>
 
       <h2>What a board is underneath</h2>
       <p>No magic: each view is a <code>GroupModel</code> whose chrome is suppressed with

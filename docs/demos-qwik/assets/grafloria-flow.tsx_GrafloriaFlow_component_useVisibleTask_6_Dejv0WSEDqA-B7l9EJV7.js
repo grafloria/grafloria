@@ -1,0 +1,1 @@
+import{v as p}from"./core.min-C7M5tFMw.js";import{x as u}from"./core.min-C7M5tFMw.js";import{b as a}from"./grafloria-flow-C3kKliyd.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const f=({track:e})=>{const[o,s,n]=p(),r=e(()=>n.tokenBridge),t=e(()=>s.value),i=a(r);!t||o.value===i||(o.value=i,t.setTokenBridge(r))};export{u as _hW,f as s_Dejv0WSEDqA};

@@ -201589,19 +201589,45 @@ function registerDiagramKitTextKits() {
   );
 }
 
+// libs/element/src/lib/teardown.ts
+function teardownInOrder(kit, caller) {
+  if (!kit || !caller) return kit ?? caller;
+  return (...args) => {
+    try {
+      kit(...args);
+    } finally {
+      caller(...args);
+    }
+  };
+}
+
 // libs/element/src/lib/grafloria.ts
+function joinKeyboard(fromSpec, fromCaller) {
+  const specKey = typeof fromSpec === "object" ? fromSpec.beforeKey : void 0;
+  if (!specKey || fromCaller === false) return fromCaller ?? fromSpec;
+  if (typeof fromCaller !== "object") return fromSpec;
+  const callerKey = fromCaller.beforeKey;
+  return {
+    ...fromCaller,
+    beforeKey: (event, action) => specKey(event, action) === false ? false : callerKey?.(event, action)
+  };
+}
 function render(spec, target, options = {}) {
   const element = typeof target === "string" ? document.querySelector(target) : target;
   if (!element) {
     throw new Error(`Grafloria.render: no element matched ${JSON.stringify(target)}`);
   }
   const parsed = typeof spec === "string" ? parseSpec(spec) : spec;
+  const fromSpec = parsed.renderOptions ?? {};
+  const keyboard = joinKeyboard(fromSpec.keyboard, options.keyboard);
+  const removeCustomNode = teardownInOrder(
+    parsed.removeCustomNode,
+    options.removeCustomNode
+  );
   const instance = createDiagram(element, {
-    // A kit spec may ask for instance options of its own — a fluid dashboard
-    // pins the zoom range so its layout can never become a scaled picture. The
-    // caller's explicit options still win.
-    ...parsed.renderOptions ?? {},
+    ...fromSpec,
     ...options,
+    ...keyboard !== void 0 ? { keyboard } : {},
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],
     ...parsed.groups ? { groups: parsed.groups } : {},
@@ -201612,7 +201638,8 @@ function render(spec, target, options = {}) {
     // widget is a custom HTML node), and it must be honoured — otherwise the
     // documented one-liner `render(dashboard({…}), host)` mounts a board whose
     // widgets never paint. Precedence: explicit option > spec > registry.
-    renderCustomNode: options.renderCustomNode ?? parsed.renderCustomNode ?? ((node, host) => getNodeType(node.type)?.(node, host))
+    renderCustomNode: options.renderCustomNode ?? parsed.renderCustomNode ?? ((node, host) => getNodeType(node.type)?.(node, host)),
+    ...removeCustomNode ? { removeCustomNode } : {}
   });
   const maybeFinalize = spec.finalize;
   if (typeof maybeFinalize === "function") {
@@ -202202,6 +202229,14 @@ var CSS4 = `
    hand is over it \u2014 and says no, in the refusal colour, when canDrop refused. */
 .grafloria-html-layer > .axdb-slab.axdb-slab--drop { box-shadow: inset 0 0 0 2px var(--axdb-drop-ring, rgba(59, 82, 217, .7)); }
 .grafloria-html-layer > .axdb-slab.axdb-slab--refused { box-shadow: inset 0 0 0 2px var(--axdb-refused-ring, rgba(194, 65, 12, .75)); }
+/* \u2026and WHY, when canDrop answered a sentence: the refused section's title, in
+   the refusal colour, over its caption band (its height is the band's). */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-why {
+  position: absolute; left: 4px; right: 4px; top: 4px; padding: 4px 8px; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center; overflow: hidden; z-index: 1;
+  border-radius: 6px; background: var(--axdb-refused-bg, #c2410c); color: var(--axdb-refused-fg, #fff);
+  font: 600 12px/1.35 system-ui, sans-serif; text-align: center; overflow-wrap: anywhere; pointer-events: none;
+}
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected { z-index: 6; box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
 .grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: none; opacity: 0; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
@@ -202418,6 +202453,12 @@ function captionOfGroup(grp) {
   const meta = grp.getMetadata("containerWidget");
   if (!meta || meta.caption === void 0) return null;
   return normalizeCaption(meta.caption, meta.title ?? grp.name);
+}
+function sectionNameOf(grp) {
+  const text = captionOfGroup(grp)?.text;
+  if (text) return text;
+  const title = grp.getMetadata("containerWidget")?.title;
+  return title || grp.name || grp.id;
 }
 function pairOf(v, dflt) {
   if (v === void 0) return dflt;
@@ -202899,10 +202940,25 @@ var SequenceCommand = class extends Command {
   canUndo() {
     return true;
   }
+  /** The chain, in order (as a batch's `getCommands`). */
+  getCommands() {
+    return this.steps;
+  }
   serialize() {
     return { id: this.id, name: this.name, timestamp: this.timestamp, data: { steps: this.steps.map((c) => c.serialize()) } };
   }
 };
+function cardsMovedBy(step, out = /* @__PURE__ */ new Set()) {
+  if (step instanceof BatchCommand || step instanceof SequenceCommand) {
+    for (const c of step.getCommands()) cardsMovedBy(c, out);
+  } else if (step instanceof SetGridItemCommand) {
+    out.add(step.serialize().data.nodeId);
+  } else if (step instanceof AddToGroupCommand || step instanceof RemoveFromGroupCommand) {
+    out.add(step.serialize().data.entityId);
+  }
+  return out;
+}
+var MOVED_SINCE = "It was moved since, and a card is in one list at a time";
 var sameCell = (a, b) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 var frameOf = (pos, size) => ({
   x: pos.x,
@@ -203132,6 +203188,23 @@ function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
 
 // libs/element/src/lib/dashboard-kit/chrome.ts
 var TAB_FRAME_GRIP = 3;
+function paintDropReason(slab, reason, band = 0) {
+  let why = slab.querySelector(":scope > .axdb-slab-why");
+  if (!reason) {
+    why?.remove();
+    slab.removeAttribute("title");
+    return;
+  }
+  if (!why) {
+    why = slab.ownerDocument.createElement("div");
+    why.className = "axdb-slab-why";
+    why.setAttribute("aria-hidden", "true");
+    slab.appendChild(why);
+  }
+  if (why.textContent !== reason) why.textContent = reason;
+  why.style.height = band > 16 ? `${band - 8}px` : "";
+  slab.setAttribute("title", reason);
+}
 var isTabsGroup = (grp) => grp.getMetadata("containerWidget")?.layout === "tabs";
 var edgeGripFor = (grp) => isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP;
 function createChrome(ctx, deps) {
@@ -203487,7 +203560,23 @@ function createChrome(ctx, deps) {
   return { syncSlabs, syncHandles, observe, ensureStaticGuard, onHover, onHoverLeave, setCarried, flushCarried, showRefusal, dispose };
 }
 
+// libs/element/src/lib/dashboard-kit/drop-policy.ts
+function refusalOf(answer) {
+  if (typeof answer === "string") return answer.trim();
+  return answer === false ? "" : null;
+}
+function refusalFor(verdicts, to, ask) {
+  if (!verdicts.has(to)) verdicts.set(to, refusalOf(ask()));
+  return verdicts.get(to) ?? null;
+}
+var LIST_FULL = "This list is full";
+function refusalSentence(board, what, reason) {
+  return reason ? `${board} refuses ${what}: ${reason}` : `${board} refuses ${what}`;
+}
+
 // libs/element/src/lib/dashboard-kit/keyboard.ts
+var KEY_REFUSAL_MS = 2500;
+var ANSWERED = /* @__PURE__ */ new WeakSet();
 var LIVE_REGIONS = /* @__PURE__ */ new WeakMap();
 function liveRegionFor(container) {
   let live = LIVE_REGIONS.get(container);
@@ -203512,7 +203601,68 @@ function createKeyboard(ctx, deps) {
     if (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return null;
     return { id, host };
   };
+  let refusalTimer = null;
+  const clearRefusal = () => {
+    if (!refusalTimer) return;
+    clearTimeout(refusalTimer);
+    refusalTimer = null;
+    if (!ctx.disposed() && !deps.gestureRunning()) deps.markDrop(null, false);
+  };
+  const showRefusal = (boardId, reason) => {
+    deps.markDrop(boardId, true, reason);
+    refusalTimer = setTimeout(clearRefusal, KEY_REFUSAL_MS);
+  };
+  const listName = (id) => {
+    const grp = diagram.getGroup(id);
+    return grp ? sectionNameOf(grp) : id;
+  };
+  const moveInLists = async (lists, id, name, dx, dy) => {
+    const live = deps.live;
+    const here = group.id;
+    const order = lists.cards(here);
+    const at = order.indexOf(id);
+    if (at < 0) return;
+    if (dy !== 0) {
+      const to2 = at + dy;
+      if (to2 < 0 || to2 >= order.length) {
+        live.announceError(`${name} is already ${dy < 0 ? "first" : "last"} in ${listName(here)}`);
+        return;
+      }
+      const ok = await lists.place(id, here, to2);
+      if (ctx.disposed()) return;
+      if (ok !== true) {
+        live.announceError(`Cannot move ${name} ${directionName(0, dy)}`);
+        return;
+      }
+      const now4 = lists.cards(here);
+      live.announce(`${name} moved ${directionName(0, dy)}, ${now4.indexOf(id) + 1} of ${now4.length}`, "polite", true);
+      lists.focus(id);
+      return;
+    }
+    const to = lists.next(dx < 0 ? -1 : 1);
+    if (to === void 0) {
+      live.announceError(`${name} stays in ${listName(here)}: no list to the ${directionName(dx, 0)}`);
+      return;
+    }
+    const policy = ctx.options.canDrop ? refusalOf(ctx.options.canDrop({ nodeId: id, from: here, to })) : null;
+    const answer = policy === null ? await lists.place(id, to, at) : false;
+    if (ctx.disposed()) return;
+    const reason = policy ?? (answer === "full" ? LIST_FULL : null);
+    if (reason !== null) {
+      live.announceError(`${name} stays in ${listName(here)}. ${refusalSentence(listName(to), "it", reason)}`);
+      showRefusal(to, reason);
+      return;
+    }
+    if (answer !== true) {
+      live.announceError(`Cannot move ${name} to ${listName(to)}`);
+      return;
+    }
+    const now3 = lists.cards(to);
+    live.announce(`${name} moved to ${listName(to)}, ${now3.indexOf(id) + 1} of ${now3.length}`, "polite", true);
+    lists.focus(id);
+  };
   const onFocusIn = (e) => {
+    clearRefusal();
     const hit = memberHostAt(e.target);
     if (!hit || ctx.disposed()) return;
     if (deps.focusedId() !== hit.id || deps.selectedId() !== hit.id) {
@@ -203522,7 +203672,8 @@ function createKeyboard(ctx, deps) {
     }
   };
   const onKey = (e) => {
-    if (ctx.disposed() || deps.gestureRunning()) return;
+    clearRefusal();
+    if (ctx.disposed() || deps.gestureRunning() || ANSWERED.has(e)) return;
     const handle = deps.handle();
     const hit = memberHostAt(e.target);
     if (!hit) {
@@ -203563,7 +203714,6 @@ function createKeyboard(ctx, deps) {
       return;
     }
     const [dx, dy] = arrow;
-    const before = new Map(engine.getItems().map((i) => [i.id, { x: i.x, y: i.y, w: i.w, h: i.h }]));
     const resize = e.shiftKey;
     if (resize && node.getMetadata?.("widgetResizable") === false) {
       live.announceError(`${name} cannot be resized`);
@@ -203573,6 +203723,13 @@ function createKeyboard(ctx, deps) {
       live.announceError(`${name} cannot be moved`);
       return;
     }
+    const lists = ctx.options.lists;
+    if (lists && !resize && (e.ctrlKey || e.altKey) && !e.metaKey && deps.isList()) {
+      ANSWERED.add(e);
+      if (!lists.busy()) void moveInLists(lists, hit.id, name, dx, dy);
+      return;
+    }
+    const before = new Map(engine.getItems().map((i) => [i.id, { x: i.x, y: i.y, w: i.w, h: i.h }]));
     const stepOrSwap = async () => {
       if (await handle.moveTo(hit.id, item.x + dx, item.y + dy)) return true;
       const probe = { x: item.x + dx, y: item.y + dy, w: item.w, h: item.h };
@@ -204058,6 +204215,57 @@ function createTearOut(ctx, deps) {
   return beginTearOut;
 }
 
+// libs/element/src/lib/dashboard-kit/place.ts
+function stackInOrder(order) {
+  let y = 0;
+  let changed = false;
+  for (const it of order) {
+    if (it.y !== y || it.x !== 0) {
+      it.y = y;
+      it.x = 0;
+      changed = true;
+    }
+    y += it.h;
+  }
+  return changed;
+}
+function firstFreeCell(taken, columns, w, h, maxRows = 1e3) {
+  const hit = (x, y) => taken.some((c) => x < c.x + c.w && c.x < x + w && y < c.y + c.h && c.y < y + h);
+  for (let y = 0; y < maxRows; y++) {
+    for (let x = 0; x + w <= columns; x++) if (!hit(x, y)) return { x, y };
+  }
+  return null;
+}
+function inListOrder(cards) {
+  return [...cards].sort((a, b) => a.cell.y - b.cell.y || a.cell.x - b.cell.x);
+}
+function placeAtIndex(others, me, index) {
+  const order = inListOrder(others).map((o) => ({ id: o.id, before: o.cell, ...o.cell }));
+  const at = Math.max(0, Math.min(index ?? order.length, order.length));
+  const self2 = { id: "", before: me, ...me, w: 1 };
+  order.splice(at, 0, self2);
+  stackInOrder(order);
+  const moved = [];
+  for (const o of order) {
+    if (o === self2 || o.x === o.before.x && o.y === o.before.y) continue;
+    moved.push({ id: o.id, before: o.before, after: { x: o.x, y: o.y, w: o.w, h: o.h } });
+  }
+  return { cell: { x: self2.x, y: self2.y, w: self2.w, h: self2.h }, moved };
+}
+
+// libs/element/src/lib/dashboard-kit/idle.ts
+function idleTeller(idle, tell) {
+  let queued = false;
+  return () => {
+    if (queued || !tell) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      if (idle()) tell();
+    });
+  };
+}
+
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
 function ownsPress(container, diagram, ev, hit) {
   const t = ev.source?.target;
@@ -204505,9 +204713,18 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     return out;
   };
+  let landing = 0;
+  const landed = (p) => {
+    landing++;
+    return Promise.resolve(p).finally(() => {
+      landing--;
+      idleSoon();
+    });
+  };
+  const idleSoon = idleTeller(() => !disposed && !gesture && !slabGesture && landing === 0, options.onIdle);
   const execute = (name, commands) => {
     if (commands.length === 0) return false;
-    void api.getEngine().commandManager.execute(new BatchCommand(name, commands));
+    void landed(api.getEngine().commandManager.execute(new BatchCommand(name, commands)));
     return true;
   };
   let pendingDrop = null;
@@ -204902,6 +205119,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
+    idleSoon();
     showRefusal(null, 0, 0);
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
@@ -204924,6 +205142,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
+    idleSoon();
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
     if (g.move && g.started) setCarried(g.id, false);
@@ -204978,6 +205197,7 @@ function bindDashboardGrid(api, group, options = {}) {
     g.chip?.classList.toggle("axdb-out", on);
   };
   const cleanupGestureVisuals = (g) => {
+    idleSoon();
     markDrop(null, false);
     showRefusal(null, 0, 0);
     if (g.kind !== "palette") {
@@ -205090,15 +205310,11 @@ function bindDashboardGrid(api, group, options = {}) {
       y: worldY - (spans.h * (rh + gap) - gap) / 2
     };
   };
-  const refusesDrop = (g, board) => {
-    if (!options.canDrop || g.kind !== "palette" && board.ref === selfPeer) return false;
-    const verdicts = g.dropVerdicts ?? (g.dropVerdicts = /* @__PURE__ */ new Map());
-    let ok = verdicts.get(board.id);
-    if (ok === void 0) {
-      ok = options.canDrop({ nodeId: g.id, from: g.kind === "palette" ? null : group.id, to: board.id }) !== false;
-      verdicts.set(board.id, ok);
-    }
-    return !ok;
+  const dropRefusal = (g, board) => {
+    if (g.kind !== "palette" && board.ref === selfPeer) return null;
+    const canDrop = options.canDrop;
+    const policy = canDrop ? refusalFor(g.dropVerdicts ?? (g.dropVerdicts = /* @__PURE__ */ new Map()), board.id, () => canDrop({ nodeId: g.id, from: g.kind === "palette" ? null : group.id, to: board.id })) : null;
+    return policy ?? (g.fullLists?.has(board.id) ? LIST_FULL : null);
   };
   const moveGhost = (g, ev) => {
     if (g.subject === "group" && g.row) {
@@ -205149,10 +205365,15 @@ function bindDashboardGrid(api, group, options = {}) {
       return true;
     };
     const z = resolveTileZone(g, ev);
-    const policyTarget = z.kind === "strip" ? { id: z.containerId } : z.kind === "plain" || z.kind === "beside" ? z.board : null;
-    g.policyRefused = !!policyTarget && refusesDrop(g, policyTarget);
-    if (g.policyRefused) {
-      markDrop(policyTarget && "id" in policyTarget ? policyTarget.id : null, true);
+    const refuse = (to, refusal2) => {
+      g.policyRefused = true;
+      markDrop(to, true, refusal2);
+      if (refusal2 && g.refusalSaid !== to) {
+        const grp = diagram.getGroup(to);
+        const what = g.subject === "group" ? sectionNameOf(g.entity) : nameOf2(nodeOf(g));
+        live.announce(refusalSentence(grp ? sectionNameOf(grp) : to, what, refusal2), "polite", true);
+      }
+      g.refusalSaid = to;
       if (g.strip) {
         options.tabDrop?.markDrop(null, null);
         g.strip = null;
@@ -205163,8 +205384,15 @@ function bindDashboardGrid(api, group, options = {}) {
       showRefusal(null, 0, 0);
       setDim(g, true);
       syncPlaceholder();
+    };
+    const policyTarget = z.kind === "strip" ? { id: z.containerId } : z.kind === "plain" || z.kind === "beside" ? z.board : null;
+    const refusal = policyTarget ? dropRefusal(g, policyTarget) : null;
+    g.policyRefused = refusal !== null;
+    if (policyTarget && refusal !== null) {
+      refuse(policyTarget.id, refusal);
       return;
     }
+    g.refusalSaid = null;
     if (z.kind === "strip" && options.tabDrop && !isStatic && g.kind !== "palette" && g.subject === "node") {
       endBeside(true);
       leaveSelf();
@@ -205235,6 +205463,10 @@ function bindDashboardGrid(api, group, options = {}) {
         setDim(g, false);
         showRefusal(null, 0, 0);
         g.leg.adopted.move(ev.world);
+      } else if (g.subject === "node" && peer.isList?.()) {
+        (g.fullLists ?? (g.fullLists = /* @__PURE__ */ new Set())).add(peer.group.id);
+        refuse(peer.group.id, LIST_FULL);
+        return;
       } else {
         g.refusedPeer = peer;
         pushRefused(peer);
@@ -205259,12 +205491,18 @@ function bindDashboardGrid(api, group, options = {}) {
     if (g.subject === "group") syncSlabs();
   };
   let dropMarked = null;
-  const markDrop = (boardId, refused) => {
+  const markDrop = (boardId, refused, reason = "") => {
     const el2 = boardId ? api.container.querySelector(`.axdb-slab[data-slab-id="${cssEscapeId(boardId)}"]`) : null;
-    if (dropMarked && dropMarked !== el2) dropMarked.classList.remove("axdb-slab--drop", "axdb-slab--refused");
+    if (dropMarked && dropMarked !== el2) {
+      dropMarked.classList.remove("axdb-slab--drop", "axdb-slab--refused");
+      paintDropReason(dropMarked, "");
+    }
     dropMarked = el2;
     el2?.classList.toggle("axdb-slab--drop", !refused);
     el2?.classList.toggle("axdb-slab--refused", refused);
+    if (!el2) return;
+    const grp = refused && reason && boardId ? diagram.getGroup(boardId) : void 0;
+    paintDropReason(el2, grp ? reason : "", grp ? sectionCaptionReserve(diagram, grp, isStatic) : 0);
   };
   const cssEscapeId = (id) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
   const onToolMove = (ev) => {
@@ -205450,6 +205688,7 @@ function bindDashboardGrid(api, group, options = {}) {
     if (!g || g.kind === "palette") return;
     if (!g.started) {
       gesture = null;
+      idleSoon();
       return;
     }
     if (g.strip && options.tabDrop) {
@@ -205614,18 +205853,7 @@ function bindDashboardGrid(api, group, options = {}) {
       }
       top += others[k].h;
     }
-    const order = [...others.slice(0, slot), me, ...others.slice(slot)];
-    let y = 0;
-    let changed = false;
-    for (const it of order) {
-      if (it.y !== y || it.x !== 0) {
-        it.y = y;
-        it.x = 0;
-        changed = true;
-      }
-      y += it.h;
-    }
-    return changed;
+    return stackInOrder([...others.slice(0, slot), me, ...others.slice(slot)]);
   };
   const placeOnSelf = (g, desired, pushSolid = false) => {
     if (g.removedFromBoard) {
@@ -205841,12 +206069,14 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     return placeNear(id, x, y, w);
   };
+  const spanOf = (px2) => {
+    const span = sizeToSpan(px2.width, px2.height, frame(), geom(), rows());
+    span.w = Math.max(1, Math.min(columns, span.w));
+    return span;
+  };
   const adopt = (node, world, pxSize, opts = {}) => {
     if (disposed) return null;
-    const f = frame();
-    const gg = geom();
-    const span = sizeToSpan(pxSize.width, pxSize.height, f, gg, rows());
-    span.w = Math.max(1, Math.min(columns, span.w));
+    const span = spanOf(pxSize);
     const b = bound();
     if (b !== void 0) span.h = Math.max(1, Math.min(b, span.h));
     engine.beginGesture();
@@ -206310,6 +206540,8 @@ function bindDashboardGrid(api, group, options = {}) {
   api.container.addEventListener("pointerleave", chrome.onHoverLeave, { passive: true });
   const keyboard = createKeyboard(ctx, {
     handle: () => handle,
+    isList: () => isList(),
+    markDrop: (boardId, refused, reason) => markDrop(boardId, refused, reason),
     live,
     nameOf: nameOf2,
     focusedId: () => focusedId,
@@ -206425,6 +206657,7 @@ function bindDashboardGrid(api, group, options = {}) {
       if (gesture !== g) return;
       if (!g.started) {
         gesture = null;
+        idleSoon();
         chip?.remove();
         return;
       }
@@ -206481,7 +206714,7 @@ function bindDashboardGrid(api, group, options = {}) {
     disarmGlideSoon();
     enforceBoardHeight();
     if (commands.length > 0) {
-      await api.getEngine().commandManager.execute(new BatchCommand(name, commands));
+      await landed(api.getEngine().commandManager.execute(new BatchCommand(name, commands)));
     }
     persistLayouts();
     api.renderNow();
@@ -206534,6 +206767,7 @@ function bindDashboardGrid(api, group, options = {}) {
       return applyColumns(n3, layout ?? responsive?.layout ?? "moveScale");
     },
     getColumns: () => columns,
+    spanOf: (px2) => spanOf(px2),
     setRtl(on) {
       if (on === rtl) return;
       rtl = on;
@@ -206748,6 +206982,10 @@ function bindDashboardGrid(api, group, options = {}) {
     get busy() {
       return !!gesture || !!slabGesture;
     },
+    get committing() {
+      return landing > 0;
+    },
+    isList: () => isList(),
     makeRoom(w, h) {
       if (disposed || gesture || slabGesture) return null;
       const fitsNow = () => {
@@ -207544,14 +207782,9 @@ function bindDashboardSplit(api, group, options = {}) {
     return g.node ? { width: g.node.size.width, height: g.node.size.height } : { width: colW, height: baseRowHeight };
   };
   const refusesDrop = (g, to, ref) => {
-    if (!options.canDrop || g.kind !== "palette" && ref === selfPeerRef) return false;
-    const verdicts = g.dropVerdicts ?? (g.dropVerdicts = /* @__PURE__ */ new Map());
-    let ok = verdicts.get(to);
-    if (ok === void 0) {
-      ok = options.canDrop({ nodeId: g.id, from: g.kind === "palette" ? null : group.id, to }) !== false;
-      verdicts.set(to, ok);
-    }
-    return !ok;
+    const canDrop = options.canDrop;
+    if (!canDrop || g.kind !== "palette" && ref === selfPeerRef) return false;
+    return refusalFor(g.dropVerdicts ?? (g.dropVerdicts = /* @__PURE__ */ new Map()), to, () => canDrop({ nodeId: g.id, from: g.kind === "palette" ? null : group.id, to })) !== null;
   };
   const endStrip = (g) => {
     if (!g.strip) return;
@@ -207821,10 +208054,20 @@ function bindDashboardSplit(api, group, options = {}) {
       host.classList.toggle("axdb-selected", id === selectedId);
     });
   };
+  let landing = 0;
+  const idleSoon = idleTeller(() => !disposed && !gesture && landing === 0, options.onIdle);
   const execCommand = (cmd) => {
     try {
       const r = api.getEngine().commandManager.execute(cmd);
       r?.catch?.(() => void 0);
+      if (typeof r?.then === "function") {
+        landing++;
+        const done = () => {
+          landing--;
+          idleSoon();
+        };
+        r.then(done, done);
+      }
       return r;
     } catch {
       return void 0;
@@ -207861,6 +208104,7 @@ function bindDashboardSplit(api, group, options = {}) {
     }
   };
   const teardownGesture = (g) => {
+    idleSoon();
     if (g.pointerId !== null) {
       try {
         api.container.releasePointerCapture?.(g.pointerId);
@@ -208678,6 +208922,9 @@ function bindDashboardSplit(api, group, options = {}) {
     get busy() {
       return !!gesture;
     },
+    get committing() {
+      return landing > 0;
+    },
     sync() {
       if (disposed) return;
       applyFluidFrame();
@@ -209438,6 +209685,8 @@ var SetWidgetLockCommand = class extends Command {
   }
 };
 var HISTORY_EVENTS = ["command:executed", "command:undone", "command:redone"];
+var PAGE_OWNED_KEYS = /* @__PURE__ */ new Set(["undo", "redo", "selectAll", "copy", "cut", "paste", "duplicate", "delete"]);
+var SWALLOWED_KEYS = /* @__PURE__ */ new Set(["selectAll", "duplicate", "delete"]);
 var DEFAULTS5 = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660 };
 var OFFSCREEN_X = -2e4;
 var teleport = (container, fn) => {
@@ -209694,6 +209943,11 @@ var SetCaptionCommand = class extends Command {
     return { id: this.id, name: this.name, timestamp: this.timestamp, data: { sectionId: this.sectionId, before: this.before, after: this.after } };
   }
 };
+function releaseWidgetHost(ctx, id, host) {
+  if (ctx.hosts.get(id) !== host) return;
+  ctx.hosts.delete(id);
+  ctx.unmountWidget?.(id, host);
+}
 function createDashboardHandle(ctx) {
   const { views, groups, binders, specById, viewOfWidget } = ctx;
   const hostOf = (id) => ctx.hosts.get(id);
@@ -210348,35 +210602,191 @@ function createDashboardHandle(ctx) {
     }
   };
   ctx.reportChanged = reportChanged;
+  const primeReporter = () => {
+    if (!ctx.onLayoutChange || !ctx.apiRef) return;
+    for (const v of handle.toJSON().views) lastReported.set(v.id, JSON.stringify(v.widgets));
+  };
+  const followModel = () => {
+    if (!ctx.apiRef) return;
+    const model = ctx.apiRef.getModel();
+    for (const id of [...ctx.boardGroups.keys()]) {
+      if (ctx.layoutOf.get(id) === "tabs") continue;
+      if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
+    }
+    for (const b of binders.values()) b.sync();
+    for (const b of binders.values()) b.fitToContent?.();
+    for (const id of ctx.layoutOf.keys()) if (ctx.layoutOf.get(id) === "tabs") ctx.syncTabs?.(id);
+    clampCamera();
+    ctx.apiRef.renderNow();
+  };
+  const overtaken = /* @__PURE__ */ new WeakMap();
+  const overtake = (cardId) => {
+    for (const step of ctx.apiRef?.getEngine?.()?.commandManager.getUndoStack?.() ?? []) {
+      if (!cardsMovedBy(step).has(cardId)) continue;
+      const cards = overtaken.get(step) ?? /* @__PURE__ */ new Set();
+      if (cards.size === 0) {
+        overtaken.set(step, cards);
+        step.canUndo = () => false;
+      }
+      cards.add(cardId);
+    }
+  };
   ctx.attachHistory = () => {
     const bus = ctx.apiRef?.getEngine?.()?.eventBus;
     if (!bus) return;
-    for (const v of handle.toJSON().views) lastReported.set(v.id, JSON.stringify(v.widgets));
+    primeReporter();
     const onHistory = () => {
       if (!ctx.apiRef) return;
-      const model = ctx.apiRef.getModel();
-      for (const id of [...ctx.boardGroups.keys()]) {
-        if (ctx.layoutOf.get(id) === "tabs") continue;
-        if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
-      }
-      for (const b of binders.values()) b.sync();
-      for (const b of binders.values()) b.fitToContent?.();
-      for (const id of ctx.layoutOf.keys()) if (ctx.layoutOf.get(id) === "tabs") ctx.syncTabs?.(id);
-      clampCamera();
-      ctx.apiRef.renderNow();
+      followModel();
       reportChanged();
       ctx.autoHeight?.queueAll();
     };
     ctx.subscriptions = ctx.subscriptions ?? [];
     for (const ev of HISTORY_EVENTS) ctx.subscriptions.push(bus.on(ev, onHistory));
+    ctx.subscriptions.push(
+      bus.on("command:history-stale", (e) => {
+        const { command, phase } = e ?? {};
+        if (phase !== "undo" || !command || !ctx.onUndoRefused) return;
+        for (const id of overtaken.get(command) ?? []) {
+          const board = boardOfMember(id);
+          if (board && specById.has(id)) ctx.onUndoRefused({ widgetId: id, boardId: board, reason: MOVED_SINCE });
+        }
+      })
+    );
     const vp = ctx.apiRef?.viewport;
     if (ctx.mode === "fluid" && vp?.onChange) ctx.subscriptions.push(vp.onChange(() => clampCamera()));
   };
+  let owedIdle = false;
+  const idleSoon = idleTeller(
+    () => owedIdle && !!ctx.apiRef && !busy(),
+    () => {
+      owedIdle = false;
+      ctx.onIdle?.();
+    }
+  );
+  ctx.boardIdle = idleSoon;
+  let landing = 0;
   const execCommand = (cmd) => {
     try {
       const r = ctx.apiRef?.getEngine?.()?.commandManager.execute(cmd);
-      r?.catch?.(() => void 0);
+      if (typeof r?.then === "function") {
+        landing++;
+        const landed = () => {
+          landing--;
+          idleSoon();
+        };
+        r.then(landed, landed);
+      }
     } catch {
+    }
+  };
+  const busy = () => landing > 0 || [...binders.values()].some((b) => b.busy === true || b.committing === true);
+  const refusedWhileBusy = () => {
+    if (!busy()) return false;
+    owedIdle = true;
+    return true;
+  };
+  const systemWrite = (cmd) => {
+    const model = ctx.apiRef?.getModel();
+    if (!model) return false;
+    let ok = true;
+    try {
+      const run = () => void cmd.execute({ diagram: model, eventBus: null });
+      if (model.runSystemWrite) model.runSystemWrite(run);
+      else run();
+    } catch {
+      ok = false;
+    }
+    followModel();
+    primeReporter();
+    ctx.autoHeight?.queueAll();
+    return ok;
+  };
+  const cellCommands = (moved) => moved.map((m) => new SetGridItemCommand(m.id, gridItemFromCell(m.after)));
+  const isList = (bid) => binders.get(bid)?.isList?.() === true;
+  const cellsOn = (bid, except) => {
+    const out = [];
+    for (const m of ctx.boardGroups.get(bid)?.members ?? []) {
+      const c = m === except ? void 0 : binders.get(bid)?.cellOf(m);
+      if (c) out.push({ id: m, cell: c });
+    }
+    return out;
+  };
+  const roomFor = (bid, w, h) => {
+    const b = binders.get(bid);
+    const room = specById.get(bid)?.stack ? b?.makeRoom?.(w, h) : void 0;
+    if (room === null) return null;
+    if (room === void 0 && b?.willItFit(w, h) === false) return null;
+    return room ?? [];
+  };
+  const planPlace = (widgetId, boardId, index) => {
+    const model = ctx.apiRef?.getModel();
+    const spec = specById.get(widgetId);
+    const from = boardOfMember(widgetId);
+    if (!model || !spec || spec.widgets || from === void 0 || !model.getNode(widgetId)) return null;
+    const src = binders.get(from);
+    const dst = binders.get(boardId);
+    if (!src || !dst || !ctx.boardGroups.has(boardId)) return null;
+    if ((ctx.layoutOf.get(from) ?? "grid") !== "grid" || (ctx.layoutOf.get(boardId) ?? "grid") !== "grid") return null;
+    const cell = src.cellOf(widgetId);
+    if (!cell) return null;
+    const columns = dst.getColumns();
+    const others = cellsOn(boardId, widgetId);
+    const same = from === boardId;
+    const list2 = isList(boardId);
+    if (same && !list2) return [];
+    const onScreen = !list2 && isList(from) ? dst.spanOf?.(model.getNode(widgetId).size) : void 0;
+    const me = { ...cell, w: onScreen ? onScreen.w : Math.min(cell.w, columns) };
+    let target;
+    let moved = [];
+    if (list2) {
+      ({ cell: target, moved } = placeAtIndex(others, me, index));
+    } else {
+      const at = firstFreeCell(others.map((o) => o.cell), columns, me.w, me.h);
+      if (!at) return "full";
+      target = { ...me, ...at };
+    }
+    if (same) {
+      const self2 = target.x === cell.x && target.y === cell.y ? [] : [{ id: widgetId, before: cell, after: target }];
+      return cellCommands([...moved, ...self2]);
+    }
+    const room = roomFor(boardId, me.w, me.h);
+    if (room === null) return "full";
+    return [
+      ...room,
+      ...src.planRemoval(widgetId),
+      new RemoveFromGroupCommand(from, widgetId),
+      ...cellCommands(moved),
+      new SetGridItemCommand(widgetId, gridItemFromCell(target)),
+      new AddToGroupCommand(boardId, widgetId),
+      // …and a tab page it emptied closes, as after a drag out of it.
+      ...ctx.closePageIfEmptied?.(from, widgetId) ?? []
+    ];
+  };
+  const placeInto = async (widgetId, boardId, index, opts) => {
+    const history = opts?.history !== false;
+    const manager = ctx.apiRef?.getEngine?.()?.commandManager;
+    if (refusedWhileBusy() || history && !manager) return false;
+    if (history && ctx.apiRef?.getModel().blocksDocumentWrite?.() === true) return false;
+    const cmds = planPlace(widgetId, boardId, index);
+    if (cmds === "full") return "full";
+    if (!cmds) return false;
+    if (cmds.length === 0) return true;
+    const cmd = new SequenceCommand("Place widget", cmds);
+    if (!history) {
+      const ok = systemWrite(cmd);
+      overtake(widgetId);
+      return ok;
+    }
+    landing++;
+    try {
+      await manager.execute(cmd);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      landing--;
+      idleSoon();
     }
   };
   const handle = {
@@ -210504,6 +210914,9 @@ function createDashboardHandle(ctx) {
       reportChanged();
       return true;
     },
+    async place(widgetId, boardId, index, opts) {
+      return await placeInto(widgetId, boardId, index, opts) === true;
+    },
     setSizing(mode) {
       ctx.sizing = mode;
       for (const [id, b] of binders) if (groups.has(id)) b.setSizing(mode);
@@ -210541,6 +210954,8 @@ function createDashboardHandle(ctx) {
     getDragHandle: () => binders.get(ctx.active)?.getDragHandle() ?? (ctx.optionsBase.dragHandle ?? false),
     addWidget(spec, viewId, opts) {
       const vid = viewId ?? ctx.active;
+      const history = opts?.history !== false;
+      if (!history && refusedWhileBusy()) return void 0;
       const arr = ctx.boardWidgets.get(vid);
       const model = ctx.apiRef?.getModel();
       const group = ctx.boardGroups.get(vid);
@@ -210557,36 +210972,49 @@ function createDashboardHandle(ctx) {
         if (!binder || !ctx.buildSection || ctx.layoutOf.get(vid) === "split") return void 0;
         if (binder.willItFit(w.span, w.rows) === false) return void 0;
         if (w.x === void 0 || w.y === void 0) {
-          const cols = binder.getColumns();
-          const taken = (x, y) => [...group.members ?? []].some((m) => {
-            const c = binder.cellOf(m);
-            return !!c && x < c.x + c.w && c.x < x + w.span && y < c.y + c.h && c.y < y + w.rows;
-          });
-          let at = null;
-          for (let y = 0; !at && y < 1e3; y++) for (let x = 0; x + w.span <= cols && !at; x++) if (!taken(x, y)) at = { x, y };
+          const at = firstFreeCell(cellsOn(vid).map((o) => o.cell), binder.getColumns(), w.span, w.rows);
           if (!at) return void 0;
           w.x = at.x;
           w.y = at.y;
         }
         w.widgets = [];
         const { group: sg, registry: sreg } = ctx.buildSection(w, vid);
-        execCommand(new AddSectionCommand(sg, group.id, sreg));
+        const addSection = new AddSectionCommand(sg, group.id, sreg);
+        if (!history) {
+          systemWrite(addSection);
+          return makeWidgetHandle(w.id);
+        }
+        execCommand(addSection);
         binder.sync();
         if (!binders.has(w.id)) ctx.rebindContainer?.(w.id);
         ctx.apiRef?.renderNow();
         return makeWidgetHandle(w.id);
       }
-      const room = specById.get(vid)?.stack ? binders.get(vid)?.makeRoom?.(w.span, w.rows) : void 0;
+      const room = roomFor(vid, w.span, w.rows);
       if (room === null) return void 0;
-      if (room === void 0 && binders.get(vid)?.willItFit(w.span, w.rows) === false) return void 0;
+      let moved = [];
+      let atIndex = false;
+      if (opts?.index !== void 0 && isList(vid)) {
+        const at = placeAtIndex(cellsOn(vid, w.id), { x: 0, y: 0, w: 1, h: w.rows }, opts.index);
+        w.x = at.cell.x;
+        w.y = at.cell.y;
+        moved = at.moved;
+        atIndex = true;
+      }
       const registry5 = registryOf(w.id, vid, w);
       registry5.register();
       const existing = model.getNode(w.id);
       const node = existing ?? buildWidgetNode(w, ctx.rowHeight);
       if (w.pinned) node.setState({ locked: true });
+      const ownCell = existing && atIndex ? [new SetGridItemCommand(w.id, gridItemFromCell({ x: w.x, y: w.y, w: w.span, h: w.rows }))] : [];
       const add = new AddWidgetCommand(node, group.id, registry5, !!existing);
-      const displaced = [...room ?? [], ...opts?.displaced ?? []];
-      execCommand(displaced.length > 0 ? new SequenceCommand("Add widget", [...displaced, add]) : add);
+      const displaced = [...room, ...opts?.displaced ?? [], ...cellCommands(moved), ...ownCell];
+      const cmd = displaced.length > 0 ? new SequenceCommand("Add widget", [...displaced, add]) : add;
+      if (!history) {
+        systemWrite(cmd);
+        return makeWidgetHandle(w.id);
+      }
+      execCommand(cmd);
       binders.get(vid)?.sync();
       ctx.apiRef?.renderNow();
       return makeWidgetHandle(w.id);
@@ -210670,7 +211098,7 @@ function createDashboardHandle(ctx) {
       for (const id of groups.keys()) model?.removeGroup?.(id);
       groups.clear();
       ctx.boardGroups.clear();
-      ctx.hosts.clear();
+      for (const [id, host] of [...ctx.hosts]) releaseWidgetHost(ctx, id, host);
     }
   };
   const boardOfWidget = (id) => {
@@ -210741,12 +211169,14 @@ function createDashboardHandle(ctx) {
         if (host) ctx.renderWidget(spec, host);
         ctx.autoHeight?.queue(id);
       },
-      remove(displaced) {
+      remove(opts) {
+        const { displaced, history = true } = Array.isArray(opts) ? { displaced: opts } : opts ?? {};
+        if (history === false && refusedWhileBusy()) return false;
         if (spec.widgets) {
           const parentGroup = ctx.boardGroups.get(board());
           const parentBinder = binders.get(board());
           const model = ctx.apiRef?.getModel();
-          if (!parentGroup || !parentBinder || !model) return;
+          if (!parentGroup || !parentBinder || !model) return false;
           const cmds2 = [
             ...displaced ?? parentBinder.planRemoval(id),
             new RemoveFromGroupCommand(parentGroup.id, id)
@@ -210770,16 +211200,17 @@ function createDashboardHandle(ctx) {
           cmds2.push(...nodeRemovals, ...unregisters, new RegisterWidgetCommand(registry6, "unregister"));
           binders.get(id)?.dispose();
           binders.delete(id);
+          if (history === false) return systemWrite(new SequenceCommand("Remove section", cmds2));
           void execCommand(new BatchCommand("Remove section", cmds2));
           registry6.unregister();
           parentBinder.sync();
           ctx.apiRef?.renderNow();
-          return;
+          return true;
         }
         const n3 = node();
         const group = ctx.boardGroups.get(board());
         const b = binder();
-        if (!n3 || !group || !b) return;
+        if (!n3 || !group || !b) return false;
         const survivors = displaced ?? b.planRemoval(id);
         const registry5 = registryOf(id, board(), spec);
         const closing = ctx.closePageIfEmptied?.(board(), id) ?? [];
@@ -210790,10 +211221,12 @@ function createDashboardHandle(ctx) {
           new RegisterWidgetCommand(registry5, "unregister"),
           ...closing
         ];
+        if (history === false) return systemWrite(new SequenceCommand("Remove widget", cmds));
         void execCommand(closing.length > 0 ? new SequenceCommand("Remove widget", cmds) : new BatchCommand("Remove widget", cmds));
         registry5.unregister();
         b.sync();
         ctx.apiRef?.renderNow();
+        return true;
       },
       repaint() {
         const host = hostOf(id);
@@ -210804,6 +211237,27 @@ function createDashboardHandle(ctx) {
       //  widget the renderer has mounted — including after a rebuild.)
     };
   }
+  ctx.listMoves = (listId) => ({
+    next(dir) {
+      const model = ctx.apiRef?.getModel();
+      const me = model?.getGroup(listId);
+      const parent = boardOfMember(listId);
+      if (!model || !me || parent === void 0 || ctx.layoutOf.get(parent) === "tabs") return void 0;
+      const top = me.position.y;
+      const bottom = top + (me.size?.height ?? 0);
+      const out = [];
+      for (const id of ctx.boardGroups.get(parent)?.members ?? []) {
+        const g = id === listId || !isList(id) ? void 0 : model.getGroup(id);
+        if (!g || g.position.y >= bottom || g.position.y + (g.size?.height ?? 0) <= top) continue;
+        if ((g.position.x - me.position.x) * dir > 0) out.push({ id, x: g.position.x });
+      }
+      return out.sort((p, q2) => (p.x - q2.x) * dir)[0]?.id;
+    },
+    cards: (id) => inListOrder(cellsOn(id)).map((c) => c.id),
+    place: (id, to, index) => placeInto(id, to, index),
+    focus: (id) => void handle.focusWidget(id),
+    busy
+  });
   return handle;
 }
 function dashboard(options) {
@@ -210881,6 +211335,7 @@ function dashboard(options) {
     viewOfBoard,
     hosts: /* @__PURE__ */ new Map(),
     renderWidget,
+    unmountWidget: options.unmountWidget,
     columns,
     gap,
     rowHeight,
@@ -210896,15 +211351,41 @@ function dashboard(options) {
     active: views[0]?.id ?? "main",
     apiRef: null,
     container: null,
-    onLayoutChange: options.onLayoutChange
+    onLayoutChange: options.onLayoutChange,
+    onIdle: options.onIdle,
+    onUndoRefused: options.onUndoRefused
   };
   const { binders, groups } = ctx;
   const handle = createDashboardHandle(ctx);
+  let pressedOnBoard = false;
+  const boardHasFocus = (e) => {
+    const c = ctx.container;
+    if (!c) return false;
+    if (e.target instanceof Node && c.contains(e.target)) return true;
+    const active3 = c.ownerDocument.activeElement;
+    return pressedOnBoard && (!active3 || active3 === c.ownerDocument.body);
+  };
+  const renderOptions = {
+    // A fluid board can never be zoomed into a scaled picture.
+    ...mode === "fluid" ? { minZoom: 1, maxZoom: 1 } : {},
+    // No user history: only the page changes the board, so the renderer's keys
+    // that would change it beside the board's own moves stand down here — and
+    // the ones the browser would act on the page with are swallowed while the
+    // board has focus.
+    ...options.userHistory === false ? {
+      keyboard: {
+        beforeKey: (e, action) => {
+          if (!PAGE_OWNED_KEYS.has(action)) return void 0;
+          if (SWALLOWED_KEYS.has(action) && boardHasFocus(e)) e.preventDefault();
+          return false;
+        }
+      }
+    } : {}
+  };
   return {
     nodes,
     edges: [],
-    // A fluid board can never be zoomed into a scaled picture.
-    ...mode === "fluid" ? { renderOptions: { minZoom: 1, maxZoom: 1 } } : {},
+    ...Object.keys(renderOptions).length > 0 ? { renderOptions } : {},
     renderCustomNode: (node, host) => {
       const n3 = node;
       const spec = specById.get(n3.id);
@@ -210913,6 +211394,7 @@ function dashboard(options) {
       renderWidget(spec, host);
       ctx.autoHeight?.observe(n3.id, host);
     },
+    removeCustomNode: (nodeId, host) => releaseWidgetHost(ctx, nodeId, host),
     get handle() {
       return handle;
     },
@@ -210921,6 +211403,16 @@ function dashboard(options) {
       if (!a) return;
       ctx.apiRef = a;
       ctx.container = a.container ?? null;
+      if (options.userHistory === false && ctx.container) {
+        const doc = ctx.container.ownerDocument;
+        const onPress = (e) => {
+          pressedOnBoard = e.target instanceof Node && !!ctx.container?.contains(e.target);
+        };
+        for (const type of ["pointerdown", "mousedown"]) doc.addEventListener(type, onPress, true);
+        (ctx.subscriptions ?? (ctx.subscriptions = [])).push(() => {
+          for (const type of ["pointerdown", "mousedown"]) doc.removeEventListener(type, onPress, true);
+        });
+      }
       const model = a.getModel();
       const box = mode === "fluid" ? { w: a.container?.clientWidth || 0, h: a.container?.clientHeight || 0 } : { w: 0, h: 0 };
       const viewW = (v) => mode === "fluid" && box.w > 0 ? box.w : v.width ?? boardW;
@@ -211175,6 +211667,10 @@ function dashboard(options) {
             if (e.type === "commit") reportChanged();
             options.binder?.onGesture?.(e);
           },
+          onIdle: () => {
+            ctx.boardIdle?.();
+            options.binder?.onIdle?.();
+          },
           onSelect: (id) => options.onSelect?.(id, v.id),
           ...captionHooks(v.id),
           onMemberLeaving: (memberId) => ctx.closePageIfEmptied?.(v.id, memberId) ?? [],
@@ -211218,6 +211714,10 @@ function dashboard(options) {
             if (e.type === "commit") reportChanged();
             options.binder?.onGesture?.(e);
           },
+          onIdle: () => {
+            ctx.boardIdle?.();
+            options.binder?.onIdle?.();
+          },
           onSelect: (id) => options.onSelect?.(id, ctx.viewOfBoard.get(w.id) ?? ctx.active),
           ...captionHooks(ctx.viewOfBoard.get(w.id) ?? ctx.active),
           onMemberLeaving: (memberId) => ctx.closePageIfEmptied?.(w.id, memberId) ?? [],
@@ -211240,7 +211740,7 @@ function dashboard(options) {
             maxRows: innerRows ?? w.maxRows ?? cg.getMetadata("containerWidget")?.maxRows ?? rowExtentOf(w.widgets ?? []),
             float: false,
             escalate: w.sizing !== "fit",
-            ...w.stack ? { stack: true } : {}
+            ...w.stack ? { stack: true, ...ctx.listMoves ? { lists: ctx.listMoves(w.id) } : {} } : {}
           })
         );
       }
@@ -211350,6 +211850,7 @@ function fromDocument(document2, options = {}) {
     viewOfBoard,
     hosts: /* @__PURE__ */ new Map(),
     renderWidget: paintWidget,
+    unmountWidget: options.unmountWidget,
     columns: firstBoard?.columns ?? 12,
     gap: firstBoard?.gap ?? 8,
     rowHeight: firstBoard?.baseRowHeight ?? 130,
@@ -211463,7 +211964,7 @@ function fromDocument(document2, options = {}) {
       boards.set(id, bindBoard(group, board));
     };
     function bindBoard(group, board) {
-      return board.layout === "split" ? bindDashboardSplit(a, group, { ...board }) : bindDashboardGrid(a, group, { ...board });
+      return board.layout === "split" ? bindDashboardSplit(a, group, { ...board }) : bindDashboardGrid(a, group, { ...board, ...board.stack && ctx.listMoves ? { lists: ctx.listMoves(group.id) } : {} });
     }
     ctx.attachHistory?.();
   };
@@ -211471,6 +211972,7 @@ function fromDocument(document2, options = {}) {
     nodes,
     edges: model.getLinks(),
     renderCustomNode,
+    removeCustomNode: (nodeId, host) => releaseWidgetHost(ctx, nodeId, host),
     finalize,
     model,
     boards,
@@ -214125,6 +214627,7 @@ export {
   tabStripReserve,
   tailwindBridge,
   targetNodeIdOf,
+  teardownInOrder,
   textAlignFor,
   textBaselineFor,
   textKitFor,
