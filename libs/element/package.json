@@ -5,8 +5,8 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "peerDependencies": {
-    "@grafloria/engine": "^0.6.0",
-    "@grafloria/renderer": "^0.7.0"
+    "@grafloria/engine": "^0.6.1",
+    "@grafloria/renderer": "^0.7.2"
   },
   "dependencies": {
     "tslib": "^2.3.0"
