@@ -208,7 +208,42 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           API call (<code>moveTo</code>, <code>resize</code>, <code>addWidget</code>,
           <code>remove</code>, <code>pin</code>), a keyboard step, an undo or a redo.
           Never twice for the same layout; not for a responsive column change, whose
-          saved layout is unchanged. The persistence hook</td></tr>
+          saved layout is unchanged, nor for a write made with <code>history: false</code>.
+          The persistence hook</td></tr>
+        <tr><td><code>canDrop</code></td><td>—</td>
+          <td>The drop policy: <code>({ widgetId, from, to, viewId }) =&gt;</code> <code>true</code>
+          to take the widget, <code>false</code> to refuse it, or a sentence to refuse it and say
+          why (<code>'WIP limit of 3 reached'</code>). A refused board rings in the refusal
+          colour and a release snaps the widget home; a sentence also takes the place of the
+          refused section's caption while the widget is over it, and is spoken to a screen
+          reader. Asked once per board per drag, never for the board the widget started on,
+          and before a keyboard move to another list. A full list of fixed height
+          (<code>sizing: 'fit'</code>) refuses a dragged card the same way, saying "This list
+          is full": the card snaps home and is never dropped on the board beside the columns.
+          The API (<code>addWidget</code>, <code>moveTo</code>, <code>place</code>, undo) is
+          not asked</td></tr>
+        <tr><td><code>userHistory</code></td><td><code>true</code></td>
+          <td><code>false</code>: only the page changes this board — for a board whose every
+          move is a server write. Undo and redo (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y), the clipboard
+          (Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V), duplicate (Ctrl+D) and Delete do nothing on it
+          (⌘ on a Mac). While the board has focus (something in it is focused, or the person
+          last clicked on it), Ctrl+A, Ctrl+D and Delete or Backspace are swallowed — no
+          page-wide text selection, no bookmark dialog — and Ctrl+C, Ctrl+X and Ctrl+V still
+          reach your page's <code>copy</code>, <code>cut</code> and <code>paste</code>
+          listeners. Drags and keyboard moves
+          still work and are still recorded, so <code>api.getEngine().undo()</code> from code
+          still works. A <code>keyboard.beforeKey</code> you pass to <code>render()</code> is
+          asked after the board's, about the keys the board leaves on</td></tr>
+        <tr><td><code>onIdle</code></td><td>—</td>
+          <td>Fires once the board is free again after a write from code was refused because
+          a card was held or a step was still being saved — make the write again here instead
+          of polling. It fires only after a refusal</td></tr>
+        <tr><td><code>onUndoRefused</code></td><td>—</td>
+          <td><code>({ widgetId, boardId, reason })</code>: an undo was refused because a card
+          the step moved has since been moved on by a write with <code>history: false</code>,
+          to another list or within the same one.
+          The card stays where it is (it is never in two lists), and that step and the older
+          ones leave the history; show <code>reason</code> to the person</td></tr>
         <tr><td><code>binder</code></td><td>—</td>
           <td>Extra options merged into the grid binder underneath — the escape hatch to
           the layer below (drag-out-to-remove zones, palette drop-in, gesture callbacks)</td></tr>
@@ -284,6 +319,12 @@ H.showView('sales');         // the tab switch — others park off-camera, camer
 const w = H.addWidget({ id: 'deals', kind: 'bar', span: 6, rows: 2, data: {...} });
 // CREATES the node, wires its metadata, commits node + membership as ONE undoable
 // step, auto-positions into the first free hole when the spec names no cell
+H.addWidget(card, 'doing', { index: 0 });  // into a list (a one-column stack section):
+                                           // that position; the cards below move down
+await H.place('card-7', 'review', 1);      // any widget into any grid board: a list at an
+                                           // index, any other board at its first free cell,
+                                           // keeping its size (out of a list: its width on
+                                           // screen, in that board's columns)
 
 H.setSizing('grow');  H.getSizing();     // the two toolbar toggles, live
 H.setFloat(true);     H.getFloat();
@@ -312,7 +353,8 @@ w.pin();  w.pinned;                      // locked: never pushed, drags refused
 w.bringToFront();  w.sendToBack();       // one undoable step each
 w.update({ data: nextData });            // replace data (and title/kind) and repaint
 w.repaint();                             // re-run renderWidget after your data changed
-w.remove();                              // ONE undoable step incl. the survivors' re-pack</pre>
+w.remove();                              // ONE undoable step incl. the survivors' re-pack
+w.remove({ history: false });            // …or none: see "Changes made elsewhere" below</pre>
       <div class="note"><b>Several boards on one page</b> — a designer beside its preview, a
       gallery of examples — may share widget ids. Each board answers only presses inside its own
       container: a press on the second board never selects or moves the first's namesake
@@ -324,6 +366,22 @@ w.remove();                              // ONE undoable step incl. the survivor
       works, and buttons go through <code>api.getEngine().undo()</code>. The boards follow
       the history themselves, so nothing needs a <code>refresh()</code> after an undo. See
       <a href="../commands-and-undo/">Commands &amp; undo</a>.</div>
+      <div class="note"><b>Changes made elsewhere.</b> A board that mirrors a server —
+      a Kanban board several people move cards on — shows another person's move with
+      <code>H.place(id, list, index, { history: false })</code>, a new card with
+      <code>H.addWidget(spec, list, { index, history: false })</code> and a deleted one with
+      <code>w.remove({ history: false })</code>. These write the model without an undo step,
+      fire no <code>onLayoutChange</code> (so the page does not send the server its own news
+      back) and are never reported later either. <code>canDrop</code> is not asked: it is the
+      hand's policy. While a card is held, and for the moment a drop or an undoable call
+      takes to land in the history, they answer <code>false</code> (an add,
+      <code>undefined</code>) and change nothing; <code>onIdle</code> then tells you when to
+      make the write again. They never clear the undo history, so such a board sets
+      <code>userHistory: false</code>: ⌘Z and ⌘Y, the clipboard, duplicate and Delete then do
+      nothing on it, so an undo never replays a step onto cards the server has since moved,
+      and the screen never shows what the server never heard. On a board that keeps the
+      person's undo, a step about a card such a write has since moved is refused:
+      <code>onUndoRefused</code> says which card and why.</div>
       <div class="note"><b>Exporting a board? Scope it.</b> Tabs park inactive views far off-camera,
       and <code>export()</code> frames the whole model — <i>"a two-view board writes a
       ~21,000px document that is almost entirely empty — with no warning, because nothing
@@ -757,11 +815,23 @@ render(spec, host);
         <tr><td>← → ↑ ↓</td><td>Move one cell — a step onto a neighbour swaps with it, as a full drag would</td></tr>
         <tr><td>Shift + arrows</td><td>Resize one cell</td></tr>
         <tr><td>Home / End</td><td>First / last widget on the board</td></tr>
+        <tr><td>Ctrl + ← →<br>(Alt on a Mac)</td><td>In a list (a one-column <code>stack</code>
+          section, a Kanban column): to the next list on its row, at the same place in the
+          order (or last, in a shorter list). A list that refuses the card stops it there</td></tr>
+        <tr><td>Ctrl + ↑ ↓</td><td>In a list: one place up or down</td></tr>
         <tr><td>Tab</td><td>Out of the board (one stop per board)</td></tr>
       </table></div>
       <p>Every outcome is spoken through the renderer's live region — the tile's new cell,
       each neighbour it displaced, or why it was refused. Each step is one undoable command
-      and reaches <code>onLayoutChange</code>. Resize handles are 24&nbsp;px and stay
+      and reaches <code>onLayoutChange</code>. Between lists, <code>canDrop</code> is asked
+      as a drop asks it. A list that refuses stops the card: it stays where it is, the
+      reason is spoken ("BUG-57 stays in Backlog. In progress refuses it: WIP limit of 3
+      reached") and the refusing list shows it for a moment. The card is never passed on to
+      a list further along — on a board whose columns are states, that would be a change
+      nobody asked for. A full list of fixed height (<code>sizing: 'fit'</code>) refuses
+      the same way, with the reason "This list is full" — and so it does a card dragged
+      over it by hand. Focus follows the card. A card is spoken by its <code>title</code> (painted or not), so give
+      every card one. Resize handles are 24&nbsp;px and stay
       visible on touch devices; motion follows <code>prefers-reduced-motion</code>; every
       built-in chart carries its numbers as a visually-hidden table; the palette clears
       3:1 on both light and dark cards. The demo battery runs axe-core (WCAG 2.1 A/AA) on

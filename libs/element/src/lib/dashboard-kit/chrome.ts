@@ -22,6 +22,32 @@ import type { BoardCtx } from './board-ctx';
  */
 export const TAB_FRAME_GRIP = 3;
 
+/**
+ * WHY A SECTION REFUSES — a `canDrop` that answered a sentence. While the
+ * refusal shows, the reason is the refused section's title: painted over its
+ * caption band (`band` px tall; a section with no band gets a line at its
+ * top) and set as its `title`. Over the band it covers no card. '' takes both
+ * away. The live region already says it, so the painted line is hidden from
+ * the accessibility tree.
+ */
+export function paintDropReason(slab: HTMLElement, reason: string, band = 0): void {
+  let why = slab.querySelector(':scope > .axdb-slab-why') as HTMLElement | null;
+  if (!reason) {
+    why?.remove();
+    slab.removeAttribute('title');
+    return;
+  }
+  if (!why) {
+    why = slab.ownerDocument.createElement('div');
+    why.className = 'axdb-slab-why';
+    why.setAttribute('aria-hidden', 'true');
+    slab.appendChild(why);
+  }
+  if (why.textContent !== reason) why.textContent = reason;
+  why.style.height = band > 16 ? `${band - 8}px` : '';
+  slab.setAttribute('title', reason);
+}
+
 export const isTabsGroup = (grp: GroupModel): boolean => (grp.getMetadata('containerWidget') as { layout?: string } | undefined)?.layout === 'tabs';
 export const edgeGripFor = (grp: GroupModel): number => (isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP);
 

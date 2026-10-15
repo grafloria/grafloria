@@ -80,7 +80,7 @@ import {
   type WorldRect,
 } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
-import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sectionFooterReserve, sizeCaptionBand } from './caption';
+import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sectionFooterReserve, sectionNameOf, sizeCaptionBand } from './caption';
 import { TAB_STRIP_HEIGHT } from './tabs';
 import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, stripCrossing, stripUnder, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
 import { SequenceCommand, SetGroupCellCommand, tileCommands } from './commit';
@@ -88,9 +88,12 @@ import { EDGE_GRACE, type BoardCtx } from './board-ctx';
 import { createProjection } from './project';
 import { cursorFor, edgesNear, edgesNearRect, EDGE_GRIP, NO_EDGES, anyEdge, type ResizeEdges } from './edges';
 import { DRAG_HANDLE_CLASS, dragHandleSelector, gripHostOf, normalizeDragHandle, pressOnDragHandle, sameDragHandle, type DragHandleOption } from './grip';
-import { createChrome, edgeGripFor, isTabsGroup } from './chrome';
-import { createKeyboard, describeCell, liveRegionFor } from './keyboard';
+import { createChrome, edgeGripFor, isTabsGroup, paintDropReason } from './chrome';
+import { createKeyboard, describeCell, liveRegionFor, type ListMoves } from './keyboard';
+import { LIST_FULL, refusalFor, refusalSentence, type DropAnswer } from './drop-policy';
 import { createTearOut, TEAR_OUT_MIN_ROWS } from './tear-out';
+import { stackInOrder } from './place';
+import { idleTeller } from './idle';
 export { TEAR_OUT_MIN_ROWS } from './tear-out';
 export { EDGE_GRIP, anyEdge, type ResizeEdges } from './edges';
 export { GRIP_CLASS, DRAG_HANDLE_CLASS, CAPTION_BAND, normalizeDragHandle, dragHandleSelector, gripOf, syncGrip, gripHostOf, pressOnDragHandle, type DragGripOptions, type DragHandleOption } from './grip';
@@ -225,11 +228,23 @@ export interface DashboardGridOptions {
    * board's: the tile dims, nothing on `to` moves, and a release snaps it home
    * (never a removal, whatever `dragOut` says). A Kanban column at its WIP
    * limit, a board that only holds sections, a page that takes no charts.
-   * The API (`moveTo`, `addWidget`, undo) is not asked: it is the page's own.
+   * A STRING refuses and says why: a screen reader hears it, and the refused
+   * section shows it as its title. A keyboard move between lists asks it the
+   * same way (`lists`). The API (`moveTo`, `addWidget`, undo) is not asked:
+   * it is the page's own.
    */
-  canDrop?: (e: { nodeId: string; from: string | null; to: string }) => boolean;
+  canDrop?: (e: { nodeId: string; from: string | null; to: string }) => DropAnswer;
   /** A LIST board: gravity packs the dragged tile too (the engine's `packActive`) — a drop below the last tile lands right after it. */
   stack?: boolean;
+  /**
+   * KEYBOARD MOVES BETWEEN LISTS, on a `stack` list: Ctrl+← and Ctrl+→ (Alt
+   * as an alias) move the focused card to the next list on its row — or stop
+   * there, with the reason, when it refuses the card — and Ctrl+↑ and Ctrl+↓
+   * within this one. The dashboard supplies
+   * where the lists are and the move itself; without it those keys step by
+   * cells, as plain arrows do.
+   */
+  lists?: ListMoves;
   /**
    * A member is about to LEAVE this board through a gesture (moved into
    * another board, made a tab of its own). Answers the commands that follow
@@ -244,6 +259,13 @@ export interface DashboardGridOptions {
   onMemberMoving?: (memberId: string, fromBoardId: string, toBoardId: string) => Command[];
   /** A widget dragged over a tab STRIP becomes a new tab there: the hooks that hit-test, mark and commit it. */
   tabDrop?: TabDropHooks;
+  /**
+   * The board is idle again: no gesture live and no commit still landing —
+   * `busy` and `committing` both false. Told a microtask after a gesture ends
+   * or a commit lands, once the board has really settled (a release that
+   * commits is still saving then). The dashboard's `onIdle` is built on it.
+   */
+  onIdle?: () => void;
   /** Fires after commits/cancels/removals so the page can refocus/refit/flash. */
   onGesture?: (e: {
     type: 'commit' | 'cancel' | 'remove' | 'drop-in';
@@ -388,6 +410,11 @@ export interface DashboardGridHandle {
    */
   setColumns(n: number, layout?: GridColumnLayout, opts?: { responsive?: boolean }): boolean;
   getColumns(): number;
+  /**
+   * A tile's size on screen (world px) as this board's cells: the cells a
+   * tile arriving by hand takes, its width clamped to the board's columns.
+   */
+  spanOf?(px: { width: number; height: number }): { w: number; h: number };
   /** RTL mirroring, live. Cells never change — only the pixels. */
   setRtl(on: boolean): void;
   getRtl(): boolean;
@@ -480,6 +507,14 @@ export interface DashboardGridHandle {
   makeRoom?(w: number, h: number): Command[] | null;
   /** Is a pointer gesture live on this board? */
   readonly busy?: boolean;
+  /** A LIST — a one-column `stack` section, where a card's place is a position in an order. */
+  isList?(): boolean;
+  /**
+   * Is a commit of this board — a released gesture's, a `moveTo`'s — still
+   * landing in the history? For a few microtasks after the release the model
+   * holds part of it and the history event has not followed yet.
+   */
+  readonly committing?: boolean;
   /**
    * A `stack` list takes exactly the rows its cards need from its parent (as
    * layout, no undo step). Run AFTER every board has synced from the model —
@@ -887,10 +922,14 @@ interface GestureState {
   spans: { w: number; h: number };
   /** Drag-out: the item is currently absent from the engine. */
   removedFromBoard: boolean;
-  /** `canDrop`'s answers this gesture, per board id — asked once, the page's state cannot change mid-drag. */
-  dropVerdicts?: Map<string, boolean>;
-  /** The last move was refused by `canDrop`: a release snaps home, whatever `dragOut` and the pointer say. */
+  /** `canDrop`'s refusals this gesture, per board id (null: it takes the tile) — asked once, the page's state cannot change mid-drag. */
+  dropVerdicts?: Map<string, string | null>;
+  /** The last move was refused — by `canDrop`, or by a full list: a release snaps home, whatever `dragOut` and the pointer say. */
   policyRefused?: boolean;
+  /** The LISTS that had no room for the tile this gesture: each refuses it as the policy does, with `LIST_FULL` (asked once). */
+  fullLists?: Set<string>;
+  /** The refusing board whose reason was spoken last: said once as the hand arrives, not on every move over it. */
+  refusalSaid?: string | null;
   /** A `movable: 'row'` section: the sections it may trade places with (itself included), and where they started. */
   row?: { ids: string[]; startX: number };
   /** The board whose adoption refused this tile: the widget then pushes that board's container on ITS parent (D2) instead of asking again every move. */
@@ -1472,9 +1511,20 @@ export function bindDashboardGrid(
     return out;
   };
 
+  /** Commits sent to the history that have not landed yet (`committing`). */
+  let landing = 0;
+  const landed = (p: unknown): Promise<unknown> => {
+    landing++;
+    return Promise.resolve(p).finally(() => {
+      landing--;
+      idleSoon();
+    });
+  };
+  /** Tell `onIdle` once nothing is held and nothing is landing. */
+  const idleSoon = idleTeller(() => !disposed && !gesture && !slabGesture && landing === 0, options.onIdle);
   const execute = (name: string, commands: Command[]): boolean => {
     if (commands.length === 0) return false;
-    void api.getEngine().commandManager.execute(new BatchCommand(name, commands));
+    void landed(api.getEngine().commandManager.execute(new BatchCommand(name, commands)));
     return true;
   };
 
@@ -2077,6 +2127,7 @@ export function bindDashboardGrid(
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
+    idleSoon();
     showRefusal(null, 0, 0);
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
@@ -2101,6 +2152,7 @@ export function bindDashboardGrid(
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
+    idleSoon();
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
     if (g.move && g.started) setCarried(g.id, false);
@@ -2178,6 +2230,7 @@ export function bindDashboardGrid(
   };
 
   const cleanupGestureVisuals = (g: GestureState): void => {
+    idleSoon(); // every gesture that ran ends here
     markDrop(null, false);
     showRefusal(null, 0, 0); // a widget's refused cell too (0.4.74), and a chip's
     if (g.kind !== 'palette') {
@@ -2316,16 +2369,19 @@ export function bindDashboardGrid(
     };
   };
 
-  /** Does `canDrop` refuse this gesture's tile on `board`? Never for the board it started on; asked once per board. */
-  const refusesDrop = (g: GestureState, board: { id: string; ref?: unknown }): boolean => {
-    if (!options.canDrop || (g.kind !== 'palette' && board.ref === selfPeer)) return false;
-    const verdicts = (g.dropVerdicts ??= new Map());
-    let ok = verdicts.get(board.id);
-    if (ok === undefined) {
-      ok = options.canDrop({ nodeId: g.id, from: g.kind === 'palette' ? null : group.id, to: board.id }) !== false;
-      verdicts.set(board.id, ok);
-    }
-    return !ok;
+  /**
+   * Does `board` refuse this gesture's tile? Null when it takes it, else the
+   * reason ('' when none was given): `canDrop`'s answer, asked once per board,
+   * or `LIST_FULL` for a list that already had no room for it. Never for the
+   * board the tile started on.
+   */
+  const dropRefusal = (g: GestureState, board: { id: string; ref?: unknown }): string | null => {
+    if (g.kind !== 'palette' && board.ref === selfPeer) return null;
+    const canDrop = options.canDrop;
+    const policy = canDrop
+      ? refusalFor((g.dropVerdicts ??= new Map()), board.id, () => canDrop({ nodeId: g.id, from: g.kind === 'palette' ? null : group.id, to: board.id }))
+      : null;
+    return policy ?? (g.fullLists?.has(board.id) ? LIST_FULL : null);
   };
 
   /**
@@ -2394,16 +2450,23 @@ export function bindDashboardGrid(
     // BEFORE any engine is asked anything. The strip still wins over every
     // board; a band's stickiness and the vacated cell still hold a beside.
     const z = resolveTileZone(g, ev);
-    // -- REFUSED BY POLICY (`canDrop`): the board the zone names — a section, a
-    // page, the board beside a container, a strip's tab container — will not
-    // take this tile. Answered like a full board with nowhere to push: the tile
-    // leaves every board it was previewing on (their tiles settle home), dims,
-    // and a release over a board snaps it home. The board it started on is
-    // never asked — a tile can always go back where it came from.
-    const policyTarget = z.kind === 'strip' ? { id: z.containerId } : z.kind === 'plain' || z.kind === 'beside' ? z.board : null;
-    g.policyRefused = !!policyTarget && refusesDrop(g, policyTarget);
-    if (g.policyRefused) {
-      markDrop(policyTarget && 'id' in policyTarget ? policyTarget.id : null, true);
+    /**
+     * REFUSED: board `to` will not take this tile — its `canDrop` said so, or
+     * it is a list with no room. Answered like a full board with nowhere to
+     * push: the tile leaves every board it was previewing on (their tiles
+     * settle home), dims, and a release over a board snaps it home. A refusal
+     * that gives a reason shows it on the refused section and says it once as
+     * the hand arrives there.
+     */
+    const refuse = (to: string, refusal: string): void => {
+      g.policyRefused = true;
+      markDrop(to, true, refusal);
+      if (refusal && g.refusalSaid !== to) {
+        const grp = diagram.getGroup(to);
+        const what = g.subject === 'group' ? sectionNameOf(g.entity as GroupModel) : nameOf(nodeOf(g));
+        live.announce(refusalSentence(grp ? sectionNameOf(grp) : to, what, refusal), 'polite', true);
+      }
+      g.refusalSaid = to;
       if (g.strip) {
         options.tabDrop?.markDrop(null, null);
         g.strip = null;
@@ -2414,8 +2477,19 @@ export function bindDashboardGrid(
       showRefusal(null, 0, 0);
       setDim(g, true);
       syncPlaceholder();
+    };
+    // -- REFUSED BY POLICY (`canDrop`, or a list already found full): the
+    // board the zone names — a section, a page, the board beside a container,
+    // a strip's tab container. The board it started on is never asked — a
+    // tile can always go back where it came from.
+    const policyTarget = z.kind === 'strip' ? { id: z.containerId } : z.kind === 'plain' || z.kind === 'beside' ? z.board : null;
+    const refusal = policyTarget ? dropRefusal(g, policyTarget) : null;
+    g.policyRefused = refusal !== null;
+    if (policyTarget && refusal !== null) {
+      refuse(policyTarget.id, refusal);
       return;
     }
+    g.refusalSaid = null; // back over a board that takes it: the next refusal is news again
     if (z.kind === 'strip' && options.tabDrop && !isStatic && g.kind !== 'palette' && g.subject === 'node') {
       // -- INTO A STRIP: the widget becomes a new tab there, so it leaves
       // this board (survivors settle home) and the strip marks the slot.
@@ -2500,6 +2574,12 @@ export function bindDashboardGrid(
         setDim(g, false);
         showRefusal(null, 0, 0);
         g.leg!.adopted.move(ev.world);
+      } else if (g.subject === 'node' && peer.isList?.()) {
+        // A LIST with no room refuses the card, as a keyboard move to it is
+        // refused — never pushed onto the board beside the columns (D2).
+        (g.fullLists ??= new Set()).add(peer.group.id);
+        refuse(peer.group.id, LIST_FULL);
+        return;
       } else {
         // The board refused (full, fit): the widget pushes it on its parent (D2).
         g.refusedPeer = peer;
@@ -2533,14 +2613,23 @@ export function bindDashboardGrid(
     // is written by whichever board holds it now: re-sync so they follow.
     if (g.subject === 'group') syncSlabs();
   };
-  /** Mark the SECTION a drag will land on (its slab, drawn by the board holding it) — or that refused it. */
+  /**
+   * Mark the SECTION a drag will land on (its slab, drawn by the board holding
+   * it) — or that refused it, with the policy's reason when it gave one.
+   */
   let dropMarked: HTMLElement | null = null;
-  const markDrop = (boardId: string | null, refused: boolean): void => {
+  const markDrop = (boardId: string | null, refused: boolean, reason = ''): void => {
     const el = boardId ? (api.container.querySelector(`.axdb-slab[data-slab-id="${cssEscapeId(boardId)}"]`) as HTMLElement | null) : null;
-    if (dropMarked && dropMarked !== el) dropMarked.classList.remove('axdb-slab--drop', 'axdb-slab--refused');
+    if (dropMarked && dropMarked !== el) {
+      dropMarked.classList.remove('axdb-slab--drop', 'axdb-slab--refused');
+      paintDropReason(dropMarked, '');
+    }
     dropMarked = el;
     el?.classList.toggle('axdb-slab--drop', !refused);
     el?.classList.toggle('axdb-slab--refused', refused);
+    if (!el) return;
+    const grp = refused && reason && boardId ? diagram.getGroup(boardId) : undefined;
+    paintDropReason(el, grp ? reason : '', grp ? sectionCaptionReserve(diagram, grp, isStatic) : 0);
   };
   const cssEscapeId = (id: string): string => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"'));
 
@@ -2854,6 +2943,7 @@ export function bindDashboardGrid(
     if (!g || g.kind === 'palette') return;
     if (!g.started) {
       gesture = null; // a plain click — the page's own click-to-focus handles it
+      idleSoon();
       return;
     }
     if (g.strip && options.tabDrop) {
@@ -3069,14 +3159,7 @@ export function bindDashboardGrid(
       if (at < top + others[k]!.h / 2) { slot = k; break; }
       top += others[k]!.h;
     }
-    const order = [...others.slice(0, slot), me, ...others.slice(slot)];
-    let y = 0;
-    let changed = false;
-    for (const it of order) {
-      if (it.y !== y || it.x !== 0) { it.y = y; it.x = 0; changed = true; }
-      y += it.h;
-    }
-    return changed;
+    return stackInOrder([...others.slice(0, slot), me, ...others.slice(slot)]);
   };
   const placeOnSelf = (g: GestureState, desired: { x: number; y: number }, pushSolid = false): void => {
     if (g.removedFromBoard) {
@@ -3410,6 +3493,13 @@ export function bindDashboardGrid(
     return placeNear(id, x, y, w);
   };
 
+  /** A tile's size on screen as this board's cells, as wide as the board at most (`spanOf`). */
+  const spanOf = (px: { width: number; height: number }): { w: number; h: number } => {
+    const span = sizeToSpan(px.width, px.height, frame(), geom(), rows());
+    span.w = Math.max(1, Math.min(columns, span.w));
+    return span;
+  };
+
   const adopt = (
     // Only the id is used: a tab page arriving here is a GROUP, not a node.
     node: { id: string },
@@ -3418,12 +3508,9 @@ export function bindDashboardGrid(
     opts: AdoptOptions = {}
   ): AdoptedLeg | null => {
     if (disposed) return null;
-    const f = frame();
-    const gg = geom();
-    const span = sizeToSpan(pxSize.width, pxSize.height, f, gg, rows());
+    const span = spanOf(pxSize);
     // Clamp to the TARGET board's shape: a tall tile entering a one-row strip
     // arrives as a strip-height tile, not a refusal.
-    span.w = Math.max(1, Math.min(columns, span.w));
     const b = bound();
     if (b !== undefined) span.h = Math.max(1, Math.min(b, span.h));
     engine.beginGesture(); // pre-entry snapshot — abort() restores it
@@ -4046,6 +4133,8 @@ export function bindDashboardGrid(
 
   const keyboard = createKeyboard(ctx, {
     handle: () => handle,
+    isList: () => isList(),
+    markDrop: (boardId, refused, reason) => markDrop(boardId, refused, reason),
     live,
     nameOf,
     focusedId: () => focusedId,
@@ -4190,6 +4279,7 @@ export function bindDashboardGrid(
         // Never crossed the threshold: a plain palette CLICK — the page's
         // click-to-add handler owns it.
         gesture = null;
+        idleSoon();
         chip?.remove();
         return;
       }
@@ -4263,7 +4353,7 @@ export function bindDashboardGrid(
     disarmGlideSoon();
     enforceBoardHeight();
     if (commands.length > 0) {
-      await api.getEngine().commandManager.execute(new BatchCommand(name, commands));
+      await landed(api.getEngine().commandManager.execute(new BatchCommand(name, commands)));
     }
     persistLayouts();
     api.renderNow();
@@ -4348,6 +4438,7 @@ export function bindDashboardGrid(
       return applyColumns(n, layout ?? responsive?.layout ?? 'moveScale');
     },
     getColumns: () => columns,
+    spanOf: (px) => spanOf(px),
     setRtl(on): void {
       if (on === rtl) return;
       rtl = on;
@@ -4597,6 +4688,10 @@ export function bindDashboardGrid(
     get busy() {
       return !!gesture || !!slabGesture;
     },
+    get committing() {
+      return landing > 0;
+    },
+    isList: () => isList(),
     makeRoom(w, h) {
       if (disposed || gesture || slabGesture) return null;
       // Probed at the LIVE bound: willItFit builds through engineFrom, which

@@ -55,8 +55,10 @@ import {
   RemoveGroupCommand,
   RemoveNodeCommand,
   SendNodeToBackCommand,
+  SetGridItemCommand,
   type GridColumnLayout,
 } from '@grafloria/engine';
+import type { KeyAction } from '@grafloria/renderer';
 import {
   bindDashboardGrid,
   parentPeerOf,
@@ -70,12 +72,17 @@ import {
 import type { DragHandleOption } from './grid-binder';
 import { bindDashboardSplit, SPLIT_TREE_KEY, type DashboardSplitHandle } from './split-binder';
 import type { SplitNode } from './split-layout';
-import { gridItemFromCell } from './grid-mapping';
+import { gridItemFromCell, type CellRect } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
 import type { SectionCaption } from './caption';
 import { paintTabStrip, tabStripKey, tabStripReserve, type TabsOptions, tabPageInset } from './tabs';
 import { defaultWidgetRenderer } from './widgets';
 import { createAutoHeight, type AutoHeight } from './auto-height';
+import { firstFreeCell, inListOrder, placeAtIndex, type MovedCard } from './place';
+import type { ListMoves } from './keyboard';
+import type { DropAnswer } from './drop-policy';
+import { idleTeller } from './idle';
+import { cardsMovedBy, MOVED_SINCE } from './commit';
 
 /** A widget, declared as data. */
 export interface DashboardWidgetSpec {
@@ -365,9 +372,57 @@ export interface DashboardOptions {
    * widget started on; `from` is null for a palette chip. Refused: the widget
    * dims, nothing on that board moves, and a release snaps it home. A Kanban
    * column at its WIP limit, a board whose top level holds only sections.
-   * The API (`addWidget`, `moveTo`, undo) is not asked.
+   *
+   * Answer `false` to refuse, or a SENTENCE to refuse and say why ("WIP limit
+   * of 3 reached"): a screen reader hears it, and the refused section
+   * shows it over its caption and as its `title` while the hand is over it.
+   * The keyboard asks it too, the same way, before a card moves to the next
+   * list (Ctrl+← / Ctrl+→); a refusal stops the card there, and it is never
+   * passed on to a list further along. A list of fixed height with no room
+   * left refuses the same way, by hand and by keyboard, saying "This list is
+   * full" — a card is never dropped beside it instead. The API (`addWidget`,
+   * `moveTo`, `place`, undo) is not asked.
    */
-  canDrop?: (e: { widgetId: string; from: string | null; to: string; viewId: string }) => boolean;
+  canDrop?: (e: { widgetId: string; from: string | null; to: string; viewId: string }) => DropAnswer;
+  /**
+   * THE USER'S UNDO, AND THE KEYS THAT EDIT BESIDE THE BOARD'S OWN MOVES.
+   * `false`: a board whose every change is a server write, so only the page
+   * changes it. Undo and redo (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y), the clipboard
+   * (Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V), duplicate (Ctrl+D) and Delete (or
+   * Backspace) do nothing on this dashboard (⌘ on a Mac): each would leave
+   * the screen showing what the server never heard. While the board has
+   * focus (something in it is focused, or the person last clicked on it and
+   * nothing else holds the focus), Ctrl+A, Ctrl+D and Delete/Backspace are
+   * swallowed — no page-wide text selection, no bookmark dialog — while
+   * Ctrl+C, Ctrl+X and Ctrl+V keep the browser's meaning and still reach the
+   * page's `copy`, `cut` and `paste` listeners.
+   * Drags and the keyboard's moves still work and are reported through
+   * `onLayoutChange`; they are still recorded, so `engine.undo()` from code
+   * still works. Default true. `render()` applies it as the renderer's
+   * `keyboard.beforeKey`, asked before a `beforeKey` the caller passes to
+   * `render()` itself.
+   */
+  userHistory?: boolean;
+  /**
+   * THE BOARD IS FREE AGAIN. A write from code (`place`, or `addWidget` and
+   * `widget.remove` with `history: false`) is refused while a card is held or
+   * a step is still being saved. After such a refusal this fires once, as soon
+   * as nothing is held and nothing is saving, so the page makes its write
+   * again then instead of polling. It fires only after a refusal.
+   */
+  onIdle?: () => void;
+  /**
+   * AN UNDO THE BOARD REFUSED. A step the person made does not undo once a
+   * card it moved (or pushed aside) has been moved on by a history-free write
+   * (another person's change arriving through `place(…, { history: false })`)
+   * — to another list or within the same one: it would put the card back
+   * where the step found it, over the other person's move. The card stays
+   * where it is, and this is told which card, the board it is on now, and
+   * why. As with any step the history can no longer undo,
+   * that step and the older ones leave the history (the engine's
+   * `command:history-stale`), so the next undo does not reach past it.
+   */
+  onUndoRefused?: (e: { widgetId: string; boardId: string; reason: string }) => void;
   /** Extra binder options, merged last (escape hatch to the layer below). */
   binder?: Partial<DashboardGridOptions>;
 }
@@ -382,9 +437,15 @@ export interface DashboardSpec {
   readonly handle: DashboardHandle;
   /**
    * Instance options the spec asks `render()` to apply — a fluid board pins
-   * the zoom range to 1 so the layout can never become a scaled picture.
+   * the zoom range to 1 so the layout can never become a scaled picture, and
+   * `userHistory: false` takes the keys that edit beside the board's own moves
+   * off the keyboard.
    */
-  renderOptions?: { minZoom?: number; maxZoom?: number };
+  renderOptions?: {
+    minZoom?: number;
+    maxZoom?: number;
+    keyboard?: { beforeKey(event: KeyboardEvent, action: KeyAction): boolean | void };
+  };
 }
 
 /**
@@ -518,8 +579,49 @@ export interface DashboardHandle {
    * A spec with `widgets: []` adds an empty SECTION (grid views only) as one
    * undoable step; add its children afterwards with the section's id as
    * `viewId`. A section spec that brings children of its own is refused.
+   *
+   * `opts.index`: into a LIST (a one-column `stack` section) the widget takes
+   * that position among the cards (clamped; the cards from there on move
+   * down); elsewhere it is ignored. `opts.history: false`: a history-free
+   * write, as `place` describes — and undefined while `place` would wait.
    */
-  addWidget(spec: DashboardWidgetSpec, viewId?: string, opts?: { displaced?: Command[] }): WidgetHandle | undefined;
+  addWidget(
+    spec: DashboardWidgetSpec,
+    viewId?: string,
+    opts?: { displaced?: Command[]; index?: number; history?: boolean }
+  ): WidgetHandle | undefined;
+  /**
+   * PLACE a widget into any grid board from code — a view or a section, its
+   * own board or another, in any view. Into a LIST (a one-column `stack`
+   * section) it takes position `index` among the cards (clamped; omitted, the
+   * end), and both lists close up. Into any other board it takes the first
+   * free cell and keeps its size — out of a list, the width it has on screen,
+   * in that board's columns; from any other board, the cells it has now (as
+   * the person last made it), narrowed only to a board with fewer columns —
+   * and `index` is ignored; a widget already on that board stays
+   * where it is. A full list that may grow makes the room first, as a drop
+   * does; a board with no room refuses. `canDrop` is not asked: it is the
+   * hand's policy, and the page decides for itself.
+   *
+   * By default ONE undo step, reported through `onLayoutChange`, as `moveTo`
+   * is. `{ history: false }` is for changes that happened elsewhere — another
+   * person's move arriving from the server: the model is written as a system
+   * write, so there is no undo step and no history event, `onLayoutChange` and
+   * the other callbacks do not fire, and the next real change does not report
+   * it either. It applies even while the diagram is read-only. It never
+   * clears the undo history: on a board that keeps `userHistory` on, the
+   * person's earlier steps still undo — and replay onto a board they never
+   * saw, so a board that takes these writes sets `userHistory: false`. A step
+   * that moved the card this write moves on is refused instead
+   * (`onUndoRefused`): the card stays where this write put it.
+   *
+   * Resolves false — and changes nothing — while a gesture is live on any
+   * board or a step is still landing in the history (a released drag's
+   * commit, an undoable call not yet settled: ask again on `onIdle`); for an
+   * undoable place on a read-only document; and for an unknown widget or
+   * board, a section (only widgets move), a tab container or a split board.
+   */
+  place(widgetId: string, boardId: string, index?: number, opts?: { history?: boolean }): Promise<boolean>;
   /**
    * Re-read every board from the model — call after undo/redo, or any
    * out-of-band mutation, so the grid and the projection agree again.
@@ -599,10 +701,13 @@ export interface WidgetHandle {
   sendToBack(): void;
   /**
    * Remove it — ONE undoable step including the survivors' re-pack.
-   * `displaced` accepts the commands a drag-out gesture already computed;
-   * omit it and the handle plans them itself.
+   * `displaced` (the array, or `{ displaced }`) accepts the commands a
+   * drag-out gesture already computed; omit it and the handle plans them
+   * itself. `{ history: false }`: a history-free write, as the dashboard's
+   * `place` describes — refused (false) while `place` would wait. True when
+   * the widget was removed.
    */
-  remove(displaced?: unknown[]): void;
+  remove(opts?: unknown[] | { displaced?: unknown[]; history?: boolean }): boolean;
   /** Replace the widget's `data` (and optionally title) and repaint. */
   update(patch: Partial<Pick<DashboardWidgetSpec, 'data' | 'title' | 'kind'>>): void;
   /** Repaint through `renderWidget` (after your data changed). */
@@ -795,6 +900,22 @@ class SetWidgetLockCommand extends Command {
 /** The history events a layout can change on — the engine's DiagramEventTypes
  *  values, spelled out so the kit needs no import from the engine's type bag. */
 const HISTORY_EVENTS = ['command:executed', 'command:undone', 'command:redone'] as const;
+/**
+ * The renderer's keys a board with `userHistory: false` leaves to the page:
+ * undo and redo, the clipboard (and the select-all it copies from), duplicate
+ * and delete. Cut is bound only for a host that owns the keys, which this
+ * board then is, so it is named too.
+ */
+const PAGE_OWNED_KEYS: ReadonlySet<KeyAction> = new Set<KeyAction>(['undo', 'redo', 'selectAll', 'copy', 'cut', 'paste', 'duplicate', 'delete']);
+/**
+ * …and of those, the ones SWALLOWED while the board has focus: they do
+ * nothing at all there, the browser's own meaning included — Ctrl+A would
+ * select the whole page's text, Ctrl+D open the bookmark dialog, Backspace
+ * (Delete's twin) once went back a page. The clipboard keys are not among
+ * them: Ctrl+C, Ctrl+X and Ctrl+V still reach the page's own copy, cut and
+ * paste listeners.
+ */
+const SWALLOWED_KEYS: ReadonlySet<KeyAction> = new Set<KeyAction>(['selectAll', 'duplicate', 'delete']);
 
 const DEFAULTS = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660 };
 const OFFSCREEN_X = -20000;
@@ -961,9 +1082,11 @@ export interface DashboardApiRef {
     removeNode?(id: string): unknown;
     /** Derived writes (a layout switch) bypass the history like the binder's own. */
     runSystemWrite?(fn: () => void): void;
+    /** True while the document is read-only: the history refuses every step. */
+    blocksDocumentWrite?(): boolean;
   };
   getEngine?: () => {
-    commandManager: { execute(c: unknown): unknown };
+    commandManager: { execute(c: unknown): unknown; getUndoStack?(): ReadonlyArray<Command> };
     /** The engine's bus — the kit listens for history events on it (D3). */
     eventBus?: { on(event: string, handler: (...args: unknown[]) => void): () => void };
   };
@@ -1282,6 +1405,12 @@ export interface DashboardHandleContext {
   container: HTMLElement | null;
   /** The consumer's layout hook, if any (dashboard() passes its option). */
   onLayoutChange?: (viewId: string, widgets: DashboardWidgetSpec[]) => void;
+  /** The consumer's `onIdle`, if any (dashboard() passes its option). */
+  onIdle?: () => void;
+  /** The consumer's `onUndoRefused`, if any (dashboard() passes its option). */
+  onUndoRefused?: (e: { widgetId: string; boardId: string; reason: string }) => void;
+  /** Set by createDashboardHandle: a board went idle (every binder's `onIdle` calls it). */
+  boardIdle?: () => void;
   /**
    * Set by createDashboardHandle. `reportChanged()` fires `onLayoutChange` for
    * every view whose layout differs from the last report — ONE reporter for
@@ -1293,6 +1422,12 @@ export interface DashboardHandleContext {
    */
   reportChanged?: () => void;
   attachHistory?: () => void;
+  /**
+   * Set by createDashboardHandle: what the keyboard of LIST `listId` needs to
+   * move a card between lists. Every `stack` section's binder is handed it,
+   * by dashboard() and fromDocument() alike.
+   */
+  listMoves?: (listId: string) => ListMoves;
   /** Build a runtime SECTION (finalize sets it): its group and registry, for an AddSectionCommand. */
   buildSection?: (w: DashboardWidgetSpec, boardId: string) => { group: GroupModel; registry: { register(): void; unregister(): void } };
   /** The content-height watcher (`autoHeight`), created with the handle; hosts register on paint. */
@@ -2087,6 +2222,59 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     }
   };
   ctx.reportChanged = reportChanged;
+  /** Take every view as it is now as already reported: the boot layout, and a history-free write, are never news. */
+  const primeReporter = (): void => {
+    if (!ctx.onLayoutChange || !ctx.apiRef) return;
+    for (const v of handle.toJSON().views) lastReported.set(v.id, JSON.stringify(v.widgets));
+  };
+
+  /**
+   * Every board re-reads the model: after a history event, and after a
+   * history-free write, which changes the model with no event at all.
+   */
+  const followModel = (): void => {
+    if (!ctx.apiRef) return;
+    const model = ctx.apiRef.getModel();
+    for (const id of [...ctx.boardGroups.keys()]) {
+      // A TAB CONTAINER deliberately has no binder — it places its pages
+      // itself. "No binder" must not read as "needs rebinding", or every
+      // history event bound a GRID on it and laid the three pages out as
+      // cells side by side (measured: 2×2 of 216×200 after one resize).
+      if (ctx.layoutOf.get(id) === 'tabs') continue;
+      if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
+    }
+    for (const b of binders.values()) b.sync();
+    // …then lists hug their cards — only once every board reads the model.
+    for (const b of binders.values()) b.fitToContent?.();
+    // …and undo/redo of a section resize must re-place the pages under the
+    // strip, which only the tabs runtime knows how to do.
+    for (const id of ctx.layoutOf.keys()) if (ctx.layoutOf.get(id) === 'tabs') ctx.syncTabs?.(id);
+    clampCamera();
+    ctx.apiRef.renderNow();
+  };
+
+  /**
+   * THE STEPS A HISTORY-FREE MOVE OVERTOOK, each with the cards it moved that
+   * someone else's `place(…, { history: false })` moved on since. Undoing one
+   * would write such a card back where the step found it — another list, or
+   * a cell on a board it no longer stands on — over the other person's move.
+   * So the step will not undo (`canUndo` is false): the engine drops it as
+   * stale, it and the older steps, as it does any step it can no longer undo,
+   * and `onUndoRefused` names each card. A step already undone (the redo
+   * side) is not looked at.
+   */
+  const overtaken = new WeakMap<Command, Set<string>>();
+  const overtake = (cardId: string): void => {
+    for (const step of ctx.apiRef?.getEngine?.()?.commandManager.getUndoStack?.() ?? []) {
+      if (!cardsMovedBy(step).has(cardId)) continue;
+      const cards = overtaken.get(step) ?? new Set<string>();
+      if (cards.size === 0) {
+        overtaken.set(step, cards);
+        step.canUndo = () => false;
+      }
+      cards.add(cardId);
+    }
+  };
 
   // The boards follow the HISTORY, not the consumer's memory of it: after any
   // command lands, is undone or redone, every binder re-reads the model and the
@@ -2094,47 +2282,224 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
   ctx.attachHistory = (): void => {
     const bus = ctx.apiRef?.getEngine?.()?.eventBus;
     if (!bus) return;
-    // Prime the reporter so the boot layout is never reported as a change.
-    for (const v of handle.toJSON().views) lastReported.set(v.id, JSON.stringify(v.widgets));
+    primeReporter();
     const onHistory = (): void => {
       if (!ctx.apiRef) return;
-      const model = ctx.apiRef.getModel();
-      for (const id of [...ctx.boardGroups.keys()]) {
-        // A TAB CONTAINER deliberately has no binder — it places its pages
-        // itself. "No binder" must not read as "needs rebinding", or every
-        // history event bound a GRID on it and laid the three pages out as
-        // cells side by side (measured: 2×2 of 216×200 after one resize).
-        if (ctx.layoutOf.get(id) === 'tabs') continue;
-        if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
-      }
-      for (const b of binders.values()) b.sync();
-      // …then lists hug their cards — only once every board reads the model.
-      for (const b of binders.values()) b.fitToContent?.();
-      // …and undo/redo of a section resize must re-place the pages under the
-      // strip, which only the tabs runtime knows how to do.
-      for (const id of ctx.layoutOf.keys()) if (ctx.layoutOf.get(id) === 'tabs') ctx.syncTabs?.(id);
-      clampCamera();
-      ctx.apiRef.renderNow();
+      followModel();
       reportChanged();
       // An undo puts back the cells as they were saved; the content decides the heights again.
       ctx.autoHeight?.queueAll();
     };
     ctx.subscriptions = ctx.subscriptions ?? [];
     for (const ev of HISTORY_EVENTS) ctx.subscriptions.push(bus.on(ev, onHistory));
+    // An undo refused because a history-free move overtook its card: the
+    // card stays, and the page hears which and why.
+    ctx.subscriptions.push(
+      bus.on('command:history-stale', (e: unknown) => {
+        const { command, phase } = (e ?? {}) as { command?: Command; phase?: string };
+        if (phase !== 'undo' || !command || !ctx.onUndoRefused) return;
+        for (const id of overtaken.get(command) ?? []) {
+          const board = boardOfMember(id);
+          if (board && specById.has(id)) ctx.onUndoRefused({ widgetId: id, boardId: board, reason: MOVED_SINCE });
+        }
+      })
+    );
     const vp = ctx.apiRef?.viewport;
     if (ctx.mode === 'fluid' && vp?.onChange) ctx.subscriptions.push(vp.onChange(() => clampCamera()));
   };
 
+  /**
+   * A write from code was refused because the board was busy, and the page is
+   * owed an `onIdle`: told a microtask after a board or a step of the
+   * handle's own settles, once nothing anywhere is held or landing.
+   */
+  let owedIdle = false;
+  const idleSoon = idleTeller(
+    () => owedIdle && !!ctx.apiRef && !busy(),
+    () => {
+      owedIdle = false;
+      ctx.onIdle?.();
+    }
+  );
+  ctx.boardIdle = idleSoon;
+
+  /**
+   * The handle's undoable steps sent to the history and not landed yet. The
+   * model holds a step as soon as it is sent; the boards re-read it and the
+   * reporter sees it only on the history event a few microtasks later.
+   */
+  let landing = 0;
   const execCommand = (cmd: unknown): void => {
     try {
       const r = ctx.apiRef?.getEngine?.()?.commandManager.execute(cmd) as {
-        catch?: (f: () => void) => void;
+        then?: (ok: () => void, fail: () => void) => void;
       };
       // Fire-and-forget like the binder's own commits, but never leave an
       // unhandled rejection: a refused command is a no-op, not a crash.
-      r?.catch?.(() => undefined);
+      if (typeof r?.then === 'function') {
+        landing++;
+        const landed = (): void => {
+          landing--;
+          idleSoon();
+        };
+        r.then(landed, landed);
+      }
     } catch {
       /* a refused command must not break the caller */
+    }
+  };
+
+  /**
+   * Is a write from code unsafe now? While a pointer gesture is live on any
+   * board, and while a step — a gesture's commit, an undoable call — is still
+   * landing: a history-free write then would plan from boards that have not
+   * re-read the model, interleave with the step, and prime the reporter over a
+   * change it has not reported yet.
+   */
+  const busy = (): boolean => landing > 0 || [...binders.values()].some((b) => b.busy === true || b.committing === true);
+  /** Refuse a write from code while `busy()` — and owe the page an `onIdle` for it. */
+  const refusedWhileBusy = (): boolean => {
+    if (!busy()) return false;
+    owedIdle = true;
+    return true;
+  };
+
+  /**
+   * A HISTORY-FREE WRITE (`history: false`): the very commands the undoable
+   * call records, applied to the model as a SYSTEM write — no undo step and no
+   * history event, so nothing reports it. The boards then follow the model as
+   * they do after an undo, and the reporter takes the result as already known.
+   */
+  const systemWrite = (cmd: Command): boolean => {
+    const model = ctx.apiRef?.getModel();
+    if (!model) return false;
+    let ok = true;
+    try {
+      const run = (): void => void cmd.execute({ diagram: model, eventBus: null });
+      if (model.runSystemWrite) model.runSystemWrite(run);
+      else run();
+    } catch {
+      ok = false; // a step that could not apply: the boards still show what the model now holds
+    }
+    followModel();
+    primeReporter();
+    ctx.autoHeight?.queueAll();
+    return ok;
+  };
+
+  /** Commands that set each moved card's cell (the board re-projects the pixels as it follows the model). */
+  const cellCommands = (moved: MovedCard[]): Command[] =>
+    moved.map((m) => new SetGridItemCommand(m.id, gridItemFromCell(m.after)));
+  /** A LIST: the binder's own rule, the one its hand-drop follows. */
+  const isList = (bid: string): boolean => binders.get(bid)?.isList?.() === true;
+  /** Every member's live cell on board `bid`, but `except`. */
+  const cellsOn = (bid: string, except?: string): Array<{ id: string; cell: CellRect }> => {
+    const out: Array<{ id: string; cell: CellRect }> = [];
+    for (const m of ctx.boardGroups.get(bid)?.members ?? []) {
+      const c = m === except ? undefined : binders.get(bid)?.cellOf(m);
+      if (c) out.push({ id: m, cell: c });
+    }
+    return out;
+  };
+  /**
+   * Room for a w×h tile on board `bid`: a full STACK LIST that may grow takes
+   * the rows from its parent, as a drop into it does — the commands that
+   * record it, to fold into the step — [] when it fits, null when it cannot.
+   */
+  const roomFor = (bid: string, w: number, h: number): Command[] | null => {
+    const b = binders.get(bid);
+    const room = specById.get(bid)?.stack ? b?.makeRoom?.(w, h) : undefined;
+    if (room === null) return null;
+    if (room === undefined && b?.willItFit(w, h) === false) return null;
+    return room ?? [];
+  };
+
+  /**
+   * What `place` commits: the commands that move `widgetId` into `boardId`
+   * (empty when it is there already); `'full'` when that board has no room for
+   * it (a full list of fixed height); null when it cannot go there at all.
+   * Read from the binders' live cells, so it plans the board the person is
+   * looking at.
+   */
+  const planPlace = (widgetId: string, boardId: string, index: number | undefined): Command[] | 'full' | null => {
+    const model = ctx.apiRef?.getModel();
+    const spec = specById.get(widgetId);
+    const from = boardOfMember(widgetId);
+    if (!model || !spec || spec.widgets || from === undefined || !model.getNode(widgetId)) return null;
+    const src = binders.get(from);
+    const dst = binders.get(boardId);
+    if (!src || !dst || !ctx.boardGroups.has(boardId)) return null;
+    if ((ctx.layoutOf.get(from) ?? 'grid') !== 'grid' || (ctx.layoutOf.get(boardId) ?? 'grid') !== 'grid') return null;
+    const cell = src.cellOf(widgetId);
+    if (!cell) return null;
+    const columns = dst.getColumns();
+    const others = cellsOn(boardId, widgetId);
+    const same = from === boardId;
+    const list = isList(boardId);
+    if (same && !list) return [];
+    // Out of a LIST its one cell is the list's width, not the card's: it keeps
+    // the width it has on screen, in this board's columns. From any other
+    // board it keeps its cells, narrowed only to a board with fewer columns.
+    const onScreen = !list && isList(from) ? dst.spanOf?.(model.getNode(widgetId)!.size) : undefined;
+    const me = { ...cell, w: onScreen ? onScreen.w : Math.min(cell.w, columns) };
+    let target: CellRect;
+    let moved: MovedCard[] = [];
+    if (list) {
+      ({ cell: target, moved } = placeAtIndex(others, me, index));
+    } else {
+      const at = firstFreeCell(others.map((o) => o.cell), columns, me.w, me.h);
+      if (!at) return 'full';
+      target = { ...me, ...at };
+    }
+    if (same) {
+      const self = target.x === cell.x && target.y === cell.y ? [] : [{ id: widgetId, before: cell, after: target }];
+      return cellCommands([...moved, ...self]);
+    }
+    const room = roomFor(boardId, me.w, me.h);
+    if (room === null) return 'full';
+    return [
+      ...room,
+      ...src.planRemoval(widgetId),
+      new RemoveFromGroupCommand(from, widgetId),
+      ...cellCommands(moved),
+      new SetGridItemCommand(widgetId, gridItemFromCell(target)),
+      new AddToGroupCommand(boardId, widgetId),
+      // …and a tab page it emptied closes, as after a drag out of it.
+      ...(ctx.closePageIfEmptied?.(from, widgetId) ?? []),
+    ];
+  };
+
+  /** `place`, saying `'full'` when the board had no room — the keyboard's list moves name that refusal. */
+  const placeInto = async (widgetId: string, boardId: string, index: number | undefined, opts?: { history?: boolean }): Promise<boolean | 'full'> => {
+    const history = opts?.history !== false;
+    const manager = ctx.apiRef?.getEngine?.()?.commandManager;
+    if (refusedWhileBusy() || (history && !manager)) return false;
+    // A read-only document refuses an undoable step — the history drops it
+    // without a word — so say so before planning (a plan may already take a
+    // list's room from its parent). A history-free write is the system's.
+    if (history && ctx.apiRef?.getModel().blocksDocumentWrite?.() === true) return false;
+    const cmds = planPlace(widgetId, boardId, index);
+    if (cmds === 'full') return 'full';
+    if (!cmds) return false;
+    if (cmds.length === 0) return true; // already there: nothing to record
+    // A sequence, not a batch: the membership steps depend on each other's
+    // result, and the history-free path runs it synchronously.
+    const cmd = new SequenceCommand('Place widget', cmds);
+    if (!history) {
+      const ok = systemWrite(cmd);
+      overtake(widgetId);
+      return ok;
+    }
+    landing++;
+    try {
+      // The history event that follows re-reads every board and reports.
+      await manager!.execute(cmd);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      landing--;
+      idleSoon();
     }
   };
 
@@ -2268,6 +2633,9 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       reportChanged();
       return true;
     },
+    async place(widgetId, boardId, index, opts) {
+      return (await placeInto(widgetId, boardId, index, opts)) === true;
+    },
     setSizing(mode) {
       // THE VIEWS ONLY. A nested board (a page, a section) is bound fit with no
       // design height — its height is its container's business — and switched
@@ -2310,6 +2678,9 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     getDragHandle: () => binders.get(ctx.active)?.getDragHandle() ?? (ctx.optionsBase.dragHandle ?? false),
     addWidget(spec, viewId, opts) {
       const vid = viewId ?? ctx.active;
+      const history = opts?.history !== false;
+      // A history-free write waits for a live gesture, as place() does.
+      if (!history && refusedWhileBusy()) return undefined;
       // `vid` may name a view OR a container — both are boards with a group,
       // a binder and an authored array.
       const arr = ctx.boardWidgets.get(vid);
@@ -2333,21 +2704,19 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         if (!binder || !ctx.buildSection || ctx.layoutOf.get(vid) === 'split') return undefined;
         if (binder.willItFit(w.span!, w.rows!) === false) return undefined; // a bounded board with no room says so
         if (w.x === undefined || w.y === undefined) {
-          const cols = binder.getColumns();
-          const taken = (x: number, y: number) =>
-            [...(group.members ?? [])].some((m) => {
-              const c = binder.cellOf(m);
-              return !!c && x < c.x + c.w && c.x < x + w.span! && y < c.y + c.h && c.y < y + w.rows!;
-            });
-          let at: { x: number; y: number } | null = null;
-          for (let y = 0; !at && y < 1000; y++) for (let x = 0; x + w.span! <= cols && !at; x++) if (!taken(x, y)) at = { x, y };
+          const at = firstFreeCell(cellsOn(vid).map((o) => o.cell), binder.getColumns(), w.span!, w.rows!);
           if (!at) return undefined;
           w.x = at.x;
           w.y = at.y;
         }
         w.widgets = [];
         const { group: sg, registry: sreg } = ctx.buildSection(w, vid);
-        execCommand(new AddSectionCommand(sg, group.id, sreg));
+        const addSection = new AddSectionCommand(sg, group.id, sreg);
+        if (!history) {
+          systemWrite(addSection); // the boards follow the model: the new section's board is bound there
+          return makeWidgetHandle(w.id);
+        }
+        execCommand(addSection);
         binder.sync();
         if (!binders.has(w.id)) ctx.rebindContainer?.(w.id);
         ctx.apiRef?.renderNow();
@@ -2363,9 +2732,20 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // A full STACK LIST that may grow makes the room first, as a drop into it
       // does; the growth rides in this add's undo step. Any other full section
       // refuses, as it always has.
-      const room = specById.get(vid)?.stack ? binders.get(vid)?.makeRoom?.(w.span!, w.rows!) : undefined;
+      const room = roomFor(vid, w.span!, w.rows!);
       if (room === null) return undefined;
-      if (room === undefined && binders.get(vid)?.willItFit(w.span!, w.rows!) === false) return undefined;
+      // AT AN INDEX in a list: the cell that position takes, and the cards
+      // from there on moved down in the same step — counted without the card
+      // itself, which may already be one of them (the same change applied twice).
+      let moved: MovedCard[] = [];
+      let atIndex = false;
+      if (opts?.index !== undefined && isList(vid)) {
+        const at = placeAtIndex(cellsOn(vid, w.id), { x: 0, y: 0, w: 1, h: w.rows! }, opts.index);
+        w.x = at.cell.x;
+        w.y = at.cell.y;
+        moved = at.moved;
+        atIndex = true;
+      }
 
       const registry = registryOf(w.id, vid, w);
       registry.register();
@@ -2373,13 +2753,20 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       const existing = model.getNode(w.id);
       const node = existing ?? buildWidgetNode(w, ctx.rowHeight);
       if (w.pinned) node.setState({ locked: true });
+      // A new node is built with its cell; one already in the model is told.
+      const ownCell = existing && atIndex ? [new SetGridItemCommand(w.id, gridItemFromCell({ x: w.x!, y: w.y!, w: w.span!, h: w.rows! }))] : [];
       // ONE undoable step, registration included (see AddWidgetCommand). The
       // tiles a drop pushed aside ride in front of it, in a SEQUENCE: a batch
       // runs its members across awaits, and the board is re-read right after
       // this call — the pushed cells must be in the model by then.
       const add = new AddWidgetCommand(node, group.id, registry, !!existing);
-      const displaced = [...(room ?? []), ...(opts?.displaced ?? [])];
-      execCommand(displaced.length > 0 ? new SequenceCommand('Add widget', [...displaced, add]) : add);
+      const displaced = [...room, ...(opts?.displaced ?? []), ...cellCommands(moved), ...ownCell];
+      const cmd = displaced.length > 0 ? new SequenceCommand('Add widget', [...displaced, add]) : add;
+      if (!history) {
+        systemWrite(cmd);
+        return makeWidgetHandle(w.id);
+      }
+      execCommand(cmd);
 
       binders.get(vid)?.sync();
       ctx.apiRef?.renderNow();
@@ -2578,7 +2965,10 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         if (host) ctx.renderWidget(spec, host);
         ctx.autoHeight?.queue(id);
       },
-      remove(displaced) {
+      remove(opts) {
+        const { displaced, history = true } = Array.isArray(opts) ? { displaced: opts } : (opts ?? {});
+        // A history-free write waits for a live gesture, as place() does.
+        if (history === false && refusedWhileBusy()) return false;
         if (spec.widgets) {
           // A CONTAINER (review D12): its subtree, its own group, its slab in
           // the parent board and the parent's re-pack, as ONE undoable batch.
@@ -2587,7 +2977,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
           const parentGroup = ctx.boardGroups.get(board());
           const parentBinder = binders.get(board());
           const model = ctx.apiRef?.getModel();
-          if (!parentGroup || !parentBinder || !model) return;
+          if (!parentGroup || !parentBinder || !model) return false;
           // ORDER MATTERS FOR UNDO. A batch may only undo when EVERY member
           // can, checked before any of them runs — and RemoveFromGroupCommand
           // can undo only while its group exists. So no membership commands
@@ -2618,16 +3008,18 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
           cmds.push(...nodeRemovals, ...unregisters, new RegisterWidgetCommand(registry, 'unregister'));
           binders.get(id)?.dispose();
           binders.delete(id);
+          // No undo to check up front: the same steps run as one sequence.
+          if (history === false) return systemWrite(new SequenceCommand('Remove section', cmds));
           void execCommand(new BatchCommand('Remove section', cmds));
           registry.unregister();
           parentBinder.sync();
           ctx.apiRef?.renderNow();
-          return;
+          return true;
         }
         const n = node();
         const group = ctx.boardGroups.get(board());
         const b = binder();
-        if (!n || !group || !b) return;
+        if (!n || !group || !b) return false;
         // ONE undoable step, survivors' re-pack folded in — the same atomic
         // shape the kit's own drag-out-to-remove uses. A gesture that ALREADY
         // computed the survivors passes them in: after a drag-out the tile is
@@ -2649,10 +3041,12 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
           new RegisterWidgetCommand(registry, 'unregister'),
           ...closing,
         ];
+        if (history === false) return systemWrite(new SequenceCommand('Remove widget', cmds));
         void execCommand(closing.length > 0 ? new SequenceCommand('Remove widget', cmds) : new BatchCommand('Remove widget', cmds));
         registry.unregister(); // now, for the caller reading the handle next
         b.sync();
         ctx.apiRef?.renderNow();
+        return true;
       },
       repaint() {
         const host = hostOf(id);
@@ -2663,6 +3057,37 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       //  widget the renderer has mounted — including after a rebuild.)
     };
   }
+
+  /**
+   * KEYBOARD MOVES BETWEEN LISTS, the dashboard's half (keyboard.ts asks the
+   * drop policy and speaks). The ROW is read on screen: the nearest other list
+   * of the board that holds this one whose frame shares its height band, by
+   * where it stands, so a right-to-left board's → still goes right. A tab
+   * container's pages are not side by side, so they have no row. The move is
+   * `place` — one undo step, reported, `'full'` when the list has no room —
+   * and focus follows the card.
+   */
+  ctx.listMoves = (listId) => ({
+    next(dir) {
+      const model = ctx.apiRef?.getModel();
+      const me = model?.getGroup(listId);
+      const parent = boardOfMember(listId);
+      if (!model || !me || parent === undefined || ctx.layoutOf.get(parent) === 'tabs') return undefined;
+      const top = me.position.y;
+      const bottom = top + (me.size?.height ?? 0);
+      const out: Array<{ id: string; x: number }> = [];
+      for (const id of ctx.boardGroups.get(parent)?.members ?? []) {
+        const g = id === listId || !isList(id) ? undefined : model.getGroup(id);
+        if (!g || g.position.y >= bottom || g.position.y + (g.size?.height ?? 0) <= top) continue;
+        if ((g.position.x - me.position.x) * dir > 0) out.push({ id, x: g.position.x });
+      }
+      return out.sort((p, q) => (p.x - q.x) * dir)[0]?.id;
+    },
+    cards: (id) => inListOrder(cellsOn(id)).map((c) => c.id),
+    place: (id, to, index) => placeInto(id, to, index),
+    focus: (id) => void handle.focusWidget(id),
+    busy,
+  });
 
   return handle;
 }
@@ -2781,15 +3206,51 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     apiRef: null,
     container: null,
     onLayoutChange: options.onLayoutChange,
+    onIdle: options.onIdle,
+    onUndoRefused: options.onUndoRefused,
   };
   const { binders, groups } = ctx;
   const handle = createDashboardHandle(ctx);
+  /** The person's last press on the page was on this board (kept only with `userHistory: false`). */
+  let pressedOnBoard = false;
+  /**
+   * DOES THE BOARD HAVE FOCUS, as the person sees it: the key starts inside
+   * it (a card or a control there holds the focus), or nothing on the page
+   * holds the focus and their last press was on the board — a click on a card
+   * leaves the focus on the page's body, and the keys typed next still mean
+   * the board.
+   */
+  const boardHasFocus = (e: KeyboardEvent): boolean => {
+    const c = ctx.container;
+    if (!c) return false;
+    if (e.target instanceof Node && c.contains(e.target)) return true;
+    const active = c.ownerDocument.activeElement;
+    return pressedOnBoard && (!active || active === c.ownerDocument.body);
+  };
+  const renderOptions: NonNullable<DashboardSpec['renderOptions']> = {
+    // A fluid board can never be zoomed into a scaled picture.
+    ...(mode === 'fluid' ? { minZoom: 1, maxZoom: 1 } : {}),
+    // No user history: only the page changes the board, so the renderer's keys
+    // that would change it beside the board's own moves stand down here — and
+    // the ones the browser would act on the page with are swallowed while the
+    // board has focus.
+    ...(options.userHistory === false
+      ? {
+          keyboard: {
+            beforeKey: (e: KeyboardEvent, action: KeyAction) => {
+              if (!PAGE_OWNED_KEYS.has(action)) return undefined;
+              if (SWALLOWED_KEYS.has(action) && boardHasFocus(e)) e.preventDefault();
+              return false;
+            },
+          },
+        }
+      : {}),
+  };
 
   return {
     nodes,
     edges: [],
-    // A fluid board can never be zoomed into a scaled picture.
-    ...(mode === 'fluid' ? { renderOptions: { minZoom: 1, maxZoom: 1 } } : {}),
+    ...(Object.keys(renderOptions).length > 0 ? { renderOptions } : {}),
     renderCustomNode: (node: unknown, host: HTMLElement) => {
       const n = node as { id: string };
       const spec = specById.get(n.id);
@@ -2806,6 +3267,17 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       if (!a) return;
       ctx.apiRef = a;
       ctx.container = (a as { container?: HTMLElement }).container ?? null;
+      if (options.userHistory === false && ctx.container) {
+        // Where the person presses, before any board or page handler sees it (`boardHasFocus`).
+        const doc = ctx.container.ownerDocument;
+        const onPress = (e: Event): void => {
+          pressedOnBoard = e.target instanceof Node && !!ctx.container?.contains(e.target);
+        };
+        for (const type of ['pointerdown', 'mousedown']) doc.addEventListener(type, onPress, true);
+        (ctx.subscriptions ??= []).push(() => {
+          for (const type of ['pointerdown', 'mousedown']) doc.removeEventListener(type, onPress, true);
+        });
+      }
       const model = a.getModel();
       // FLUID: the board starts at the container's box when it can be measured
       // (the binder keeps it there); the authored defaults only fill in for a
@@ -3162,6 +3634,10 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             if (e.type === 'commit') reportChanged();
             options.binder?.onGesture?.(e);
           },
+          onIdle: () => {
+            ctx.boardIdle?.();
+            options.binder?.onIdle?.();
+          },
           onSelect: (id: string | undefined) => options.onSelect?.(id, v.id),
           ...captionHooks(v.id),
           onMemberLeaving: (memberId: string) => ctx.closePageIfEmptied?.(v.id, memberId) ?? [],
@@ -3210,6 +3686,10 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             if (e.type === 'commit') reportChanged();
             options.binder?.onGesture?.(e);
           },
+          onIdle: () => {
+            ctx.boardIdle?.();
+            options.binder?.onIdle?.();
+          },
           onSelect: (id: string | undefined) => options.onSelect?.(id, ctx.viewOfBoard.get(w.id) ?? ctx.active),
           ...captionHooks(ctx.viewOfBoard.get(w.id) ?? ctx.active),
           onMemberLeaving: (memberId: string) => ctx.closePageIfEmptied?.(w.id, memberId) ?? [],
@@ -3234,7 +3714,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             maxRows: innerRows ?? w.maxRows ?? (cg.getMetadata('containerWidget') as { maxRows?: number } | undefined)?.maxRows ?? rowExtentOf(w.widgets ?? []),
             float: false,
             escalate: w.sizing !== 'fit',
-            ...(w.stack ? { stack: true } : {}),
+            ...(w.stack ? { stack: true, ...(ctx.listMoves ? { lists: ctx.listMoves(w.id) } : {}) } : {}),
           })
         );
       }

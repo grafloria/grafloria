@@ -12,7 +12,14 @@
  * that did not (the cross-board drop) dropped the target board's pushed
  * sections on the floor: the drop drew the push and never persisted it.
  */
-import { Command, type DiagramModel } from '@grafloria/engine';
+import {
+  AddToGroupCommand,
+  BatchCommand,
+  Command,
+  RemoveFromGroupCommand,
+  SetGridItemCommand,
+  type DiagramModel,
+} from '@grafloria/engine';
 import { buildCommitCommands, gridItemFromCell, type CellRect, type TileDelta, type WorldRect } from './grid-mapping';
 
 /**
@@ -88,10 +95,34 @@ export class SequenceCommand extends Command {
   override canUndo(): boolean {
     return true;
   }
+  /** The chain, in order (as a batch's `getCommands`). */
+  getCommands(): ReadonlyArray<Command> {
+    return this.steps;
+  }
   override serialize() {
     return { id: this.id, name: this.name, timestamp: this.timestamp, data: { steps: this.steps.map((c) => c.serialize()) } };
   }
 }
+
+/**
+ * THE CARDS A STEP MOVED: every node or group whose board or cell one of its
+ * commands sets, through batches and sequences — undoing the step writes
+ * each back where the step found it. (Its pixel moves and resizes are not
+ * counted: the boards project the pixels from the cells.)
+ */
+export function cardsMovedBy(step: Command, out = new Set<string>()): Set<string> {
+  if (step instanceof BatchCommand || step instanceof SequenceCommand) {
+    for (const c of step.getCommands()) cardsMovedBy(c, out);
+  } else if (step instanceof SetGridItemCommand) {
+    out.add((step.serialize().data as { nodeId: string }).nodeId);
+  } else if (step instanceof AddToGroupCommand || step instanceof RemoveFromGroupCommand) {
+    out.add((step.serialize().data as { entityId: string }).entityId);
+  }
+  return out;
+}
+
+/** What `onUndoRefused` says of a step a history-free move overtook. */
+export const MOVED_SINCE = 'It was moved since, and a card is in one list at a time';
 
 const sameCell = (a: CellRect, b: CellRect): boolean => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 

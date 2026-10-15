@@ -74,6 +74,25 @@ export type RenderSpec = DiagramSpec | DashboardSpec | KitDiagramSpec | LoadedDi
 export type RenderOptions = Omit<CreateDiagramOptions, 'nodes' | 'edges'>;
 
 /**
+ * The keyboard a kit spec asks for, joined with the caller's. When the spec
+ * brings a `beforeKey` (a dashboard with `userHistory: false`), it stays, and
+ * a caller's own `beforeKey` is asked after it — only about a key the spec
+ * let through, since a key it cancels never runs. `keyboard: false` from the
+ * caller still turns every key off; `true` is the default and changes
+ * nothing. Without a spec hook, the caller's keyboard wins as any option does.
+ */
+function joinKeyboard(fromSpec: RenderOptions['keyboard'], fromCaller: RenderOptions['keyboard']): RenderOptions['keyboard'] {
+  const specKey = typeof fromSpec === 'object' ? fromSpec.beforeKey : undefined;
+  if (!specKey || fromCaller === false) return fromCaller ?? fromSpec;
+  if (typeof fromCaller !== 'object') return fromSpec;
+  const callerKey = fromCaller.beforeKey;
+  return {
+    ...fromCaller,
+    beforeKey: (event, action) => (specKey(event, action) === false ? false : callerKey?.(event, action)),
+  };
+}
+
+/**
  * Mount `spec` into `target` and return the live instance.
  *
  * `target` may be an element or a CSS selector. Custom nodes (`custom: true`)
@@ -101,12 +120,15 @@ export function render(
   // flow into createDiagram's NodeInput[] the same way.
   const parsed = (typeof spec === 'string' ? parseSpec(spec) : spec) as DiagramSpec;
 
+  // A kit spec may ask for instance options of its own — a fluid dashboard
+  // pins the zoom range so its layout can never become a scaled picture. The
+  // caller's explicit options still win, but for a key hook, which both keep.
+  const fromSpec = (parsed as { renderOptions?: Partial<RenderOptions> }).renderOptions ?? {};
+  const keyboard = joinKeyboard(fromSpec.keyboard, options.keyboard);
   const instance = createDiagram(element, {
-    // A kit spec may ask for instance options of its own — a fluid dashboard
-    // pins the zoom range so its layout can never become a scaled picture. The
-    // caller's explicit options still win.
-    ...((parsed as { renderOptions?: Partial<RenderOptions> }).renderOptions ?? {}),
+    ...fromSpec,
     ...options,
+    ...(keyboard !== undefined ? { keyboard } : {}),
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],
     ...(parsed.groups ? { groups: parsed.groups } : {}),

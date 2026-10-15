@@ -48,6 +48,8 @@ export {
   type DashboardGridGeometry,
   type TileDelta,
 } from './grid-mapping';
+export { type DropAnswer } from './drop-policy';
+export { type ListMoves } from './keyboard';
 export { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID, DASHBOARD_KIT_CSS } from './styles';
 export { paintTabStrip, tabStripReserve, tabStripKey, TAB_STRIP_HEIGHT, TAB_DRAG_THRESHOLD, type TabsOptions, type TabPage } from './tabs';
 export {

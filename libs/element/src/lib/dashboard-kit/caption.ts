@@ -105,6 +105,14 @@ export function captionOfGroup(grp: { getMetadata(key: string): unknown; name?: 
   return normalizeCaption(meta.caption, meta.title ?? grp.name);
 }
 
+/** A section's name as a person hears it: its caption's text (what is painted), else its title, else its id. */
+export function sectionNameOf(grp: { id: string; getMetadata(key: string): unknown; name?: string }): string {
+  const text = captionOfGroup(grp)?.text;
+  if (text) return text;
+  const title = (grp.getMetadata('containerWidget') as { title?: string } | undefined)?.title;
+  return title || grp.name || grp.id;
+}
+
 export function pairOf(v: number | [number, number] | undefined, dflt: [number, number]): [number, number] {
   if (v === undefined) return dflt;
   return typeof v === 'number' ? [v, v] : [v[0], v[1]];

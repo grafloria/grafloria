@@ -7,7 +7,8 @@ import { markReady } from '../ready';
 // on (float off), so its cards stack top-down, close the gap a card leaves, and
 // reorder by push. Cards are `autoHeight` and rendered by a React component
 // (widgetTypes): the kit re-measures when the portal content arrives. `canDrop`
-// keeps cards inside columns and refuses a column at its WIP limit.
+// keeps cards inside columns and refuses a column at its WIP limit, saying why.
+// Ctrl+← / Ctrl+→ move a focused card to the next column; a full one stops it and says why.
 
 const ROW = 8;        // row unit, px
 const HEAD_ROWS = 3;  // header band: 36 px of header + 12 px of air above the first card
@@ -78,7 +79,7 @@ const widgetTypes = { card: KanbanCard };
 
 let seq = 0;
 const cardSpec = (d: Card): DashboardWidgetSpec =>
-  ({ id: `card-${++seq}`, kind: 'card', span: 1, rows: GUESS, resizable: false, data: d as unknown as Record<string, unknown> });
+  ({ id: `card-${++seq}`, kind: 'card', title: d.title, span: 1, rows: GUESS, resizable: false, data: d as unknown as Record<string, unknown> });
 
 export default function KanbanBoardDemo() {
   const handleRef = useRef<DashboardHandle | null>(null);
@@ -158,8 +159,13 @@ export default function KanbanBoardDemo() {
         rowHeight: ROW,
         float: false,
         autoHeight: true,
-        // The drop policy: cards live in columns, and a column at its WIP limit takes no more.
-        canDrop: ({ to }) => COLUMNS.some((c) => c.id === to) && !isFull(to),
+        // The drop policy: cards live in columns, and a column at its WIP limit
+        // takes no more — and says why (the keyboard asks it too).
+        canDrop: ({ to }) => {
+          const col = COLUMNS.find((c) => c.id === to);
+          if (!col) return false;
+          return isFull(to) ? `WIP limit of ${col.wip} reached` : true;
+        },
         renderCaption: (w, host) => paintHead(w.id, host),
       },
       updateCounts,

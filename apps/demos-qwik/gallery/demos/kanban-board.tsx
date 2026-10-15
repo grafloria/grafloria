@@ -7,7 +7,7 @@ import { markReady } from '../ready';
  *  column is a CONTAINER with `columns: 1` and gravity on (float off), so its
  *  cards stack top-down, close the gap a card leaves, and reorder by push. Cards
  *  are `autoHeight`: the kit measures them and takes whole rows. `canDrop` keeps
- *  cards inside columns and refuses a column at its WIP limit.
+ *  cards inside columns and refuses a column at its WIP limit, saying why.
  *
  *  Hosted like grid-options: the dashboard() spec goes to GrafloriaDiagram, so
  *  the spec's own renderWidget / renderCaption / onLayoutChange are the kit's
@@ -58,7 +58,7 @@ let seq = 0;
 // `rows` is only the first guess: the dashboard's `autoHeight` measures the card.
 const GUESS = 4;
 const cardSpec = (d: Card): DashboardWidgetSpec =>
-  ({ id: `card-${++seq}`, kind: 'card', span: 1, rows: GUESS, resizable: false, data: d as unknown as Record<string, unknown> }) as DashboardWidgetSpec;
+  ({ id: `card-${++seq}`, kind: 'card', title: d.title, span: 1, rows: GUESS, resizable: false, data: d as unknown as Record<string, unknown> }) as DashboardWidgetSpec;
 
 /* ---- column headers: painted by the page, so counts update without an undo step - */
 const heads = new Map<string, { n: HTMLElement; add: HTMLButtonElement }>();
@@ -102,9 +102,11 @@ const isFull = (columnId: string) => {
   const c = COLUMNS.find((x) => x.id === columnId);
   return !!c?.wip && countsNow()[columnId] >= c.wip;
 };
-/** The drop policy: cards live in columns, and a column at its WIP limit takes no more. */
+/** The drop policy: cards live in columns, and a column at its WIP limit takes no more — and says why. */
 function canDrop({ to }: { to?: string | null }) {
-  return COLUMNS.some((c) => c.id === to) && !isFull(to as string);
+  const col = COLUMNS.find((c) => c.id === to);
+  if (!col) return false;
+  return isFull(col.id) ? `WIP limit of ${col.wip} reached` : true;
 }
 
 const NEW_TITLES = ['Follow up with the design review', 'Fix the flaky timing test', 'Write the release notes', 'Try a 6-column board on a phone'];

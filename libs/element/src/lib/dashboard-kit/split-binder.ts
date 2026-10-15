@@ -30,6 +30,7 @@ import type { AdoptOptions, AdoptedLeg, DashboardGridApi, DashboardGridHandle, D
 import { anyEdge, claimContainerGestures, clearOtherSelections, clientPerWorldOf, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, parentPeerOf, peersOnCanvasOf, pressOnDragHandle, registerBoardPeer, syncGrip, zoneRootsOf, DRAG_HANDLE_CLASS, EDGE_GRIP, STRIP_STAY, type BinderPeer, type DragHandleOption, type ResizeEdges } from './grid-binder';
 import { buildCommitCommands, cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
 import { SequenceCommand } from './commit';
+import { refusalFor } from './drop-policy';
 import { TAB_STRIP_HEIGHT } from './tabs';
 import {
   addSplitLeaf,
@@ -52,6 +53,7 @@ import {
   type SplitSide,
 } from './split-layout';
 import { ensureDashboardKitStyles } from './styles';
+import { idleTeller } from './idle';
 import { captionKey, captionOfGroup, captionPainted, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
 
 /** Group metadata key the tree persists under. */
@@ -79,6 +81,7 @@ export interface DashboardSplitOptions
     | 'onMemberLeaving'
     | 'nesting'
     | 'onGesture'
+    | 'onIdle'
     | 'onSelect'
     | 'renderCaption'
     | 'onCaptionAction'
@@ -174,8 +177,8 @@ interface Gesture {
   pointerId: number | null;
   /** `canDrop` refused the board under the hand: no target, dimmed, and never "out" (a refusal is not a removal). */
   refused?: boolean;
-  /** `canDrop`'s answers this gesture, per board id. */
-  dropVerdicts?: Map<string, boolean>;
+  /** `canDrop`'s refusals this gesture, per board id (null: it takes the tile). */
+  dropVerdicts?: Map<string, string | null>;
   /** Move: the strip the widget will join as a new tab (0.4.69). */
   strip: { containerId: string; index: number } | null;
   /** Move: the nested board — a tab page, a section — holding the widget for the drop, through its leg (0.4.69). */
@@ -689,14 +692,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     return g.node ? { width: g.node.size.width, height: g.node.size.height } : { width: colW, height: baseRowHeight };
   };
   const refusesDrop = (g: Gesture, to: string, ref: unknown): boolean => {
-    if (!options.canDrop || (g.kind !== 'palette' && ref === selfPeerRef)) return false;
-    const verdicts = (g.dropVerdicts ??= new Map());
-    let ok = verdicts.get(to);
-    if (ok === undefined) {
-      ok = options.canDrop({ nodeId: g.id, from: g.kind === 'palette' ? null : group.id, to }) !== false;
-      verdicts.set(to, ok);
-    }
-    return !ok;
+    const canDrop = options.canDrop;
+    if (!canDrop || (g.kind !== 'palette' && ref === selfPeerRef)) return false;
+    return refusalFor((g.dropVerdicts ??= new Map()), to, () => canDrop({ nodeId: g.id, from: g.kind === 'palette' ? null : group.id, to })) !== null;
   };
   const endStrip = (g: Gesture): void => {
     if (!g.strip) return;
@@ -1029,10 +1027,22 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
 
   // -- commit -----------------------------------------------------------------
 
+  /** Commits sent to the history that have not landed yet (`committing`), as on a grid board. */
+  let landing = 0;
+  /** Tell `onIdle` once nothing is held and nothing is landing. */
+  const idleSoon = idleTeller(() => !disposed && !gesture && landing === 0, options.onIdle);
   const execCommand = (cmd: Command): Promise<unknown> | unknown => {
     try {
-      const r = api.getEngine().commandManager.execute(cmd) as { catch?: (f: () => void) => void };
+      const r = api.getEngine().commandManager.execute(cmd) as { then?: (ok: () => void, fail: () => void) => void; catch?: (f: () => void) => void };
       r?.catch?.(() => undefined);
+      if (typeof r?.then === 'function') {
+        landing++;
+        const done = (): void => {
+          landing--;
+          idleSoon();
+        };
+        r.then(done, done);
+      }
       return r;
     } catch {
       return undefined;
@@ -1079,6 +1089,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   };
 
   const teardownGesture = (g: Gesture): void => {
+    idleSoon(); // every gesture that ran ends here
     if (g.pointerId !== null) {
       try {
         api.container.releasePointerCapture?.(g.pointerId);
@@ -2052,6 +2063,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     fitRows: () => false,
     get busy() {
       return !!gesture;
+    },
+    get committing() {
+      return landing > 0;
     },
     sync(): void {
       if (disposed) return;

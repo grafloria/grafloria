@@ -463,6 +463,19 @@ describe('canDrop in every mode', () => {
     expect(api.getEngine().commandManager.canUndo()).toBe(false);
   });
 
+  it('SPLIT: a SENTENCE refuses as false does — the reason is the refusal, not a yes', async () => {
+    const { api, model } = mount(TABS('split', { canDrop: ({ to }) => (to === 'p1' ? 'This page takes charts only' : true) }));
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const hit = splitStart(tool, model.getNode('nps')!);
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    tool.onPointerUp?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    await settle();
+    expect(model.getGroup('p1')!.members.has('nps')).toBe(false);
+    expect(model.getGroup('main')!.members.has('nps')).toBe(true);
+    expect(leaves(model)).toEqual(['nps', 'side']);
+  });
+
   it('SPLIT: a refused PAGE does not take the widget, and a refusal is never a removal', async () => {
     const onRemoveRequest = jest.fn();
     const { api, model } = mount(TABS('split', { canDrop: ({ to }) => to !== 'p1', binder: { dragOut: 'remove', onRemoveRequest } }));

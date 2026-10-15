@@ -712,6 +712,8 @@ export type {
   DashboardSnapshot,
   DragHandleOption,
   DragGripOptions,
+  DropAnswer,
+  ListMoves,
   DashboardHandle,
   DashboardViewSpec,
   DashboardWidgetSpec,

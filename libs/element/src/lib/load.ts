@@ -493,7 +493,7 @@ export function fromDocument(
     function bindBoard(group: GroupModel, board: PersistedBoard): DashboardGridHandle {
       return board.layout === 'split'
         ? bindDashboardSplit(a as never, group, { ...board })
-        : bindDashboardGrid(a as never, group, { ...board });
+        : bindDashboardGrid(a as never, group, { ...board, ...(board.stack && ctx.listMoves ? { lists: ctx.listMoves(group.id) } : {}) });
     }
     // A loaded board follows the history exactly as an authored one does: an
     // undo re-syncs every binder without the consumer calling refresh().

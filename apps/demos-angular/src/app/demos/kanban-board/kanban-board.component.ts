@@ -96,7 +96,7 @@ export class KanbanBoardComponent {
   private readonly heads = new Map<string, { n: HTMLElement; add: HTMLButtonElement }>();
 
   private readonly cardSpec = (d: CardData): DashboardWidgetSpec =>
-    ({ id: `card-${++this.seq}`, kind: 'card', span: 1, rows: GUESS, resizable: false, data: d as unknown as Record<string, unknown> });
+    ({ id: `card-${++this.seq}`, kind: 'card', title: d.title, span: 1, rows: GUESS, resizable: false, data: d as unknown as Record<string, unknown> });
 
   // A section's inner rows are squeezed into its slab, so the slab is sized in
   // the PARENT's rows: a header of HEAD_ROWS × (ROW + GAP) and inner + HEAD_ROWS
@@ -120,7 +120,13 @@ export class KanbanBoardComponent {
     rowHeight: ROW,
     float: false,
     autoHeight: true,
-    canDrop: ({ to }) => COLUMNS.some((c) => c.id === to) && !this.isFull(to),
+    // The drop policy: cards live in columns, and a column at its WIP limit
+    // takes no more — and says why (the keyboard asks it too).
+    canDrop: ({ to }) => {
+      const col = COLUMNS.find((c) => c.id === to);
+      if (!col) return false;
+      return this.isFull(to) ? `WIP limit of ${col.wip} reached` : true;
+    },
     renderCaption: (w, host) => this.paintHead(w.id, host),
   };
 

@@ -469,6 +469,14 @@ const CSS = `
    hand is over it — and says no, in the refusal colour, when canDrop refused. */
 .grafloria-html-layer > .axdb-slab.axdb-slab--drop { box-shadow: inset 0 0 0 2px var(--axdb-drop-ring, rgba(59, 82, 217, .7)); }
 .grafloria-html-layer > .axdb-slab.axdb-slab--refused { box-shadow: inset 0 0 0 2px var(--axdb-refused-ring, rgba(194, 65, 12, .75)); }
+/* …and WHY, when canDrop answered a sentence: the refused section's title, in
+   the refusal colour, over its caption band (its height is the band's). */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-why {
+  position: absolute; left: 4px; right: 4px; top: 4px; padding: 4px 8px; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center; overflow: hidden; z-index: 1;
+  border-radius: 6px; background: var(--axdb-refused-bg, #c2410c); color: var(--axdb-refused-fg, #fff);
+  font: 600 12px/1.35 system-ui, sans-serif; text-align: center; overflow-wrap: anywhere; pointer-events: none;
+}
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected { z-index: 6; box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
 .grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: none; opacity: 0; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
