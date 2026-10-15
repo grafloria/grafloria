@@ -185,7 +185,8 @@ const stage = document.getElementById('stage');
 let H, api, chrome, seq = 0, listSeq = 0;
 const names = new Map(DATA.LISTS.map((l) => [l.id, l.name]));
 const wips = new Map(DATA.LISTS.filter((l) => l.wip).map((l) => [l.id, l.wip]));
-const cardSpec = (d) => ({ id: `c${++seq}`, kind: 'card', span: 1, rows: GUESS, resizable: false, data: structuredClone(d) });
+// `title` is how the board names a card to a screen reader (a keyboard move says where it went).
+const cardSpec = (d) => ({ id: `c${++seq}`, kind: 'card', title: d.title, span: 1, rows: GUESS, resizable: false, data: structuredClone(d) });
 const listSpec = (id, title, cards) => ({
   id, title, span: 1, rows: Math.max(1, cards.length * GUESS) + HEAD_ROWS + FOOT_ROWS, columns: 1, maxRows: 1,
   pinned: true, movable: 'row', resizable: false, stack: true, background: 'var(--ks-list)',
@@ -454,7 +455,7 @@ function commitDraft() {
   const title = draftText();
   if (!title) return focusDraft();
   const { listId, id } = draft;
-  H.widget(id)?.update({ data: { title, labels: [], members: [], activity: [{ who: ME, at: 0, text: `added this card to ${names.get(listId)}` }] } });
+  H.widget(id)?.update({ title, data: { title, labels: [], members: [], activity: [{ who: ME, at: 0, text: `added this card to ${names.get(listId)}` }] } });
   log(`added ${title} to ${names.get(listId)}`);
   draft = null;
   refreshCounts();
@@ -492,7 +493,7 @@ function applyFilter() {
 
 /* ---- cards: one delegated listener for the face's controls; a click opens the card ------------ */
 let dialog = null;
-function updateCard(id, next) { H.widget(id)?.update({ data: next }); applyFilter(); }
+function updateCard(id, next) { H.widget(id)?.update({ title: next.title, data: next }); applyFilter(); }
 function openCard(id) {
   const d = dataOf(id);
   if (!d || d.draft) return;

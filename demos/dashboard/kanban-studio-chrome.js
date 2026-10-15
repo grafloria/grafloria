@@ -352,7 +352,7 @@ export function buildChrome(appbar, boardbar, o) {
     sheet.setAttribute('aria-label', 'Keyboard shortcuts');
     const x = btn('ks-dlg-x', '', 'close', 'Close');
     sheet.append(x, el('h2', '', 'Keyboard shortcuts'));
-    const rows = [['F', 'Open the filter'], ['Q', 'Show only cards assigned to me'], ['X', 'Clear all filters'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z', 'Redo'], ['Esc', 'Close a dialog or menu'], ['?', 'Show this sheet']];
+    const rows = [['F', 'Open the filter'], ['Q', 'Show only cards assigned to me'], ['X', 'Clear all filters'], ['Ctrl ← →', 'Move the focused card to the next list'], ['Ctrl ↑ ↓', 'Move it up or down its list'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z', 'Redo'], ['Esc', 'Close a dialog or menu'], ['?', 'Show this sheet']];
     const dl = el('dl');
     for (const [k, t] of rows) { const dt = el('dt'); for (const part of k.split(' ')) dt.append(el('kbd', '', part)); dl.append(dt, el('dd', '', t)); }
     sheet.append(dl);
