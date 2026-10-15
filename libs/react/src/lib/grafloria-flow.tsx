@@ -31,6 +31,7 @@ import type {
 } from '@grafloria/renderer';
 import { GrafloriaContext, createGrafloriaStore, useGrafloriaStore } from './context';
 import type { GrafloriaStore } from './context';
+import { useCardData } from './card-data';
 
 /**
  * `<GrafloriaFlow>` — the React wrapper.
@@ -541,11 +542,7 @@ function NodePortalHost({
     [node]
   );
 
-  const data = useMemo(
-    () => ({ ...(node.data ?? {}) }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [node, node.data, dataVersion]
-  );
+  const data = useCardData(node.data, node, dataVersion);
 
   if (!Component) {
     // A `custom: true` node with no matching entry in `nodeTypes` is a caller

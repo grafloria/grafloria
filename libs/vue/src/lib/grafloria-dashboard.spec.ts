@@ -3,7 +3,7 @@
  * The kit's data-first board with `#widget-<kind>` slots — the same idiom as
  * `#node-<type>` on the flow, applied to dashboards.
  */
-import { createApp, defineComponent, h, ref, type App } from 'vue';
+import { createApp, defineComponent, h, onMounted, onUnmounted, ref, type App } from 'vue';
 import { GrafloriaDashboard } from './grafloria-dashboard';
 import type { DashboardViewSpec } from '@grafloria/element';
 import { listTools } from '@grafloria/renderer';
@@ -129,5 +129,64 @@ describe('<GrafloriaDashboard> (Vue) teardown', () => {
       expect(dashTools().length).toBe(before);
     }
     expect(perBoard).toEqual([VIEWS.length, VIEWS.length]);
+  });
+});
+
+// A removed widget's host leaves the board, and what its slot rendered must go
+// with it: unmounted, its hooks run, not left alive in a detached element until
+// the whole board goes. No other card remounts, and a caller's own
+// `options.unmountWidget` still hears the host.
+describe('<GrafloriaDashboard> (Vue) removing a card', () => {
+  let host: HTMLElement;
+  let app: App | null = null;
+  beforeEach(() => { host = document.createElement('div'); document.body.appendChild(host); });
+  afterEach(() => { app?.unmount(); app = null; host.remove(); });
+
+  it("unmounts the removed card's component; the other cards stay mounted", async () => {
+    const life: string[] = [];
+    const heard: Array<[string, HTMLElement]> = [];
+    const Tracked = defineComponent({
+      props: { id: { type: String, required: true } },
+      setup(p) {
+        const clicks = ref(0);
+        onMounted(() => life.push(`mount ${p.id}`));
+        onUnmounted(() => life.push(`unmount ${p.id}`));
+        return () => h('div', { class: 'card', 'data-card': p.id, onClick: () => clicks.value++ }, `${p.id} (${clicks.value})`);
+      },
+    });
+    let handle: any = null;
+    app = createApp(defineComponent({
+      setup: () => () =>
+        h(
+          GrafloriaDashboard,
+          {
+            widgets: [{ id: 'a', kind: 'card', span: 6 }, { id: 'b', kind: 'card', span: 6 }],
+            options: { unmountWidget: (id: string, el: HTMLElement) => heard.push([id, el]) },
+            onReady: (h_: unknown) => (handle = h_),
+          },
+          { 'widget-card': (p: any) => [h(Tracked, { id: p.widget.id })] }
+        ),
+    }));
+    app.mount(host);
+    await flush();
+    const card = (id: string) => host.querySelector(`[data-card="${id}"]`) as HTMLElement | null;
+    card('b')!.click();
+    await flush();
+    expect(card('b')!.textContent).toBe('b (1)');
+    expect([...new Set(life)].sort()).toEqual(['mount a', 'mount b']);
+    const a = host.querySelector('.grafloria-node-host[data-node-id="a"]') as HTMLElement;
+    const cardA = card('a')!;
+    expect(a.contains(cardA)).toBe(true);
+
+    const mountsBefore = life.filter((e) => e.startsWith('mount')).length;
+    handle.widget('a').remove();
+    await flush();
+    expect(life).toContain('unmount a');
+    expect(life).not.toContain('unmount b');
+    expect(life.filter((e) => e.startsWith('mount')).length).toBe(mountsBefore); // nothing remounted
+    expect(a.isConnected).toBe(false);
+    expect(a.contains(cardA)).toBe(false); // Vue took its card out of the host
+    expect(card('b')!.textContent).toBe('b (1)'); // b's state survives
+    expect(heard).toEqual([['a', a]]);
   });
 });

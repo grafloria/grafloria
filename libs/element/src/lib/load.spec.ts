@@ -390,6 +390,22 @@ describe('fromDocument — dashboard', () => {
       { id: 't1', kind: 'table', title: 'Top reps' },
     ]);
   });
+
+  it("releases a removed widget's host to the caller's unmountWidget, as dashboard() does", async () => {
+    const original = mount(DASH_SPEC());
+    const released: Array<[string, HTMLElement]> = [];
+    const spec = fromDocument(save(original.api), { unmountWidget: (id, host) => released.push([id, host]) });
+    const loaded = mount(spec);
+    const k1 = loaded.host.querySelector('.grafloria-node-host[data-node-id="k1"]') as HTMLElement;
+    expect(k1).not.toBeNull();
+    spec.handle.widget('k1')!.remove();
+    await new Promise((r) => setTimeout(r, 0));
+    loaded.api.renderNow();
+    expect(released.map(([id]) => id)).toEqual(['k1']);
+    expect(released[0][1]).toBe(k1);
+    loaded.api.dispose();
+    expect(released.map(([id]) => id)).toEqual(['k1', 't1']);
+  });
 });
 
 // ---------------------------------------------------------------------------

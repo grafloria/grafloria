@@ -289,6 +289,144 @@ describe('render(SPEC, host) — the documented one-liner', () => {
   });
 });
 
+// A framework wrapper mounts a component into each host `renderWidget` paints
+// (a React portal, a Vue or Angular view). With no word from the kit when a
+// host left the board, a removed widget's component stayed mounted in a
+// detached element until the whole board went. Driven through the real
+// render() path: the spec's removeCustomNode is only half of the seam.
+describe('unmountWidget — every host renderWidget painted is released once', () => {
+  const sized = (): HTMLElement => {
+    const el = document.createElement('div');
+    sizeElement(el, 1200, 800);
+    document.body.appendChild(el);
+    return el;
+  };
+  const board = (options: Parameters<typeof render>[2] = {}) => {
+    const paints: Array<[string, HTMLElement]> = [];
+    const released: Array<[string, HTMLElement]> = [];
+    // Whether each host was still in the page when the kit released it.
+    const attached: boolean[] = [];
+    const spec = dashboard({
+      widgets: [
+        { id: 'a', kind: 'kpi', span: 4 },
+        { id: 'b', kind: 'kpi', span: 4 },
+        { id: 'c', kind: 'kpi', span: 4 },
+      ],
+      renderWidget: (w, host) => {
+        paints.push([w.id, host]);
+        host.textContent = w.id;
+      },
+      unmountWidget: (id, host) => {
+        released.push([id, host]);
+        attached.push(host.isConnected);
+      },
+    });
+    const instance = render(spec as never, sized(), options);
+    instance.renderNow();
+    const hostOf = (id: string) => [...paints].reverse().find(([w]) => w === id)![1];
+    return { instance, handle: spec.handle, paints, released, attached, hostOf };
+  };
+
+  it('a removed widget releases its host before it leaves; the others keep theirs', async () => {
+    const { instance, handle, released, attached, hostOf } = board();
+    const b = hostOf('b');
+    handle.widget('b')!.remove();
+    await settle();
+    instance.renderNow();
+    expect(released.map(([id]) => id)).toEqual(['b']);
+    expect(released[0][1]).toBe(b);
+    expect(attached).toEqual([true]); // still in the page when the wrapper unmounts
+    expect(b.isConnected).toBe(false);
+    expect(hostOf('a').isConnected).toBe(true);
+    instance.dispose();
+  });
+
+  it('a held handle to a removed widget paints nothing', async () => {
+    const { instance, handle, paints } = board();
+    const b = handle.widget('b')!;
+    b.remove();
+    await settle();
+    instance.renderNow();
+    const before = paints.length;
+    b.update({ data: { value: 'late' } });
+    b.repaint();
+    expect(paints.length).toBe(before);
+    instance.dispose();
+  });
+
+  it('undo paints a new host; dispose releases every live host once, and none twice', async () => {
+    const { instance, handle, released, hostOf } = board();
+    const first = hostOf('b');
+    handle.widget('b')!.remove();
+    await settle();
+    instance.renderNow();
+    await instance.getEngine().commandManager.undo();
+    instance.renderNow();
+    const second = hostOf('b');
+    expect(second).not.toBe(first);
+    expect(second.isConnected).toBe(true);
+
+    const live: Record<string, HTMLElement> = { a: hostOf('a'), b: second, c: hostOf('c') };
+    instance.dispose();
+    expect(released.map(([id]) => id).sort()).toEqual(['a', 'b', 'b', 'c']);
+    expect(released[0][1]).toBe(first);
+    for (const [id, host] of released.slice(1)) expect(host).toBe(live[id]);
+  });
+
+  it("a caller's own removeCustomNode still hears the host, after the kit", async () => {
+    const order: string[] = [];
+    const { instance, handle, released, hostOf } = board({
+      removeCustomNode: (id, host) => order.push(`caller ${id} ${host === b ? 'b-host' : '?'} ${released.length}`),
+    });
+    const b = hostOf('b');
+    handle.widget('b')!.remove();
+    await settle();
+    instance.renderNow();
+    expect(order).toEqual(['caller b b-host 1']);
+    instance.dispose();
+  });
+
+  // 'destroy' culling drops a host that leaves the camera and paints a new one
+  // when it comes back. A parked tab is off the camera, so a tab switch is the
+  // walk: the wrapper must hear of each dropped host, or every switch leaves a
+  // mounted component behind in an element the renderer threw away.
+  it("'destroy' culling releases a host that leaves the camera; coming back paints a new one", async () => {
+    const paints: Array<[string, HTMLElement]> = [];
+    const released: Array<[string, HTMLElement]> = [];
+    const spec = dashboard({
+      width: 1200,
+      height: 800,
+      views: [
+        { id: 'v1', widgets: [{ id: 'a', kind: 'kpi', span: 4 }] },
+        { id: 'v2', widgets: [{ id: 'd', kind: 'kpi', span: 4 }] },
+      ],
+      renderWidget: (w, host) => void paints.push([w.id, host]),
+      unmountWidget: (id, host) => void released.push([id, host]),
+    });
+    const instance = render(spec as never, sized(), { cullCustomNodes: { mode: 'destroy' } });
+    const frame = async () => {
+      await settle();
+      instance.renderNow();
+    };
+    await frame();
+    const a = paints.find(([id]) => id === 'a')![1];
+    expect(released.filter(([id]) => id === 'a')).toEqual([]);
+
+    spec.handle.showView('v2');
+    await frame();
+    expect(released.filter(([id]) => id === 'a')).toEqual([['a', a]]);
+
+    spec.handle.showView('v1');
+    await frame();
+    const back = paints.filter(([id]) => id === 'a').map(([, host]) => host);
+    expect(back).toHaveLength(2);
+    expect(back[1]).not.toBe(a);
+    expect(back[1].isConnected).toBe(true);
+    instance.dispose();
+    expect(released.filter(([id]) => id === 'a').map(([, host]) => host)).toEqual([a, back[1]]);
+  });
+});
+
 describe('the typed handles (the erTable/umlClass equivalent)', () => {
   it('widget() exposes the live cell as data', () => {
     const { handle } = mount(SIMPLE());

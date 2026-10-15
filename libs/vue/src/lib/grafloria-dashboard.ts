@@ -13,6 +13,9 @@
  * `#widget-<kind>` slots render that widget kind with real Vue — the same
  * idiom as `#node-<type>` on the flow. Kinds without a slot fall back to the
  * kit's built-in painters (kpi / line / bar / donut / funnel / table).
+ * Removing a widget unmounts what its slot rendered; the other cards stay
+ * mounted. An `options.unmountWidget` still hears each host, after the card is
+ * gone.
  */
 import {
   defineComponent,
@@ -30,6 +33,7 @@ import {
   dashboard,
   render as renderSpec,
   defaultWidgetRenderer,
+  teardownInOrder,
   type DashboardHandle,
   type DashboardOptions,
   type DashboardSnapshot,
@@ -72,7 +76,8 @@ export const GrafloriaDashboard = defineComponent({
     const container = ref<HTMLElement | null>(null);
     const handle = shallowRef<DashboardHandle | null>(null);
     let instance: DiagramInstance | null = null;
-    const mounted = new Map<string, MountedWidget>();
+    // Keyed by host: a widget an undo or the camera brings back paints a new one.
+    const mounted = new Map<HTMLElement, MountedWidget>();
 
     const slotFor = (widget: DashboardWidgetSpec) => {
       const s: Slots = slots;
@@ -89,6 +94,14 @@ export const GrafloriaDashboard = defineComponent({
         })),
         entry.element
       );
+    };
+
+    // The host is leaving the board (the widget was removed, or the board
+    // disposed): what its slot rendered there unmounts. A host a built-in
+    // painter drew holds no Vue tree, and rendering null into it does nothing.
+    const unmountWidget = (_id: string, hostEl: HTMLElement): void => {
+      mounted.delete(hostEl);
+      vueRender(null, hostEl);
     };
 
     onMounted(() => {
@@ -108,9 +121,10 @@ export const GrafloriaDashboard = defineComponent({
             return;
           }
           const entry: MountedWidget = { widget, element: hostEl };
-          mounted.set(widget.id, entry);
+          mounted.set(hostEl, entry);
           paintWidget(entry);
         },
+        unmountWidget: teardownInOrder(unmountWidget, props.options.unmountWidget),
         onLayoutChange: (viewId, widgets) => emit('layoutChange', { viewId, widgets }),
       });
 

@@ -344,6 +344,17 @@ export interface DashboardOptions {
    */
   renderWidget?: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
   /**
+   * The twin of `renderWidget`: called once for each host `renderWidget`
+   * painted, just before the board drops it — the widget was removed (by the
+   * API, the user, or an undo of its add), the board was disposed, or, under
+   * `render()`'s `cullCustomNodes: { mode: 'destroy' }`, it left the camera
+   * (a parked tab included). Unmount what `renderWidget` mounted there. A
+   * widget an undo or the camera brings back is painted into a new host, so
+   * every host is painted once and released once; `update()` and `repaint()`
+   * never paint a released host.
+   */
+  unmountWidget?: (widgetId: string, host: HTMLElement) => void;
+  /**
    * The selection changed on a board: the selected id — a widget or a SECTION
    * (container) — or undefined when cleared, and the view it belongs to. A
    * press on a section's empty band selects the section.
@@ -432,6 +443,8 @@ export interface DashboardSpec {
   nodes: Array<Record<string, unknown>>;
   edges: Array<Record<string, unknown>>;
   renderCustomNode: (node: unknown, host: HTMLElement) => void;
+  /** The renderer's teardown seam: releases a widget's host (see `unmountWidget`). */
+  removeCustomNode: (nodeId: string, host: HTMLElement) => void;
   finalize: (api: unknown) => void;
   /** Live handle, populated by finalize(). */
   readonly handle: DashboardHandle;
@@ -458,7 +471,7 @@ export interface DashboardSpec {
  */
 export type DashboardSnapshot = Omit<
   DashboardOptions,
-  'renderWidget' | 'onLayoutChange' | 'views' | 'widgets'
+  'renderWidget' | 'unmountWidget' | 'onLayoutChange' | 'views' | 'widgets'
 > & { views: DashboardViewSpec[] };
 
 /**
@@ -1344,8 +1357,11 @@ export interface DashboardHandleContext {
   boardWidgets: Map<string, DashboardWidgetSpec[]>;
   /** Board id → the VIEW it belongs to (identity for views). */
   viewOfBoard: Map<string, string>;
+  /** Widget id → the host `renderWidget` painted, until it is released (releaseWidgetHost). */
   hosts: Map<string, HTMLElement>;
   renderWidget: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
+  /** See DashboardOptions.unmountWidget. */
+  unmountWidget?: (widgetId: string, host: HTMLElement) => void;
   columns: number;
   gap: number;
   rowHeight: number;
@@ -1441,6 +1457,20 @@ export interface DashboardHandleContext {
    * handler for any board group the model holds without a binder.
    */
   rebindContainer?: (id: string) => void;
+}
+
+/**
+ * A widget host leaves the board for good: the renderer is about to drop it
+ * (`removeCustomNode`, wired by `dashboard()` and `fromDocument()`), or the
+ * board is disposed. The one place a host is forgotten — `update()` and
+ * `repaint()` stop painting into it — and `unmountWidget` hears of it, once.
+ * A host the kit did not hand to `renderWidget` (another painter's, or one
+ * already released) is not the kit's to release.
+ */
+export function releaseWidgetHost(ctx: DashboardHandleContext, id: string, host: HTMLElement): void {
+  if (ctx.hosts.get(id) !== host) return;
+  ctx.hosts.delete(id);
+  ctx.unmountWidget?.(id, host);
 }
 
 /**
@@ -2882,7 +2912,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       for (const id of groups.keys()) model?.removeGroup?.(id);
       groups.clear();
       ctx.boardGroups.clear();
-      ctx.hosts.clear();
+      for (const [id, host] of [...ctx.hosts]) releaseWidgetHost(ctx, id, host);
     },
   };
 
@@ -3190,6 +3220,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     viewOfBoard,
     hosts: new Map<string, HTMLElement>(),
     renderWidget,
+    unmountWidget: options.unmountWidget,
     columns,
     gap,
     rowHeight,
@@ -3259,6 +3290,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       renderWidget(spec, host);
       ctx.autoHeight?.observe(n.id, host);
     },
+    removeCustomNode: (nodeId: string, host: HTMLElement) => releaseWidgetHost(ctx, nodeId, host),
     get handle() {
       return handle;
     },

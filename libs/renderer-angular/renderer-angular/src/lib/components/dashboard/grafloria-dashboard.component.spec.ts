@@ -12,7 +12,7 @@
  *     DashboardHandle; (layoutChange) mirrors the kit's committed gestures
  *   - snapshot() proxies toJSON() — the data-first round trip
  */
-import { Component, signal } from '@angular/core';
+import { Component, input, signal, type OnDestroy, type OnInit } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { GrafloriaDashboardComponent } from './grafloria-dashboard.component';
@@ -169,5 +169,83 @@ describe('<grafloria-dashboard> live switches ([layout] / [sizing] / [static])',
     expect(h.getLayout('main')).toBe('split');
     expect(h.getLayout('other')).toBe('split'); // parked, and switched all the same
     fixture.destroy();
+  });
+});
+
+// A removed widget's host leaves the board, and the view its template rendered
+// must go with it: destroyed, its components' ngOnDestroy run — not left alive
+// in a detached element until the whole board goes. No other card is rebuilt,
+// and a caller's own `unmountWidget` in [options] still hears the host.
+const cardLife: string[] = [];
+
+@Component({
+  selector: 'tracked-card',
+  template: `<div class="tracked" [attr.data-card]="id()" (click)="clicks.set(clicks() + 1)">{{ id() }} ({{ clicks() }})</div>`,
+})
+class TrackedCard implements OnInit, OnDestroy {
+  readonly id = input.required<string>();
+  readonly clicks = signal(0);
+  ngOnInit(): void {
+    cardLife.push(`init ${this.id()}`);
+  }
+  ngOnDestroy(): void {
+    cardLife.push(`destroy ${this.id()}`);
+  }
+}
+
+@Component({
+  imports: [GrafloriaDashboardComponent, GrafloriaWidgetDefDirective, TrackedCard],
+  template: `
+    <grafloria-dashboard
+      style="display:block;width:1200px;height:600px"
+      [widgets]="widgets" [options]="options"
+      (ready)="handle = $event">
+      <ng-template grafloriaWidget="card" let-widget>
+        <tracked-card [id]="widget.id" />
+      </ng-template>
+    </grafloria-dashboard>
+  `,
+})
+class RemoveHost {
+  handle: DashboardHandle | null = null;
+  heard: Array<[string, HTMLElement]> = [];
+  widgets = [
+    { id: 'a', kind: 'card', span: 6 },
+    { id: 'b', kind: 'card', span: 6 },
+  ];
+  options = { unmountWidget: (id: string, host: HTMLElement) => this.heard.push([id, host]) };
+}
+
+describe('<grafloria-dashboard> removing a card', () => {
+  const until = async (ok: () => boolean) => {
+    for (let i = 0; i < 40 && !ok(); i++) await new Promise((r) => setTimeout(r, 25));
+  };
+
+  it("destroys the removed card's view; the other cards stay", async () => {
+    cardLife.length = 0;
+    await TestBed.configureTestingModule({ imports: [RemoveHost] }).compileComponents();
+    const fixture = TestBed.createComponent(RemoveHost);
+    const host = fixture.componentInstance;
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const card = (id: string) => el.querySelector(`.tracked[data-card="${id}"]`) as HTMLElement | null;
+    card('b')!.click();
+    fixture.detectChanges();
+    expect(card('b')!.textContent).toBe('b (1)');
+    expect([...cardLife].sort()).toEqual(['init a', 'init b']);
+    const a = el.querySelector('.grafloria-node-host[data-node-id="a"]') as HTMLElement;
+    const cardA = card('a')!;
+    expect(a.contains(cardA)).toBe(true);
+
+    host.handle!.widget('a')!.remove();
+    await until(() => cardLife.includes('destroy a'));
+    fixture.detectChanges();
+    expect([...cardLife].sort()).toEqual(['destroy a', 'init a', 'init b']);
+    expect(a.isConnected).toBe(false);
+    expect(a.contains(cardA)).toBe(false); // Angular took its card out of the host
+    expect(card('b')!.textContent).toBe('b (1)'); // b's state survives
+    expect(host.heard).toEqual([['a', a]]);
+    fixture.destroy();
+    expect([...cardLife].sort()).toEqual(['destroy a', 'destroy b', 'init a', 'init b']);
   });
 });

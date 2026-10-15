@@ -11,6 +11,7 @@ import type { DashboardSpec } from './dashboard-kit';
 import type { LoadedDiagramSpec } from './load';
 import { registerNodeType, registeredNodeTypes, getNodeType } from './node-type-registry';
 import type { NodeTypeRenderer } from './node-type-registry';
+import { teardownInOrder } from './teardown';
 
 /**
  * `Grafloria` — the Mermaid-shaped top-level API.
@@ -61,6 +62,8 @@ export interface KitDiagramSpec {
   nodes: Array<Record<string, unknown>>;
   edges: Array<Record<string, unknown>>;
   renderCustomNode?: (node: unknown, host: HTMLElement) => void;
+  /** Called before a custom node's host is removed (dashboard(): releases a widget's host). */
+  removeCustomNode?: (nodeId: string, host: HTMLElement) => void;
   finalize?: (api: unknown) => void;
 }
 
@@ -125,6 +128,15 @@ export function render(
   // caller's explicit options still win, but for a key hook, which both keep.
   const fromSpec = (parsed as { renderOptions?: Partial<RenderOptions> }).renderOptions ?? {};
   const keyboard = joinKeyboard(fromSpec.keyboard, options.keyboard);
+
+  // Teardown is not a choice between painters: a kit spec releases the hosts
+  // it painted (dashboard() tells `unmountWidget`) whoever else listens, and a
+  // caller's own `removeCustomNode` still runs after it (teardownInOrder).
+  const removeCustomNode = teardownInOrder(
+    (parsed as { removeCustomNode?: RenderOptions['removeCustomNode'] }).removeCustomNode,
+    options.removeCustomNode
+  );
+
   const instance = createDiagram(element, {
     ...fromSpec,
     ...options,
@@ -143,6 +155,7 @@ export function render(
       options.renderCustomNode ??
       (parsed as { renderCustomNode?: RenderOptions['renderCustomNode'] }).renderCustomNode ??
       ((node, host) => getNodeType(node.type)?.(node, host)),
+    ...(removeCustomNode ? { removeCustomNode } : {}),
   });
 
   // Diagram-kit specs (erDiagram/umlDiagram) carry a `finalize(api)` for the

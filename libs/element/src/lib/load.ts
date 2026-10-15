@@ -89,7 +89,7 @@ import {
   type DashboardHandle,
   type DashboardHandleContext,
   type DashboardViewSpec,
-  type DashboardWidgetSpec, attachTabsRuntime } from './dashboard-kit/dashboard';
+  type DashboardWidgetSpec, attachTabsRuntime, releaseWidgetHost } from './dashboard-kit/dashboard';
 
 /**
  * Anything `DiagramSerializer.deserialize()` accepts, or the JSON string of it:
@@ -109,6 +109,8 @@ export interface FromDocumentOptions {
    * be RELOADED with it, or the reload silently drops the app's chrome.
    */
   renderWidget?: WidgetRenderer;
+  /** The twin of `renderWidget`, as `dashboard({ unmountWidget })` takes it. */
+  unmountWidget?: (widgetId: string, host: HTMLElement) => void;
   /** Full override of the custom-node painter. Outranks everything. */
   renderCustomNode?: (node: NodeModel, host: HTMLElement) => void;
   /**
@@ -124,6 +126,8 @@ export interface LoadedDiagramSpec {
   nodes: NodeModel[];
   edges: LinkModel[];
   renderCustomNode: (node: NodeModel, host: HTMLElement) => void;
+  /** The renderer's teardown seam: releases a widget's host (see `unmountWidget`). */
+  removeCustomNode: (nodeId: string, host: HTMLElement) => void;
   /**
    * Puts back what `nodes`/`edges` do not carry — groups, whiteboard strokes,
    * kit wiring — on the mounted instance. `render()` calls it for you.
@@ -333,6 +337,7 @@ export function fromDocument(
     viewOfBoard,
     hosts: new Map<string, HTMLElement>(),
     renderWidget: paintWidget,
+    unmountWidget: options.unmountWidget,
     columns: firstBoard?.columns ?? 12,
     gap: firstBoard?.gap ?? 8,
     rowHeight: firstBoard?.baseRowHeight ?? 130,
@@ -504,6 +509,7 @@ export function fromDocument(
     nodes,
     edges: model.getLinks(),
     renderCustomNode,
+    removeCustomNode: (nodeId: string, host: HTMLElement) => releaseWidgetHost(ctx, nodeId, host),
     finalize,
     model,
     boards,

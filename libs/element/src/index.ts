@@ -20,6 +20,9 @@ export { GrafloriaFlowElement, defineGrafloriaFlow, GRAFLORIA_EVENTS } from './l
 
 export { Grafloria, render, renderStatic } from './lib/grafloria';
 export type { DiagramSpec, RenderSpec, RenderOptions } from './lib/grafloria';
+// The teardown order rule (the kit's hook first, then the caller's; both run):
+// render() and the framework dashboards compose their hooks through it.
+export { teardownInOrder } from './lib/teardown';
 
 // The LOAD front door — the other half of `DiagramSerializer.serialize()`.
 // `render(fromDocument(json), host)` is the one-liner; see lib/load.ts for why

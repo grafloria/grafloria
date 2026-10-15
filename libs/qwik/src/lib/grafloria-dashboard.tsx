@@ -13,21 +13,20 @@
  * `widgetTypes` maps a widget `kind` to a Qwik component — the same idiom (and
  * the same separate-container caveat) as `nodeTypes` on the flow. Kinds with no
  * entry fall back to the kit's built-in painters (kpi / line / bar / donut /
- * funnel / table).
+ * funnel / table). Removing a widget unmounts its component; the other cards
+ * stay mounted. An `options.unmountWidget` still hears each host, after the
+ * card is gone.
  */
 import {
   component$,
   noSerialize,
-  render as qwikRender,
   useSignal,
   useVisibleTask$,
-  type Component,
   type NoSerialize,
   type QRL,
 } from '@builder.io/qwik';
 import {
   dashboard,
-  defaultWidgetRenderer,
   render as renderSpec,
   type DashboardHandle,
   type DashboardOptions,
@@ -35,15 +34,10 @@ import {
   type DashboardWidgetSpec,
 } from '@grafloria/element';
 import type { DiagramInstance } from '@grafloria/renderer';
+import { widgetMounts, type WidgetTypes } from './dashboard-widgets';
 import { MOUNT_EAGERLY } from './visible-task-options';
 
-/** Props a custom widget component receives. */
-export interface WidgetProps<TData = Record<string, unknown>> {
-  widget: DashboardWidgetSpec;
-  data: TData;
-}
-
-export type WidgetTypes = Record<string, Component<WidgetProps<never>>>;
+export type { WidgetProps, WidgetTypes } from './dashboard-widgets';
 
 export interface GrafloriaDashboardProps {
   views?: DashboardViewSpec[];
@@ -80,8 +74,7 @@ export const GrafloriaDashboard = component$<GrafloriaDashboardProps>((props) =>
     const container = containerRef.value;
     if (!container) return;
 
-    const widgetTypes = props.widgetTypes;
-    const mounted = new Map<string, { cleanup(): void }>();
+    const cards = widgetMounts(props.widgetTypes, props.options?.unmountWidget);
 
     const spec = dashboard({
       ...props.options,
@@ -90,21 +83,8 @@ export const GrafloriaDashboard = component$<GrafloriaDashboardProps>((props) =>
       ...(props.static !== undefined ? { static: props.static } : {}),
       ...(props.views ? { views: props.views } : {}),
       ...(!props.views && props.widgets ? { widgets: props.widgets } : {}),
-      renderWidget: (widget, hostEl) => {
-        const Cmp = widget.kind ? widgetTypes?.[widget.kind] : undefined;
-        if (!Cmp) {
-          defaultWidgetRenderer(widget, hostEl);
-          return;
-        }
-        // Same mechanism and same caveat as the flow's custom nodes: Qwik's
-        // `render()` mounts a SEPARATE container, so keep widgets
-        // self-contained and feed them through `widget.data`.
-        return qwikRender(hostEl, (
-          <Cmp widget={widget} data={(widget.data ?? {}) as never} />
-        ) as never).then((result) => {
-          mounted.set(widget.id, result);
-        });
-      },
+      renderWidget: cards.renderWidget,
+      unmountWidget: cards.unmountWidget,
       onLayoutChange: (viewId, widgets) => {
         void props.onLayoutChange$?.({ viewId, widgets });
       },
@@ -119,8 +99,7 @@ export const GrafloriaDashboard = component$<GrafloriaDashboardProps>((props) =>
     void props.onReady$?.(spec.handle);
 
     cleanup(() => {
-      for (const entry of mounted.values()) entry.cleanup();
-      mounted.clear();
+      // The board releases every widget host as it goes, so each card unmounts.
       instance.dispose();
       handleRef.value = undefined;
     });

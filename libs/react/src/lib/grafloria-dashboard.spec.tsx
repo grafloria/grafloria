@@ -7,7 +7,7 @@
  * and context work) — the exact `nodeTypes` idiom, applied to boards.
  */
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { StrictMode, useState } from 'react';
+import { StrictMode, memo, useEffect, useState } from 'react';
 import { listTools } from '@grafloria/renderer';
 import { GrafloriaDashboard } from './grafloria-dashboard';
 import type { GrafloriaDashboardProps, WidgetProps } from './grafloria-dashboard';
@@ -82,6 +82,174 @@ describe('<GrafloriaDashboard>', () => {
     await waitFor(() => expect(screen.getByTestId('w-note')).toBeTruthy());
     unmount();
     expect(document.querySelector('[data-testid="w-note"]')).toBeNull();
+  });
+});
+
+/**
+ * After mount, data reaches a board through the handle: `widget(id).update()`
+ * and `repaint()`. The kit paints again into the SAME host, handing back the
+ * same spec object, so the wrapper must re-render that one portal on every
+ * paint. The card is re-rendered, not remounted (its state survives), the board
+ * is not rebuilt, and a card the paint did not touch does not render at all.
+ * Each paint hands the card a new `data` object, so a `React.memo` card follows
+ * too — including a `repaint()` after its data was changed in place.
+ */
+describe('<GrafloriaDashboard> widget components follow update() and repaint()', () => {
+  type CardData = { title: string; count?: number };
+  const renders: Record<string, number> = {};
+  function Card({ widget, data }: WidgetProps<CardData>) {
+    renders[widget.id] = (renders[widget.id] ?? 0) + 1;
+    const [clicks, setClicks] = useState(0);
+    return (
+      <div data-testid={`card-${widget.id}`} onClick={() => setClicks((n) => n + 1)}>
+        {widget.title ? `${widget.title}: ` : ''}
+        {data.title}
+        {data.count !== undefined ? ` · ${data.count}` : ''} ({clicks})
+      </div>
+    );
+  }
+  const MemoCard = memo(Card);
+  const text = (id: string) => screen.getByTestId(`card-${id}`).textContent;
+
+  // Fresh specs per mount: update() writes into the spec it was given.
+  const mount = async (component: typeof Card | typeof MemoCard, options: GrafloriaDashboardProps['options'] = {}) => {
+    let handle: DashboardHandle | undefined;
+    const onReady = jest.fn((h: DashboardHandle) => (handle = h));
+    const r = render(
+      <GrafloriaDashboard
+        widgets={[
+          { id: 'a', kind: 'card', span: 6, data: { title: 'Draft' } },
+          { id: 'b', kind: 'card', span: 6, data: { title: 'Backlog' } },
+        ]}
+        widgetTypes={{ card: component as never }}
+        options={{ width: 1200, height: 600, ...options }}
+        onReady={onReady}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('card-a')).toBeTruthy());
+    return { ...r, handle: handle!, onReady };
+  };
+
+  it('update({ data }) reaches the card, which keeps its state, on the same board', async () => {
+    const { container, handle, onReady } = await mount(Card);
+    const host = container.querySelector('[data-node-id="a"]') as HTMLElement;
+    act(() => screen.getByTestId('card-a').click());
+    expect(text('a')).toBe('Draft (1)');
+
+    act(() => handle.widget('a')!.update({ data: { title: 'Approved' } }));
+    await waitFor(() => expect(text('a')).toBe('Approved (1)'));
+    act(() => handle.widget('a')!.update({ data: { title: 'Approved', count: 3 } }));
+    await waitFor(() => expect(text('a')).toBe('Approved · 3 (1)'));
+
+    // Not remounted: one onReady, the same host, the card still inside it.
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-node-id="a"]')).toBe(host);
+    expect(host.contains(screen.getByTestId('card-a'))).toBe(true);
+    expect(text('b')).toBe('Backlog (0)');
+  });
+
+  it('a React.memo card follows update({ title }) and repaint() after an in-place change', async () => {
+    const { handle } = await mount(MemoCard);
+    act(() => handle.widget('a')!.update({ title: 'Sprint 4' }));
+    await waitFor(() => expect(text('a')).toBe('Sprint 4: Draft (0)'));
+
+    (handle.widget('a')!.spec.data as CardData).count = 7;
+    act(() => handle.widget('a')!.repaint());
+    await waitFor(() => expect(text('a')).toBe('Sprint 4: Draft · 7 (0)'));
+  });
+
+  it('updating one card renders no other card', async () => {
+    const { handle } = await mount(MemoCard);
+    const before = renders['b'];
+    act(() => handle.widget('a')!.update({ data: { title: 'Approved' } }));
+    await waitFor(() => expect(text('a')).toBe('Approved (0)'));
+    expect(renders['b']).toBe(before);
+  });
+
+  // A removed widget's host leaves the board, and its card must go with it:
+  // unmounted, its effects cleaned up — not left running in a detached element
+  // until the whole board goes. No other card remounts.
+  it('removing a card unmounts its component; the other cards stay mounted', async () => {
+    const life: string[] = [];
+    function Tracked(props: WidgetProps<CardData>) {
+      const { id } = props.widget;
+      useEffect(() => {
+        life.push(`mount ${id}`);
+        return () => void life.push(`unmount ${id}`);
+      }, [id]);
+      return <Card {...props} />;
+    }
+    const { container, handle } = await mount(Tracked);
+    act(() => screen.getByTestId('card-b').click());
+    expect([...life].sort()).toEqual(['mount a', 'mount b']);
+    const host = container.querySelector('[data-node-id="a"]') as HTMLElement;
+    const card = screen.getByTestId('card-a');
+    expect(host.contains(card)).toBe(true);
+
+    act(() => handle.widget('a')!.remove());
+    await waitFor(() => expect(life).toContain('unmount a'));
+    expect(host.isConnected).toBe(false);
+    expect(host.contains(card)).toBe(false); // React took it out of the host
+    expect([...life].sort()).toEqual(['mount a', 'mount b', 'unmount a']);
+    expect(text('b')).toBe('Backlog (1)'); // b never remounted: its state survives
+  });
+
+  it("a caller's own options.unmountWidget still hears a removed card's host", async () => {
+    const heard: Array<[string, HTMLElement]> = [];
+    const { container, handle } = await mount(Card, { unmountWidget: (id, host) => void heard.push([id, host]) });
+    const host = container.querySelector('[data-node-id="a"]') as HTMLElement;
+    act(() => handle.widget('a')!.remove());
+    await waitFor(() => expect(screen.queryByTestId('card-a')).toBeNull());
+    expect(heard).toEqual([['a', host]]);
+  });
+
+  it('a card removed and brought back by Ctrl+Z is painted into its new host', async () => {
+    const { container, handle } = await mount(Card);
+    act(() => handle.widget('a')!.remove());
+    await waitFor(() => expect(container.querySelector('[data-node-id="a"]')).toBeNull());
+    const other = container.querySelector('[data-node-id="b"]') as HTMLElement;
+    act(() => {
+      other.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', ctrlKey: true, bubbles: true, cancelable: true }));
+    });
+    await waitFor(() => expect(handle.widget('a')).toBeDefined());
+    const host = await waitFor(() => container.querySelector('[data-node-id="a"]') as HTMLElement);
+    await waitFor(() => expect(host.textContent).toBe('Draft (0)'));
+  });
+
+  // `update({ kind })` can hand a widget from its component to a built-in
+  // painter and back. The painter empties the host, so it paints once React
+  // has taken the card out; and the card replaces the painter's markup.
+  it('update({ kind }) hands a card to a built-in painter and back, and the board keeps working', async () => {
+    const { container, handle, unmount } = await mount(Card);
+    const host = () => container.querySelector('[data-node-id="a"]') as HTMLElement;
+    act(() => handle.widget('a')!.update({ kind: 'kpi', data: { label: 'Revenue', value: '$6.8M' } }));
+    await waitFor(() => expect(host().textContent).toBe('Revenue$6.8M'));
+    expect(screen.queryByTestId('card-a')).toBeNull();
+    // The next paint of another card renders the board again.
+    act(() => handle.widget('b')!.update({ data: { title: 'Doing' } }));
+    await waitFor(() => expect(text('b')).toBe('Doing (0)'));
+    act(() => handle.widget('a')!.update({ kind: 'card', data: { title: 'Back' } }));
+    await waitFor(() => expect(host().textContent).toBe('Back (0)'));
+    unmount();
+  });
+
+  it('kinds switched twice in one go end on the last one', async () => {
+    const { container, handle } = await mount(Card);
+    const host = () => container.querySelector('[data-node-id="a"]') as HTMLElement;
+    const settle = () => act(() => new Promise((r) => setTimeout(r, 30)));
+    act(() => screen.getByTestId('card-a').click());
+    act(() => {
+      handle.widget('a')!.update({ kind: 'kpi', data: { label: 'Revenue', value: '$1' } });
+      handle.widget('a')!.update({ kind: 'card', data: { title: 'Kept' } });
+    });
+    await settle();
+    expect(host().textContent).toBe('Kept (1)'); // never taken out: its state survives
+    act(() => {
+      handle.widget('a')!.update({ kind: 'kpi', data: { label: 'Revenue', value: '$2' } });
+      handle.widget('a')!.update({ kind: 'kpi', data: { label: 'Profit', value: '$3' } });
+    });
+    await settle();
+    expect(host().textContent).toBe('Profit$3');
   });
 });
 

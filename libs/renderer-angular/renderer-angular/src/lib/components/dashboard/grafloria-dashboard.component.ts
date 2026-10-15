@@ -20,6 +20,7 @@ import {
   dashboard,
   render,
   defaultWidgetRenderer,
+  teardownInOrder,
   type DashboardHandle,
   type DashboardOptions,
   type DashboardSnapshot,
@@ -48,6 +49,10 @@ import {
  *
  * `snapshot()` returns `toJSON()` — feed it back to `[views]`/`[options]` to
  * rebuild the identical board (the kit's round-trip contract).
+ *
+ * Removing a widget destroys the views its template rendered; the other cards
+ * stay. An `[options]` `unmountWidget` still hears each host, after the card is
+ * gone.
  */
 @Component({
   selector: 'grafloria-dashboard',
@@ -91,7 +96,8 @@ export class GrafloriaDashboardComponent implements AfterViewInit, OnDestroy {
   private readonly vcr = inject(ViewContainerRef);
   private instance?: DiagramInstance;
   private handle?: DashboardHandle;
-  private readonly embedded: EmbeddedViewRef<GrafloriaWidgetTemplateContext>[] = [];
+  /** The template views each widget host holds, until the kit releases the host. */
+  private readonly embedded = new Map<HTMLElement, EmbeddedViewRef<GrafloriaWidgetTemplateContext>[]>();
 
   constructor() {
     // [(activeView)] → handle.showView; the boot value is applied on mount.
@@ -136,6 +142,7 @@ export class GrafloriaDashboardComponent implements AfterViewInit, OnDestroy {
       ...(this.views() ? { views: this.views() } : {}),
       ...(!this.views() && this.widgets() ? { widgets: this.widgets() } : {}),
       renderWidget: (widget, host) => this.paintWidget(widget, host),
+      unmountWidget: teardownInOrder((_id: string, host: HTMLElement) => this.releaseHost(host), this.options().unmountWidget),
       onLayoutChange: (viewId, widgets) => this.layoutChange.emit({ viewId, widgets }),
     });
     this.instance = render(spec, this.hostRef.nativeElement);
@@ -180,12 +187,24 @@ export class GrafloriaDashboardComponent implements AfterViewInit, OnDestroy {
     wrapper.style.cssText = 'width:100%;height:100%';
     for (const node of view.rootNodes as Node[]) wrapper.appendChild(node);
     host.replaceChildren(wrapper);
-    this.embedded.push(view);
+    const views = this.embedded.get(host);
+    if (views) views.push(view);
+    else this.embedded.set(host, [view]);
+  }
+
+  /**
+   * The host is leaving the board (the widget was removed, or the board
+   * disposed): the views its template rendered there are destroyed, so their
+   * components' `ngOnDestroy` runs. A widget an undo brings back paints a new
+   * host.
+   */
+  private releaseHost(host: HTMLElement): void {
+    for (const view of this.embedded.get(host) ?? []) view.destroy();
+    this.embedded.delete(host);
   }
 
   ngOnDestroy(): void {
-    for (const view of this.embedded) view.destroy();
-    this.embedded.length = 0;
+    for (const host of [...this.embedded.keys()]) this.releaseHost(host);
     this.instance?.dispose();
     this.instance = undefined;
     this.handle = undefined;
