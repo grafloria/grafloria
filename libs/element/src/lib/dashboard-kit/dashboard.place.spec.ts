@@ -368,7 +368,7 @@ describe('place — the history', () => {
     expect(packed(handle, ['d', 'b', 'c'])).toBe(true);
   });
 
-  it('…and that includes a page answering the drop from onLayoutChange, which fires as the commit starts', async () => {
+  it('…and a page answering the drop from onLayoutChange: the report waits until the drop has landed, so the answer is taken', async () => {
     const answers: string[] = [];
     let h: DashboardHandle | undefined;
     const onLayoutChange = () => {
@@ -377,10 +377,12 @@ describe('place — the history', () => {
     const { model, handle } = mount(LISTS({ onLayoutChange }));
     h = handle;
     dragAcross(model, 'L1', 'a', 'L3');
-    expect(answers).toEqual(['refused']);
+    expect(answers).toEqual([]); // not while the drop is still landing
     await settle();
-    expect(orderOf(model, handle, 'L1')).toEqual(['b', 'c']);
-    expect(packed(handle, ['b', 'c'])).toBe(true);
+    expect(answers).toEqual(['added']);
+    expect(orderOf(model, handle, 'L3')).toEqual(['a']);
+    expect(orderOf(model, handle, 'L1')).toEqual(['n', 'b', 'c']);
+    expect(packed(handle, ['n', 'b', 'c'])).toBe(true);
   });
 
   it('answers false while an undoable call is still landing — and that call is still reported', async () => {

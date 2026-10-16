@@ -897,3 +897,123 @@ describe('lists that hug their cards', () => {
     expect(slabRows(handle, 'L2')).toBeGreaterThan(0);
   });
 });
+
+/**
+ * A SERVER-OWNED BOARD saves each report as a request. Atloria (on 0.8.0) saw a
+ * drop reported twice: first a PARTIAL layout — the held card still in its own
+ * list, at the place the hand last held it there, while that list's commit was
+ * landing — and ~30 ms later the real move. It happened when a card on another
+ * list changed height during the drag (autoHeight re-fits it, as layout), so
+ * the reporter's diff saw "news" at the instant of the release.
+ */
+describe('onLayoutChange reports a settled layout', () => {
+  const LISTS = (extra: Partial<DashboardOptions> = {}) =>
+    dashboard({
+      columns: 12, gap: 8, width: 1200, height: 800, sizing: 'grow', rowHeight: 8, float: false,
+      widgets: ['A', 'B', 'C'].map((id) => ({
+        id, span: 4, rows: 24, columns: 1, maxRows: 24, pinned: true, stack: true,
+        widgets: (({ A: ['a1', 'a2', 'a3'], B: ['b1'], C: ['c1'] }) as Record<string, string[]>)[id]!.map((w) => ({ id: w, kind: 'card', span: 1, rows: 3 })),
+      })),
+      ...extra,
+    });
+  /** Each list's cards, top to bottom, as a report gives them. */
+  const lists = (widgets: DashboardWidgetSpec[]) =>
+    Object.fromEntries(widgets.map((l) => [l.id, [...(l.widgets ?? [])].sort((p, q) => (p.y ?? 0) - (q.y ?? 0)).map((w) => w.id)]));
+  /** A hand drag that goes by `via` (in its own list) on to `to`; `during` runs while the card is held. */
+  const dragVia = (model: DiagramModel, from: string, id: string, via: { x: number; y: number }, to: { x: number; y: number }, during: () => void) => {
+    const tool = toolOf(from);
+    const hit = { node: model.getNode(id)!, empty: false };
+    const a = centre(model, id);
+    const path = (p: { x: number; y: number }, q: { x: number; y: number }) => {
+      for (let i = 1; i <= 6; i++) tool.onPointerMove?.(tev('move', p.x + ((q.x - p.x) * i) / 6, p.y + ((q.y - p.y) * i) / 6), hit);
+    };
+    tool.onPointerDown?.(tev('down', a.x, a.y), hit);
+    tool.onPointerMove?.(tev('move', a.x + 4, a.y + 20), hit);
+    path(a, via);
+    during();
+    path(via, to);
+    tool.onPointerMove?.(tev('move', to.x + 1, to.y + 1), hit);
+    tool.onPointerUp?.(tev('up', to.x + 1, to.y + 1), hit);
+  };
+
+  it('a card dropped on another list while a third list re-fits a card: ONE report, the card in its new list', async () => {
+    const reports: Record<string, string[]>[] = [];
+    const { model, handle } = mount(LISTS({ onLayoutChange: (_v, widgets) => reports.push(lists(widgets)) }));
+    const C = model.getGroup('C')!;
+    // by a3 first (the hand reorders A under it), then to C's bottom; meanwhile b1 grows on B
+    dragVia(model, 'A', 'a1', centre(model, 'a3'), { x: C.position.x + C.size!.width / 2, y: C.position.y + C.size!.height - 30 }, () => {
+      expect((handle.binderOf('B') as DashboardGridHandle).fitRows!('b1', 6)).toBe(true);
+    });
+    await settle();
+    await settle();
+    expect(reports).toEqual([{ A: ['a2', 'a3'], B: ['b1'], C: ['c1', 'a1'] }]);
+    expect(handle.widget('b1')!.cell!.h).toBe(6); // the re-fit is in that one report
+  });
+
+  const bottomOf = (model: DiagramModel, id: string) => {
+    const g = model.getGroup(id)!;
+    return { x: g.position.x + g.size!.width / 2, y: g.position.y + g.size!.height - 30 };
+  };
+
+  it('a plain drop, with nothing else going on, is still reported exactly once', async () => {
+    const reports: Record<string, string[]>[] = [];
+    const { model } = mount(LISTS({ onLayoutChange: (_v, widgets) => reports.push(lists(widgets)) }));
+    await drag(model, 'A', 'a1', bottomOf(model, 'C'));
+    await settle();
+    expect(reports).toEqual([{ A: ['a2', 'a3'], B: ['b1'], C: ['c1', 'a1'] }]);
+  });
+
+  it('isSettled(): false while a card is held and while its drop lands; true in the report and after it', async () => {
+    let h: DashboardHandle | undefined;
+    const inReport: boolean[] = [];
+    const { model, handle } = mount(LISTS({ onLayoutChange: () => inReport.push(h!.isSettled()) }));
+    h = handle;
+    expect(handle.isSettled()).toBe(true);
+    let held: boolean | undefined;
+    dragVia(model, 'A', 'a1', centre(model, 'a2'), bottomOf(model, 'C'), () => {
+      held = handle.isSettled();
+    });
+    expect(held).toBe(false);
+    expect(handle.isSettled()).toBe(false); // let go, the drop still landing
+    await settle();
+    await settle();
+    expect(handle.isSettled()).toBe(true);
+    expect(inReport).toEqual([true]);
+  });
+
+  it('a write refused while a drop lands: the drop is reported first, then onIdle, and the write made then is not reported', async () => {
+    const seen: string[] = [];
+    let h: DashboardHandle | undefined;
+    const { model, handle } = mount(
+      LISTS({
+        onLayoutChange: (_v, widgets) => seen.push(`report C=${lists(widgets)['C']!.join(',')}`),
+        onIdle: () => {
+          seen.push('idle');
+          seen.push(h!.addWidget({ id: 'n', kind: 'card', span: 1, rows: 3 }, 'B', { index: 0, history: false }) ? 'added' : 'refused');
+        },
+      })
+    );
+    h = handle;
+    dragVia(model, 'A', 'a1', centre(model, 'a2'), bottomOf(model, 'C'), () => undefined);
+    expect(handle.widget('b1')!.remove({ history: false })).toBe(false); // the drop is still landing
+    await settle();
+    await settle();
+    expect(seen).toEqual(['report C=c1,a1', 'idle', 'added']);
+    expect(model.getGroup('B')!.members.has('n')).toBe(true);
+  });
+
+  it('a history-free write in the moment after the drop lands, before its report: the drop is reported first, the write never', async () => {
+    const reports: Record<string, string[]>[] = [];
+    const { model, handle } = mount(LISTS({ onLayoutChange: (_v, widgets) => reports.push(lists(widgets)) }));
+    dragVia(model, 'A', 'a1', centre(model, 'a2'), bottomOf(model, 'C'), () => undefined);
+    const landing = () => ['A', 'B', 'C'].some((id) => (handle.binderOf(id) as DashboardGridHandle).committing);
+    for (let i = 0; i < 50 && landing(); i++) await Promise.resolve();
+    expect(landing()).toBe(false);
+    expect(handle.isSettled()).toBe(false); // landed, its report not made yet
+    expect(reports).toEqual([]);
+    expect(await handle.place('b1', 'A', 0, { history: false })).toBe(true);
+    await settle();
+    expect(reports).toEqual([{ A: ['a2', 'a3'], B: ['b1'], C: ['c1', 'a1'] }]);
+    expect(lists(handle.toJSON().views[0]!.widgets)).toEqual({ A: ['b1', 'a2', 'a3'], B: [], C: ['c1', 'a1'] });
+  });
+});

@@ -373,7 +373,14 @@ export interface DashboardOptions {
   onCaptionAction?: (sectionId: string, actionId: string, viewId: string) => void;
   /** A tab container switched pages: the container, the page now showing, the view. */
   onTabChange?: (containerId: string, pageId: string, viewId: string) => void;
-  /** Fires after any committed gesture, with the view whose layout changed. */
+  /**
+   * Fires after any committed gesture, with the view whose layout changed —
+   * once the board has SETTLED: nothing held, nothing still landing in the
+   * history. A drop's commit lands a few microtasks after the release; a
+   * layout read before then holds part of it (the card still in its old list,
+   * where the hand last held it there), so the report waits and then reports
+   * the whole change once. A page may save each report as it comes.
+   */
   onLayoutChange?: (viewId: string, widgets: DashboardWidgetSpec[]) => void;
   /** `autoHeight` for every widget that does not say otherwise (default false). */
   autoHeight?: boolean;
@@ -419,7 +426,11 @@ export interface DashboardOptions {
    * `widget.remove` with `history: false`) is refused while a card is held or
    * a step is still being saved. After such a refusal this fires once, as soon
    * as nothing is held and nothing is saving, so the page makes its write
-   * again then instead of polling. It fires only after a refusal.
+   * again then instead of polling. It fires only after a refusal for that
+   * reason, and after the layout the person's gesture made is reported
+   * (`onLayoutChange` first, then this). A write refused while the board
+   * `isSettled()` — an unknown widget or board, a section, a tab container
+   * or a split board — is refused for good: no `onIdle` follows it.
    */
   onIdle?: () => void;
   /**
@@ -688,6 +699,13 @@ export interface DashboardHandle {
    * call site is a named gap in this API, not a normal way to drive a board.
    */
   binderOf(viewId?: string): DashboardGridHandle | undefined;
+  /**
+   * Has the board SETTLED? Nothing held on any board, no step still landing
+   * in the history, and every layout change already reported through
+   * `onLayoutChange`. A write from code made now is not refused for being
+   * busy, and a refused one will not be taken later either.
+   */
+  isSettled(): boolean;
   dispose(): void;
 }
 
@@ -2238,12 +2256,23 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     };
   };
 
-  // ONE reporter for every path that changes a layout (D3). Diff-based: a
-  // pointer commit reports synchronously, the history event that follows finds
-  // nothing new and stays quiet.
+  // ONE reporter for every path that changes a layout (D3). Diff-based, and
+  // SETTLED: while anything is held or a step is still landing (`busy()`), a
+  // layout read now can hold part of a step — a card released over another
+  // list is still in its own until the drop's commit lands, a few microtasks
+  // later — and a change made meanwhile elsewhere (an autoHeight re-fit) makes
+  // that partial read look like news. So the report is owed, not made, and
+  // the board reports once when it settles (`settleSoon`).
   const lastReported = new Map<string, string>();
+  let reportOwed = false;
   const reportChanged = (): void => {
     if (!ctx.onLayoutChange || !ctx.apiRef) return;
+    if (busy()) {
+      reportOwed = true;
+      settleSoon();
+      return;
+    }
+    reportOwed = false;
     for (const v of handle.toJSON().views) {
       const key = JSON.stringify(v.widgets);
       if (lastReported.get(v.id) === key) continue;
@@ -2344,14 +2373,23 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
    * handle's own settles, once nothing anywhere is held or landing.
    */
   let owedIdle = false;
-  const idleSoon = idleTeller(
-    () => owedIdle && !!ctx.apiRef && !busy(),
+  /**
+   * The board settled (a microtask after a board or a step of the handle's own
+   * does): the owed report first — the person's change, reported once and
+   * whole — then the owed `onIdle`, so a page that writes on `onIdle` writes
+   * after it has the person's change.
+   */
+  const settleSoon = idleTeller(
+    () => (owedIdle || reportOwed) && !!ctx.apiRef && !busy(),
     () => {
-      owedIdle = false;
-      ctx.onIdle?.();
+      if (reportOwed) reportChanged();
+      if (owedIdle) {
+        owedIdle = false;
+        ctx.onIdle?.();
+      }
     }
   );
-  ctx.boardIdle = idleSoon;
+  ctx.boardIdle = settleSoon;
 
   /**
    * The handle's undoable steps sent to the history and not landed yet. The
@@ -2370,7 +2408,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         landing++;
         const landed = (): void => {
           landing--;
-          idleSoon();
+          settleSoon();
         };
         r.then(landed, landed);
       }
@@ -2403,6 +2441,9 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
   const systemWrite = (cmd: Command): boolean => {
     const model = ctx.apiRef?.getModel();
     if (!model) return false;
+    // A report still owed is the person's change: it goes out before this
+    // write, which the reporter will then take as already known.
+    if (reportOwed) reportChanged();
     let ok = true;
     try {
       const run = (): void => void cmd.execute({ diagram: model, eventBus: null });
@@ -2529,7 +2570,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       return false;
     } finally {
       landing--;
-      idleSoon();
+      settleSoon();
     }
   };
 
@@ -2817,6 +2858,9 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     },
     binderOf(viewId) {
       return binders.get(viewId ?? ctx.active);
+    },
+    isSettled() {
+      return !busy() && !reportOwed;
     },
     exportIds(viewId) {
       const id = viewId ?? ctx.active;
