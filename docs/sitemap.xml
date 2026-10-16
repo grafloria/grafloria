@@ -3,7 +3,7 @@
   <url><loc>https://grafloria.com/</loc><lastmod>2026-10-13</lastmod><priority>1.0</priority></url>
   <url><loc>https://grafloria.com/angular/</loc><lastmod>2026-10-02</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/compare/</loc><lastmod>2026-09-07</lastmod><priority>0.9</priority></url>
-  <url><loc>https://grafloria.com/demos/</loc><lastmod>2026-10-14</lastmod><priority>0.9</priority></url>
+  <url><loc>https://grafloria.com/demos/</loc><lastmod>2026-10-15</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/javascript/</loc><lastmod>2026-10-02</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/mermaid/</loc><lastmod>2026-09-30</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/react/</loc><lastmod>2026-10-02</lastmod><priority>0.9</priority></url>
@@ -29,7 +29,7 @@
   <url><loc>https://grafloria.com/learn/mermaid-and-the-dsl/</loc><lastmod>2026-09-30</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/ports-and-validation/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/react-custom-nodes/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/react-dashboards/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/react-dashboards/</loc><lastmod>2026-10-15</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/react-state-and-data/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/react/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/the-instance/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
@@ -73,8 +73,8 @@
   <url><loc>https://grafloria.com/demos/dashboard/dashboard-builder.html</loc><lastmod>2026-09-11</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/dashboard/fluid-board.html</loc><lastmod>2026-09-15</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/dashboard/grid-options.html</loc><lastmod>2026-10-12</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/dashboard/kanban-board.html</loc><lastmod>2026-10-08</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/dashboard/kanban-studio.html</loc><lastmod>2026-10-12</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/dashboard/kanban-board.html</loc><lastmod>2026-10-15</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/dashboard/kanban-studio.html</loc><lastmod>2026-10-15</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/dashboard/nested-containers.html</loc><lastmod>2026-10-13</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/ai-style-diagram.html</loc><lastmod>2026-10-03</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/architecture-layout.html</loc><lastmod>2026-10-03</lastmod><priority>0.6</priority></url>

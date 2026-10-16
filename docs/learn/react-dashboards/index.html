@@ -14,7 +14,7 @@
 <meta property="og:url" content="https://grafloria.com/learn/react-dashboards/">
 <meta property="og:image" content="https://grafloria.com/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Dashboards in React \u2014 data-first boards","description":"GrafloriaDashboard in React: views and widgets as data, six built-in widget kinds, widgetTypes for React cards that re-render on update, history-free writes for boards a server owns, and toJSON round-trips.","url":"https://grafloria.com/learn/react-dashboards/","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"datePublished":"2026-08-04","dateModified":"2026-10-15","mainEntityOfPage":"https://grafloria.com/learn/react-dashboards/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Learn","item":"https://grafloria.com/learn/"},{"@type":"ListItem","position":2,"name":"Dashboards in React \u2014 data-first boards","item":"https://grafloria.com/learn/react-dashboards/"}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Dashboards in React \u2014 data-first boards","description":"GrafloriaDashboard in React: views and widgets as data, six built-in widget kinds, widgetTypes for React cards that re-render on update, history-free writes for boards a server owns, and toJSON round-trips.","url":"https://grafloria.com/learn/react-dashboards/","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"datePublished":"2026-08-04","dateModified":"2026-10-16","mainEntityOfPage":"https://grafloria.com/learn/react-dashboards/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Learn","item":"https://grafloria.com/learn/"},{"@type":"ListItem","position":2,"name":"Dashboards in React \u2014 data-first boards","item":"https://grafloria.com/learn/react-dashboards/"}]}]}</script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="../learn.css">
 </head>
@@ -259,8 +259,11 @@ h.showView('ops');</pre>
       <code>widget.remove({ history: false })</code>. These add no undo step and fire no
       <code>onLayoutChange</code>, so the page never sends the server its own news back. Pass
       <code>userHistory: false</code>, <code>onIdle</code> and <code>onUndoRefused</code> in
-      <code>options</code>. <a href="../javascript-dashboards/">Dashboards in JavaScript</a>
-      explains each one under "Changes made elsewhere".</div>
+      <code>options</code>. Save each <code>onLayoutChange</code> as it comes: it reports
+      once the board has settled, so a drop arrives once and whole, and
+      <code>h.isSettled()</code> tells you whether the board is still busy.
+      <a href="../javascript-dashboards/">Dashboards in JavaScript</a> explains each one
+      under "Changes made elsewhere".</div>
 
       <div class="note"><b>Everything the JavaScript options table lists passes straight through
       <code>options</code></b> — <code>mode: 'fluid' | 'fixed'</code> (fluid by default: the

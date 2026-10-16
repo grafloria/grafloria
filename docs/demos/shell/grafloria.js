@@ -210592,8 +210592,15 @@ function createDashboardHandle(ctx) {
     };
   };
   const lastReported = /* @__PURE__ */ new Map();
+  let reportOwed = false;
   const reportChanged = () => {
     if (!ctx.onLayoutChange || !ctx.apiRef) return;
+    if (busy()) {
+      reportOwed = true;
+      settleSoon();
+      return;
+    }
+    reportOwed = false;
     for (const v of handle.toJSON().views) {
       const key = JSON.stringify(v.widgets);
       if (lastReported.get(v.id) === key) continue;
@@ -210657,14 +210664,17 @@ function createDashboardHandle(ctx) {
     if (ctx.mode === "fluid" && vp?.onChange) ctx.subscriptions.push(vp.onChange(() => clampCamera()));
   };
   let owedIdle = false;
-  const idleSoon = idleTeller(
-    () => owedIdle && !!ctx.apiRef && !busy(),
+  const settleSoon = idleTeller(
+    () => (owedIdle || reportOwed) && !!ctx.apiRef && !busy(),
     () => {
-      owedIdle = false;
-      ctx.onIdle?.();
+      if (reportOwed) reportChanged();
+      if (owedIdle) {
+        owedIdle = false;
+        ctx.onIdle?.();
+      }
     }
   );
-  ctx.boardIdle = idleSoon;
+  ctx.boardIdle = settleSoon;
   let landing = 0;
   const execCommand = (cmd) => {
     try {
@@ -210673,7 +210683,7 @@ function createDashboardHandle(ctx) {
         landing++;
         const landed = () => {
           landing--;
-          idleSoon();
+          settleSoon();
         };
         r.then(landed, landed);
       }
@@ -210689,6 +210699,7 @@ function createDashboardHandle(ctx) {
   const systemWrite = (cmd) => {
     const model = ctx.apiRef?.getModel();
     if (!model) return false;
+    if (reportOwed) reportChanged();
     let ok = true;
     try {
       const run = () => void cmd.execute({ diagram: model, eventBus: null });
@@ -210786,7 +210797,7 @@ function createDashboardHandle(ctx) {
       return false;
     } finally {
       landing--;
-      idleSoon();
+      settleSoon();
     }
   };
   const handle = {
@@ -211034,6 +211045,9 @@ function createDashboardHandle(ctx) {
     },
     binderOf(viewId) {
       return binders.get(viewId ?? ctx.active);
+    },
+    isSettled() {
+      return !busy() && !reportOwed;
     },
     exportIds(viewId) {
       const id = viewId ?? ctx.active;
