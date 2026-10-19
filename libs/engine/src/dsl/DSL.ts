@@ -103,9 +103,10 @@ export interface ParseResult {
   layoutSuggestion?: LayoutSuggestion;
 
   /**
-   * Lines the flowchart parser could not read and SKIPPED. It recovers line by
-   * line (one bad line must not lose the diagram), so `parse()` never throws for
-   * these — read them here, or use `validate()`. Empty for the other grammars.
+   * Lines the parser could not read and SKIPPED, each naming its line. It
+   * recovers line by line (one bad line must not lose the diagram), so `parse()`
+   * never throws for these — read them here, or use `validate()`. The flowchart
+   * and stateDiagram grammars report them; the other graph types report none yet.
    */
   errors?: string[];
 
@@ -216,11 +217,8 @@ export class DSL {
         );
       }
       if (diagramType === 'stateDiagram' || diagramType === 'stateDiagram-v2') {
-        return this.finishGraphType(
-          stateModelToDiagram(parseMermaidState(text)),
-          'stateDiagram-v2',
-          startTime
-        );
+        const model = parseMermaidState(text);
+        return this.finishGraphType(stateModelToDiagram(model), 'stateDiagram-v2', startTime, model.errors);
       }
       // block-beta: the grid is its own; every block, edge and style is the
       // flowchart grammar — parsed as flowchart text, then the grid laid on.
@@ -385,7 +383,14 @@ export class DSL {
 
     // The graph-family grammars (erDiagram, classDiagram, …) are line-oriented
     // parsers of their own; only flowchart text goes through this token parser.
-    if (this.detectDiagramType(text) !== 'flowchart') return { valid: true, errors };
+    // Theirs report the lines they skipped through `graphTypeErrors` — this used
+    // to answer `valid` for every non-flowchart type, so a state diagram whose
+    // lines were all dropped loaded as an empty canvas with no error.
+    const type = this.detectDiagramType(text);
+    if (type !== 'flowchart') {
+      errors.push(...DSL.graphTypeErrors(type, text));
+      return { valid: errors.length === 0, errors };
+    }
 
     try {
       this.lexer = new Lexer(text);
@@ -396,6 +401,15 @@ export class DSL {
       errors.push(error instanceof Error ? error.message : String(error));
     }
     return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * The lines a graph-family grammar skipped, from its parser alone (no model is
+   * built). A grammar reports them by returning `errors` on its parsed model.
+   */
+  private static graphTypeErrors(type: string, text: string): string[] {
+    if (type === 'stateDiagram' || type === 'stateDiagram-v2') return parseMermaidState(text).errors ?? [];
+    return [];
   }
 
   /** The diagram types the text format reads and writes back (the canvas round-trips these). */
@@ -807,12 +821,14 @@ export class DSL {
   private finishGraphType(
     diagram: DiagramModel,
     astType: string,
-    startTime: number
+    startTime: number,
+    errors?: string[]
   ): ParseResult {
     return {
       diagram,
       ast: { type: 'Diagram', diagramType: astType as never, direction: 'TD', statements: [] },
       tokens: [],
+      ...(errors ? { errors } : {}),
       stats: {
         nodeCount: diagram.getNodes().length,
         linkCount: diagram.getLinks().length,
