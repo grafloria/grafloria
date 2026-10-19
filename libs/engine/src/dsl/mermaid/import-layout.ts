@@ -669,6 +669,7 @@ export function applyImportRoute(
   link.setMetadata('hasManualWaypoints', true);
   link.setMetadata('layoutAnchored', true);
   link.setMetadata('importRoute', true);
+  diagram.noteImportRoute(link.id);
 
   if (route.label) {
     const position = fractionAlong(points, route.label);

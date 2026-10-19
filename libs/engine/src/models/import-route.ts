@@ -24,6 +24,7 @@ export interface ImportRouteOriginal {
 }
 
 export function dropImportRoute(link: LinkModel, diagram: DiagramModel): void {
+  diagram.noteImportRoute(link.id, false);
   if (link.getMetadata('importRoute') !== true) return;
   link.setMetadata('importRoute', false);
   link.setMetadata('hasManualWaypoints', false);

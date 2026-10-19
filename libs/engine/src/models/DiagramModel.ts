@@ -127,6 +127,8 @@ export class DiagramModel extends DiagramEntity {
   name: string = 'Untitled Diagram';
   nodes: Map<string, NodeModel> = new Map();
   links: Map<string, LinkModel> = new Map();
+  /** Links that hold an import's route (import-route.ts), so a move looks no further than these. */
+  private readonly importRouted = new Set<string>();
   groups: Map<string, GroupModel> = new Map(); // Phase 1.6c
   /** Freehand ink strokes. See StrokeModel for why these are not nodes. */
   strokes: Map<string, StrokeModel> = new Map();
@@ -602,7 +604,25 @@ export class DiagramModel extends DiagramEntity {
    * are never touched.
    */
   private dropImportRoutes(nodeId: string): void {
-    for (const link of this.getLinksForNode(nodeId)) dropImportRoute(link, this);
+    // Runs on every move and resize, so it must cost nothing on a diagram no
+    // import laid out, and only the moved box's own links on one that was.
+    if (this.importRouted.size === 0) return;
+    const node = this.nodes.get(nodeId);
+    if (!node) return;
+    for (const port of node.getPorts()) {
+      for (const linkId of [...port.currentConnections]) {
+        if (!this.importRouted.has(linkId)) continue;
+        this.importRouted.delete(linkId);
+        const link = this.links.get(linkId);
+        if (link) dropImportRoute(link, this);
+      }
+    }
+  }
+
+  /** Called when a link gains (or loses) an import's route — import-layout.ts, import-route.ts. */
+  noteImportRoute(linkId: string, on = true): void {
+    if (on && this.links.has(linkId)) this.importRouted.add(linkId);
+    else this.importRouted.delete(linkId);
   }
 
   /**
@@ -948,6 +968,7 @@ export class DiagramModel extends DiagramEntity {
     this.getPortById(link.targetPortId)?.restoreConnection(link.id, 'target');
 
     this.links.set(link.id, link);
+    if (link.getMetadata('importRoute') === true) this.importRouted.add(link.id);
     this.trackChange('links', null, link);
     this.emitOrQueue('link:added', link);
 
@@ -979,6 +1000,7 @@ export class DiagramModel extends DiagramEntity {
       this.getPortById(link.targetPortId)?.removeConnection(link.id);
 
       this.links.delete(linkId);
+      this.importRouted.delete(linkId);
 
       // Phase 5.1: Remove from spatial index
       this.linkSpatialIndex.remove(linkId);
@@ -1039,6 +1061,7 @@ export class DiagramModel extends DiagramEntity {
       this.getPortById(link.targetPortId)?.removeConnection(link.id);
     }
     this.links.clear();
+    this.importRouted.clear();
     this.linkSpatialIndex.clear();
     this.emitOrQueue('links:cleared');
   }
@@ -2979,6 +3002,7 @@ export class DiagramModel extends DiagramEntity {
     // Clear collections
     this.nodes.clear();
     this.links.clear();
+    this.importRouted.clear();
     this.groups.clear();
     this.strokes.clear();
     this.portIndex.clear();

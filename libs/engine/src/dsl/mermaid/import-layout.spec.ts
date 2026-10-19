@@ -8,6 +8,7 @@
 import { importDiagramText, exportDiagramText } from '../../serialization/TextFormat';
 import { estimateLabelWidth, IMPORT_EDGE_FONT, IMPORT_EDGE_PAD, wrapLabelLines, fitNodeToLabel } from './import-layout';
 import { NodeModel } from '../../models/NodeModel';
+import { DiagramModel } from '../../models/DiagramModel';
 
 const LR = `flowchart LR
     Inquiry -->|convert| Offer
@@ -125,6 +126,33 @@ describe('imported Mermaid layout', () => {
       expect(note.getPort(line.sourcePortId)?.side).toBe(right ? 'left' : 'right');
       expect(target.getPort(line.targetPortId)?.side).toBe(right ? 'right' : 'left');
     }
+  });
+
+  it('a move never scans the diagram for routes: nothing on a plain diagram, its own ports on an imported one', () => {
+    // A full-graph move of 3,600 nodes went from ~75 to ~925 ms when every move
+    // looked through every link for a route to drop.
+    const plain = new DiagramModel();
+    const a = new NodeModel({ id: 'a', type: 'default', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+    const b = new NodeModel({ id: 'b', type: 'default', position: { x: 300, y: 0 }, size: { width: 100, height: 50 } });
+    plain.addNode(a);
+    plain.addNode(b);
+    plain.connectNodes(a, b);
+    const plainScan = jest.spyOn(plain, 'getLinksForNode');
+    a.setPosition(10, 10);
+    b.setSize(120, 60);
+    expect(plainScan).not.toHaveBeenCalled();
+
+    const d = importDiagramText(LR).diagram;
+    const scan = jest.spyOn(d, 'getLinksForNode');
+    d.getNode('Offer')!.setPosition(0, 500);
+    expect(scan).not.toHaveBeenCalled();
+    expect(d.getLinks().map((l) => l.getMetadata('importRoute'))).toEqual([false, false, true]);
+
+    // A saved diagram loads with its routes, and a move still takes them back.
+    const loaded = DiagramModel.fromJSON(importDiagramText(LR).diagram.serialize());
+    expect(loaded.getLinks().every((l) => l.getMetadata('importRoute') === true)).toBe(true);
+    loaded.getNode('Delivered')!.setPosition(0, 500);
+    expect(loaded.getLinks().map((l) => l.getMetadata('importRoute'))).toEqual([true, true, false]);
   });
 
   it('taking a route back restores the label too: its slot, or no added label at all', () => {
