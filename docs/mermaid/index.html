@@ -394,15 +394,15 @@
       <details>
         <summary><span class="tag">stateDiagram</span> layout, not structure</summary>
         <ul>
-          <li>Concurrent regions are modelled and re-exported correctly, but layout does not band them — no dashed divider yet. The structure is right; the picture is not.</li>
+          <li>Concurrent regions are drawn as dashed bands stacked top to bottom, where Mermaid sets them side by side.</li>
           <li><code>[H]</code> / <code>[H*]</code> round-trip, but draw as a plain circle instead of the H-in-circle glyph.</li>
-          <li>State <code>classDef</code> / <code>class</code> styling is not applied, and an inline <code>:::hook</code> is captured by name but not re-emitted.</li>
+          <li>State <code>classDef</code> / <code>class</code> styling is applied on import but not written back on export.</li>
         </ul>
       </details>
       <details>
         <summary><span class="tag">all types</span> layout and the directive channel</summary>
         <ul>
-          <li>Imported layout is a naive grid for ER / class / state — no type-aware placement (ER by FK dependency, class by inheritance depth) yet.</li>
+          <li>Imported flowcharts and state diagrams lay out as Mermaid lays them out: every edge label gets room between the ranks, and every box grows to hold its text. ER and class diagrams place by dependency (ER by foreign key, class by inheritance depth).</li>
           <li>The Tier-2 <code>%%grafloria:</code> per-entity channel is wired for flowchart only; the other three fall back to the Tier-3 sidecar, which is lossless but opaque.</li>
         </ul>
       </details>
@@ -417,7 +417,7 @@
       Mermaid and Mermaid Chart are trademarks of their respective owners; Grafloria is an
       independent MIT project and implements the Mermaid <i>syntax</i> with its own parser — it
       does not bundle, fork, or depend on the Mermaid runtime. Coverage described here is current
-      as of July&nbsp;2026 and is tracked in the engine's gap analysis; corrections and requests
+      as of October&nbsp;2026 and is tracked in the engine's gap analysis; corrections and requests
       are welcome via <a href="https://github.com/grafloria/grafloria/issues">GitHub issues</a>.
     </p>
   </div>

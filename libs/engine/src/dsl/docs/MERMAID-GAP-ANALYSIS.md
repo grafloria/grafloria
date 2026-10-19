@@ -29,6 +29,30 @@ Plus two export defects with the same signature: `[H]`/`[H*]` transitions were
 dropped entirely, and a transition crossing two composites was written twice
 (a duplicate edge on re-import) or, at the root, not at all.
 
+**2026-10-19 — drawing, measured in a documentation reader.** A docs reader
+that draws every fence with Mermaid measured Grafloria on a real manual (35
+fences, `flowchart LR` and `stateDiagram-v2`). Parsing agreed with Mermaid;
+DRAWING lost or hid text on 13 of 32 valid diagrams. Fixed, with the
+measurement kept as a gate (`demos/e2e/mermaid-reader-run.mjs`, in CI; run
+`--corpus <file>` for any manual):
+
+| Gap | Was | Now |
+|---|---|---|
+| Edge labels | fixed 75 px between ranks: labels under boxes, sibling labels stacked at the trunk | laid out as Mermaid lays out (dagre; each label a box between the ranks) — `dsl/mermaid/import-layout.ts` |
+| Node text | fixed 120×80, cut with `…` after three lines; long one-word state names shrunk to 8 px | the box grows: wrap at 200 px, then taller; a long word widens it |
+| Two edges, one pair | both directions (or two parallel transitions) on one track | two curves, each label on its own |
+| Routing | LR edges out of a box's top and looping; `flowchart RL` broken | forward edges leave the side facing the next rank; RL mirrors LR |
+| Dark theme | flowchart edge-label text black on dark (1.43:1) | the theme's ink; one SSR SVG for both themes (CSS variables) |
+| Small figures | default LOD dropped labels and arrowheads below zoom 0.5 | under 200 nodes nothing is shed; `lod: 'document'` sheds nothing |
+| Silent drops | state ids with spaces dropped, no error; `accTitle` became a state; `<T>` deleted from labels | a line error naming the line; metadata (and the SVG's accessible name); the text kept |
+| Refused valid Mermaid | `End[…]`, `'` or `/` inside `[ ]`, YAML frontmatter | read, as Mermaid reads them |
+| Edge ends, shapes | `--o`, `--x`, `<-->`, `---` all one arrowhead; `>flag]` a rectangle | each end as written; the flag shape |
+| State notation | composite caption missing, inner arrows hidden; notes not drawn; fork/join as labelled boxes; hollow end | caption band, see-through body; notes beside their state; bars; bullseye |
+
+Still open (P2 of that brief): page-scroll mode for embedded figures, a
+one-call `renderTextToStaticSVG`, `click` links, `sequenceDiagram`. Concurrent
+regions still stack as bands where Mermaid sets them side by side.
+
 **Per-type coverage today is §3a — read that, not the historical §3 table.**
 **Method:** every current-state claim below was produced by feeding real Mermaid
 syntax to `importDiagramText()` against the built engine and recording what
