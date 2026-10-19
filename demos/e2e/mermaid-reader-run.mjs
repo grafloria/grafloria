@@ -14,7 +14,7 @@
  *   - every node and every edge of the model drawn, with its text;
  *   - no edge label overlapping another label or a node box (links paint
  *     under nodes, so such a label is clipped);
- *   - no node label cut with "…";
+ *   - no node label cut with "…", or shrunk to fit a box too narrow for a word;
  *   - edge-label text at a contrast of at least 4.5:1 against its box.
  *
  * Run: node demos/e2e/mermaid-reader-run.mjs [--corpus file.json] [--width 713] [--shots dir]
@@ -143,11 +143,26 @@ for (const fence of corpus) {
         const labelGroups = [...svg.querySelectorAll('g.link-label-group')].filter((g) => g.textContent.trim());
         if (labelGroups.length < edgeLabels) problems.push(`${edgeLabels - labelGroups.length} edge label(s) not shown`);
 
-        // No "…".
+        // No "…", and no label shrunk to fit a box too narrow for one of its words.
         for (const t of texts) if (t.textContent.includes('…')) problems.push(`cut: "${t.textContent.trim()}"`);
+        for (const t of texts) {
+          const px = parseFloat(getComputedStyle(t).fontSize);
+          if (px < 12) problems.push(`shrunk to ${px}px: "${t.textContent.trim()}"`);
+        }
 
-        // No edge label under a node or another label.
-        const nodeBoxes = nodeGroups.map((g) => box(g.querySelector('.diagram-node') ?? g));
+        // No edge label under a node or another label. Links paint under nodes,
+        // so a box hides a label only where it paints: a see-through container
+        // (a composite state's body, a region's band) hides nothing.
+        const paints = (el) => {
+          const cs = getComputedStyle(el);
+          if (cs.fill === 'none' || Number(cs.fillOpacity) === 0 || Number(cs.opacity) === 0) return false;
+          const alpha = cs.fill.match(/rgba\([^)]*,\s*([\d.]+)\)/);
+          return !(alpha && Number(alpha[1]) === 0);
+        };
+        const nodeBoxes = nodeGroups
+          .map((g) => g.querySelector('.diagram-node') ?? g)
+          .filter(paints)
+          .map(box);
         const labelBoxes = labelGroups.map((g) => ({ text: g.textContent.trim(), b: box(g.querySelector('rect.link-label-bg') ?? g) }));
         for (const l of labelBoxes) if (nodeBoxes.some((n) => overlap(l.b, n) > 4)) problems.push(`label under a box: "${l.text}"`);
         for (let i = 0; i < labelBoxes.length; i++)
