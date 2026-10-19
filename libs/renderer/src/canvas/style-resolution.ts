@@ -47,7 +47,7 @@
 
 import type { Theme } from '../types/theme.types';
 import type { VNodeProps } from '../types/vnode.types';
-import { createClassStyleResolver, type ClassStyleResolver } from '../export/style-flattener';
+import { createClassStyleResolver, substituteCssVars, themeVarLookup, type ClassStyleResolver } from '../export/style-flattener';
 import { THEME_TOKENS, THEME_VARS } from '../themes/theme-vars';
 
 /** Everything the painter needs to know to draw one element. */
@@ -180,12 +180,15 @@ export interface StyleResolverOptions {
 export class CanvasStyleResolver {
   private theme: Theme;
   private classRules: ClassStyleResolver;
+  /** `--grafloria-*` → literal, for an element's own inline `var()` paints. */
+  private lookupVar: (name: string) => string | undefined;
   /** Declarations dropped because a variable could not be resolved. */
   readonly warnings: string[] = [];
 
   constructor(options: StyleResolverOptions) {
     this.theme = options.theme;
     this.classRules = this.compile(options.theme, options.varOverrides);
+    this.lookupVar = themeVarLookup(options.theme, options.varOverrides);
   }
 
   /**
@@ -210,6 +213,7 @@ export class CanvasStyleResolver {
   setTheme(theme: Theme, varOverrides?: Record<string, string>): void {
     this.theme = theme;
     this.classRules = this.compile(theme, varOverrides);
+    this.lookupVar = themeVarLookup(theme, varOverrides);
   }
 
   getTheme(): Theme {
@@ -251,7 +255,18 @@ export class CanvasStyleResolver {
     }
 
     // ---- 3. inline style (highest priority) --------------------------------
-    Object.assign(decls, parseInlineStyle(props['style']));
+    // Its paints may be theme VARIABLES (a line label's chip and text, an
+    // arrowhead, a themeRef) — canvas has no CSS engine to resolve them, so a
+    // `ctx.fillStyle = 'var(…)'` was silently ignored. Substitute them here; one
+    // that resolves to nothing is dropped, leaving the layers below in force.
+    for (const [prop, value] of Object.entries(parseInlineStyle(props['style']))) {
+      if (!value.includes('var(')) {
+        decls[prop] = value;
+        continue;
+      }
+      const substituted = substituteCssVars(value, this.lookupVar);
+      if (substituted.value !== undefined) decls[prop] = substituted.value;
+    }
 
     applyDecls(decls, style);
     return style;

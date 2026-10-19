@@ -50,6 +50,7 @@
 import type { Theme } from '../types/theme.types';
 import { BASE_STYLE_RULES } from '../themes/theme-css';
 import { resolveThemeVars } from '../themes/theme-vars';
+import { resolveBindableVars } from '../themes/theme-ref';
 
 /**
  * CSS properties the flattener is allowed to materialise onto an element.
@@ -180,6 +181,25 @@ export function substituteCssVars(
 
   const out = resolveFrom(value, 0).trim();
   return unresolved.length > 0 ? { unresolved } : { value: out, unresolved };
+}
+
+/**
+ * Every `--grafloria-*` value a theme defines — the 33+ chrome tokens AND the
+ * bindable tree (`--grafloria-colors-…`) — as a lookup for {@link substituteCssVars}.
+ * `overrides` (a host's own computed values) win over the theme's.
+ *
+ * For consumers that read the CSS-mode tree WITHOUT the stylesheet in force: a
+ * standalone SVG file and the canvas painter. An element's own inline paint may be
+ * a variable (a line label's `var(--grafloria-link-label-color)`, an arrowhead's
+ * `var(--grafloria-link-stroke, …)`, a `themeRef`), and each must land as the
+ * theme's literal, never as a `var()` nothing there can resolve.
+ */
+export function themeVarLookup(
+  theme: Theme,
+  overrides: Record<string, string> = {}
+): (name: string) => string | undefined {
+  const vars: Record<string, string> = { ...resolveBindableVars(theme), ...resolveThemeVars(theme), ...overrides };
+  return (name: string) => vars[name];
 }
 
 /**

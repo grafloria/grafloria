@@ -37,7 +37,7 @@
 
 import type { VNode } from '../types/vnode.types';
 import { attrNameForProp, serializeStyle, SVG_NS } from '../vnode/patch';
-import type { ClassStyleResolver } from './style-flattener';
+import { substituteCssVars, type ClassStyleResolver } from './style-flattener';
 
 /** What the serializer does with a `<foreignObject>` (HTML-in-SVG) subtree. */
 export type ForeignObjectMode = 'serialize' | 'placeholder' | 'omit';
@@ -107,6 +107,17 @@ export interface SerializeOptions {
 
   /** Collector for fidelity caveats hit while serializing. */
   warnings?: string[];
+
+  /**
+   * Resolves a `--grafloria-*` custom property to its literal ('file' fidelity
+   * only). An element's INLINE paint can be a variable — a line label's
+   * `var(--grafloria-link-label-color)`, an arrowhead's `var(--grafloria-link-stroke, …)` —
+   * and a file has no variable block, so it is substituted here; a reference that
+   * resolves to nothing (and has no fallback) is dropped with a warning rather
+   * than written out as an attribute no consumer can read (it would paint black).
+   * See `themeVarLookup`.
+   */
+  resolveVar?: (name: string) => string | undefined;
 
   /** Collector for `<defs>` elements the serializer had to synthesize (blur filters). */
   extraDefs?: Map<string, string>;
@@ -436,8 +447,17 @@ function elementAttrs(
   }
 
   // (3) the element's own inline style — the cascade's winner
-  for (const [prop, value] of Object.entries(inline)) {
+  for (const [prop, raw] of Object.entries(inline)) {
     if (CSS_ONLY_DECLS.has(prop)) continue;
+    let value = raw;
+    if (value.includes('var(') && options.resolveVar) {
+      const substituted = substituteCssVars(value, options.resolveVar);
+      if (substituted.value === undefined) {
+        options.warnings?.push(`unresolved CSS variable in inline "${prop}: ${raw}" — declaration dropped`);
+        continue;
+      }
+      value = substituted.value;
+    }
     attrs.set(prop, prop === 'filter' ? translateBlurFilter(value, extraDefs) : value);
   }
 

@@ -269,7 +269,7 @@ import { LabelRenderer } from './LabelRenderer';
 import { JumpPointDetector } from './JumpPointDetector';
 import { JumpPointRenderer } from './JumpPointRenderer';
 import { DEFAULT_LINK_HIT_AREA_WIDTH, linkHitAreaWidth } from './link-hit-test';
-import { THEME_VARS } from '../themes/theme-vars';
+import { THEME_VARS, type ThemeToken } from '../themes/theme-vars';
 
 // Wave 4 (Edges & links) — Card 4: parallel-link separation + self-loop routing.
 // Pure geometry; this file only decides WHEN to call it.
@@ -378,6 +378,40 @@ function polylineLength(points: Array<{ x: number; y: number }>): number {
     total += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
   }
   return total;
+}
+
+/**
+ * Move every `var(…)` FILL / STROKE presentation prop in a VNode subtree into
+ * its inline style. An SVG attribute cannot hold `var()` — the browser drops it
+ * and paints black — while inline style can, and still beats any stylesheet
+ * rule. Literal paints are left exactly where they were. Mutates and returns
+ * `vnode` (a freshly built subtree, never a cached one).
+ */
+function hoistVarPaintsDeep(vnode: VNode): VNode {
+  const props = vnode.props as Record<string, unknown> | undefined;
+  if (props) {
+    const moved: Record<string, string> = {};
+    for (const key of ['fill', 'stroke'] as const) {
+      const value = props[key];
+      if (typeof value === 'string' && value.includes('var(')) {
+        moved[key] = value;
+        delete props[key];
+      }
+    }
+    if (Object.keys(moved).length > 0) {
+      const existing = props['style'];
+      props['style'] =
+        existing && typeof existing === 'object'
+          ? { ...(existing as Record<string, unknown>), ...moved }
+          : typeof existing === 'string' && existing
+            ? `${existing}; ${Object.entries(moved).map(([k, v]) => `${k}: ${v}`).join('; ')}`
+            : moved;
+    }
+  }
+  for (const child of (vnode.children ?? []) as unknown[]) {
+    if (child && typeof child === 'object' && 'type' in (child as object)) hoistVarPaintsDeep(child as VNode);
+  }
+  return vnode;
 }
 
 /**
@@ -4555,7 +4589,7 @@ export class SVGRenderer implements IRenderer {
         continue;
       }
       frames.push(
-        this.renderGroupFrame(g, bounds, g.parentGroupId ? byId.get(g.parentGroupId) : undefined)
+        hoistVarPaintsDeep(this.renderGroupFrame(g, bounds, g.parentGroupId ? byId.get(g.parentGroupId) : undefined))
       );
     }
 
@@ -4570,6 +4604,16 @@ export class SVGRenderer implements IRenderer {
       },
       children: frames,
     };
+  }
+
+  /**
+   * A theme paint for chrome the shared stylesheet does not own (group frames,
+   * subtitles): in CSS mode the token's VARIABLE — so the SVG is the same bytes
+   * under every theme and the page's variable block decides — else its literal.
+   * A `var()` cannot be a presentation attribute; see {@link hoistVarPaintsDeep}.
+   */
+  private chromePaint(token: ThemeToken): string {
+    return this.config.useCSSMode ? `var(${THEME_VARS[token].cssVar})` : String(THEME_VARS[token].read(this.theme));
   }
 
   /**
@@ -4594,7 +4638,7 @@ export class SVGRenderer implements IRenderer {
         rx: radius,
         ry: radius,
         fill: str('fill') ?? 'none',
-        stroke: str('stroke') ?? (c.node.default.stroke as string),
+        stroke: str('stroke') ?? this.chromePaint('node.stroke'),
         strokeWidth: num('strokeWidth') ?? 1,
         ...(str('strokeDasharray') ? { strokeDasharray: str('strokeDasharray') } : {}),
         className: 'group-frame-rect group-zone-rect',
@@ -4608,7 +4652,7 @@ export class SVGRenderer implements IRenderer {
     const INSET_X = 16;
     const INSET_Y = 12 + fontSize * 0.7;
     const style: Record<string, string> = {
-      fill: str('color') ?? (c.text.secondary as string),
+      fill: str('color') ?? this.chromePaint('label.muted'),
       fontSize: `${fontSize}px`,
       fontWeight: z['fontWeight'] !== undefined ? String(z['fontWeight']) : '600',
       ...(str('fontFamily') ? { fontFamily: fontStackFor(str('fontFamily')!) } : {}),
@@ -4689,8 +4733,11 @@ export class SVGRenderer implements IRenderer {
 
     // THEME TOKENS, not hard-coded colours: the frame borrows the node border and
     // canvas surface so it re-themes with everything else on a setTheme() swap.
-    const stroke = c.node.default.stroke;
-    const surface = c.background.surface;
+    // In CSS mode they are the theme's VARIABLES (hoisted into inline style by the
+    // caller), so a server-rendered frame is the same bytes under every theme.
+    const stroke = this.chromePaint('node.stroke');
+    const surface = this.chromePaint('group.fill');
+    const ink = this.chromePaint('label.color');
 
     const frameRect: VNode = {
       type: 'rect',
@@ -4813,7 +4860,7 @@ export class SVGRenderer implements IRenderer {
               fontSize,
               fontFamily: this.theme.typography.fontFamily.default,
               fontWeight: this.theme.typography.fontWeight.medium,
-              fill: c.text.primary,
+              fill: ink,
               className: sideStrip > 0 ? 'group-frame-label group-frame-label-pool' : 'group-frame-label group-frame-label-folded',
               textContent: group.name,
               'aria-hidden': 'true',
@@ -4829,7 +4876,7 @@ export class SVGRenderer implements IRenderer {
               fontSize,
               fontFamily: this.theme.typography.fontFamily.default,
               fontWeight: this.theme.typography.fontWeight.medium,
-              fill: c.text.primary,
+              fill: ink,
               className: 'group-frame-label',
               textContent: group.name,
               // The visible label; the accessible name is on the container, so hide
@@ -4872,7 +4919,7 @@ export class SVGRenderer implements IRenderer {
   private renderPhases(group: GroupModel, bounds: Rectangle, collapsed: boolean): VNode[] {
     const lc = group.laneConfig;
     if (!lc) return [];
-    const stroke = this.theme.colors.node.default.stroke;
+    const stroke = this.chromePaint('node.stroke');
     const line = (key: string, x1: number, y1: number, x2: number, y2: number, className: string): VNode => ({
       type: 'line',
       key,
@@ -4886,7 +4933,7 @@ export class SVGRenderer implements IRenderer {
         {
           type: 'rect',
           key: `group-phase-band-${group.id}`,
-          props: { ...head, fill: this.theme.colors.background.surface, fillOpacity: 0.9, stroke: 'none', className: 'group-phase-band', 'aria-hidden': 'true' },
+          props: { ...head, fill: this.chromePaint('group.fill'), fillOpacity: 0.9, stroke: 'none', className: 'group-phase-band', 'aria-hidden': 'true' },
         },
         horizontal
           ? line(`group-phase-divider-${group.id}`, head.x, head.y + head.height, head.x + head.width, head.y + head.height, 'group-phase-divider')
@@ -4914,7 +4961,7 @@ export class SVGRenderer implements IRenderer {
             fontSize: this.theme.typography.fontSize.sm,
             fontFamily: this.theme.typography.fontFamily.default,
             fontWeight: this.theme.typography.fontWeight.medium,
-            fill: this.theme.colors.text.primary,
+            fill: this.chromePaint('label.color'),
             className: 'group-phase-label',
             textContent: b.name,
             'aria-hidden': 'true',
@@ -5966,7 +6013,9 @@ export class SVGRenderer implements IRenderer {
     }
     if (!sublabel) return [clip, text];
 
-    const subColor = sublabel.color ?? (this.theme.colors.text.secondary as string);
+    // The theme's muted ink — its VARIABLE in CSS mode, so a server render does not
+    // bake one theme's grey into the file. An author's own colour stays literal.
+    const subColor = sublabel.color ?? this.chromePaint('label.muted');
     const sub = renderTextBlock({
       text: sublabel.text,
       x: inner.x + inner.w / 2,
@@ -5981,7 +6030,8 @@ export class SVGRenderer implements IRenderer {
       nonInteractive: true,
       className: 'diagram-sublabel',
       emitFontSize: true,
-      color: subColor,
+      // A var() is not a valid attribute; the inline style below carries it.
+      color: subColor.includes('var(') ? undefined : subColor,
     });
     // Inline, always: no stylesheet rule owns a subtitle, and the theme's label
     // rule must not repaint it in the name's ink.
@@ -7851,6 +7901,7 @@ export class SVGRenderer implements IRenderer {
                   const labelVNode = this.labelRenderer.renderLabel(placed, link, {
                     offset,
                     theme: this.theme,
+                    cssMode: this.config.useCSSMode,
                     path: points,
                   });
                   if (labelVNode) {
@@ -7861,6 +7912,10 @@ export class SVGRenderer implements IRenderer {
               // Backward compatibility: support old metadata label
               if (label && (chipsOnly || !link.labels || link.labels.length === 0)) {
                 // Convert old label format to new LinkLabel format
+                // Its colours are the theme's DEFAULTS (ink on the canvas
+                // surface), not literals copied in here: in CSS mode the label
+                // renderer writes them as the theme's variables, so a server
+                // render of this label is the same bytes under every theme.
                 const legacyLabel = {
                   id: 'legacy-label',
                   text: label,
@@ -7868,11 +7923,12 @@ export class SVGRenderer implements IRenderer {
                   offset: { x: 0, y: -10 },
                   style: {
                     fontSize: this.theme.typography.fontSize.sm,
-                    color: this.theme.colors.text.primary,
-                    background: this.theme.colors.background.surface
                   }
                 };
-                const labelVNode = this.labelRenderer.renderLabel(legacyLabel, link);
+                const labelVNode = this.labelRenderer.renderLabel(legacyLabel, link, {
+                  theme: this.theme,
+                  cssMode: this.config.useCSSMode,
+                });
                 if (labelVNode) {
                   labelVNodes.push(labelVNode);
                 }
