@@ -24,6 +24,11 @@ export const TEXT_GRAMMAR_METADATA_KEYS: readonly string[] = [
   'blockStyleLines', // block-beta pass-through directives
   'layout', // block-beta / architecture-beta: laid out as an architecture
   'layoutCompact', // block-beta
+  // Every type: the frontmatter title and the accessibility directives — what the
+  // renderer names and describes the SVG with (lines.ts readDiagramMetadata).
+  'title',
+  'accTitle',
+  'accDescr',
 ];
 
 /**

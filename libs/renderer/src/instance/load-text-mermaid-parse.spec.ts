@@ -4,6 +4,8 @@
  *
  *  - P0-5a  a state id with spaces is REFUSED with line errors (it used to load
  *           with the lines silently gone — or as an empty diagram);
+ *  - P0-5b  `accTitle` / `accDescr` / a frontmatter `title` name and describe the
+ *           SVG (they used to become a state, or nothing).
  */
 import { createDiagram } from './create-diagram';
 import type { DiagramInstance } from './create-diagram';
@@ -30,6 +32,8 @@ describe('loadText — the Mermaid parse gaps, on the canvas', () => {
     container.remove();
   });
 
+  const root = () => container.querySelector('svg.grafloria-diagram') as SVGSVGElement;
+
   it('P0-5a: invoice-lifecycle#1 is refused with errors naming lines 2 and 3; the canvas is unchanged', () => {
     const fence =
       'stateDiagram-v2\n' +
@@ -45,4 +49,29 @@ describe('loadText — the Mermaid parse gaps, on the canvas', () => {
     expect(() => diagram.loadText('stateDiagram-v2\n    Draft --> Release for Approval\n')).toThrow(/Line 2/);
     expect(diagram.getModel().getNodes().map((n) => n.id)).toEqual(['keep']);
   });
+
+  it('P0-5b: accTitle names the SVG and accDescr describes it; accTitle is not a state', () => {
+    diagram.loadText('stateDiagram-v2\n  accTitle: Lifecycle\n  accDescr: How an invoice moves\n  [*] --> A');
+    diagram.renderNow();
+    expect(diagram.getModel().getNodes().map((n) => n.getLabel())).not.toContain('Lifecycle');
+    expect(root().getAttribute('aria-label')).toMatch(/^Lifecycle, 2 nodes, 1 edge$/);
+    expect(root().getAttribute('aria-description')).toBe('How an invoice moves');
+    // The next text without them takes them away again.
+    diagram.loadText('flowchart LR\n  A --> B');
+    diagram.renderNow();
+    expect(root().getAttribute('aria-label')).toBe('Diagram, 2 nodes, 1 edge');
+    expect(root().hasAttribute('aria-description')).toBe(false);
+  });
+
+  it('P0-5b: a frontmatter title names the SVG when there is no accTitle; a diagram with neither is unchanged', () => {
+    diagram.loadText('---\ntitle: Order flow\n---\nflowchart LR\n  A --> B');
+    diagram.renderNow();
+    expect(root().getAttribute('aria-label')).toBe('Order flow, 2 nodes, 1 edge');
+    expect(root().hasAttribute('aria-description')).toBe(false);
+
+    diagram.loadText('flowchart LR\n  A --> B');
+    diagram.renderNow();
+    expect(root().getAttribute('aria-label')).toBe('Diagram, 2 nodes, 1 edge');
+  });
+
 });

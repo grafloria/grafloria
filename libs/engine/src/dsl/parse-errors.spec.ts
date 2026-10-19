@@ -9,7 +9,7 @@
 import { DSL } from './DSL';
 import { DiagramModel } from '../models/DiagramModel';
 import { adoptTextGrammarMetadata, TEXT_GRAMMAR_METADATA_KEYS } from './mermaid';
-import { importDiagramText } from '../serialization/TextFormat';
+import { exportDiagramText, importDiagramText } from '../serialization/TextFormat';
 
 const dsl = () => new DSL({ autoLayout: false });
 
@@ -219,3 +219,90 @@ describe('stateDiagram — a line the parser skips is an error, never a silent d
   });
 });
 
+// P0-5b. `accTitle` / `accDescr` are diagram METADATA in every Mermaid type —
+// never a state, an entity or a class. (In a state diagram `accTitle: Lifecycle`
+// matched the description rule and drew a state named "Lifecycle".) A frontmatter
+// `title` is metadata too.
+describe('accTitle / accDescr / frontmatter title — diagram metadata, in every type', () => {
+  const meta = (d: DiagramModel) => ({
+    title: d.getMetadata('title'),
+    accTitle: d.getMetadata('accTitle'),
+    accDescr: d.getMetadata('accDescr'),
+  });
+
+  it('stateDiagram: accTitle is not a state; both reach the diagram', () => {
+    const r = importDiagramText('stateDiagram-v2\n  accTitle: Lifecycle\n  accDescr: How an invoice moves\n  [*] --> A');
+    expect(r.errors).toEqual([]);
+    expect(r.diagram.getNodes().map((n) => n.id).sort()).toEqual(['A', '__start__']);
+    expect(r.diagram.getNodes().some((n) => n.getLabel() === 'Lifecycle')).toBe(false);
+    expect(meta(r.diagram)).toEqual({ title: undefined, accTitle: 'Lifecycle', accDescr: 'How an invoice moves' });
+  });
+
+  it('stateDiagram: a multi-line accDescr { … } block is one description, not states', () => {
+    const r = importDiagramText(
+      'stateDiagram-v2\n  accDescr {\n    Draft goes out\n    and comes back paid\n  }\n  [*] --> Draft\n  Draft --> Paid'
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.diagram.getNodes().map((n) => n.id).sort()).toEqual(['Draft', 'Paid', '__start__']);
+    expect(r.diagram.getMetadata('accDescr')).toBe('Draft goes out\nand comes back paid');
+  });
+
+  it('flowchart: still ignored as nodes, and now kept as metadata (both accDescr forms)', () => {
+    const one = importDiagramText('flowchart LR\n  accTitle: Order flow\n  accDescr: From order to invoice\n  A --> B');
+    expect(one.errors).toEqual([]);
+    expect(one.diagram.getNodes().map((n) => n.id).sort()).toEqual(['A', 'B']);
+    expect(meta(one.diagram)).toEqual({ title: undefined, accTitle: 'Order flow', accDescr: 'From order to invoice' });
+
+    const block = importDiagramText('flowchart LR\n  accDescr {\n    two\n    lines\n  }\n  A --> B');
+    expect(block.errors).toEqual([]);
+    expect(block.diagram.getMetadata('accDescr')).toBe('two\nlines');
+  });
+
+  it('erDiagram and classDiagram: never an entity or a class', () => {
+    const er = importDiagramText('erDiagram\n  accTitle: Orders\n  accDescr: Who places what\n  CUSTOMER ||--o{ ORDER : places');
+    expect(er.diagram.getNodes().map((n) => n.id).sort()).toEqual(['CUSTOMER', 'ORDER']);
+    expect(meta(er.diagram)).toEqual({ title: undefined, accTitle: 'Orders', accDescr: 'Who places what' });
+
+    const cls = importDiagramText('classDiagram\n  accTitle: Animals\n  accDescr: Ducks are animals\n  Animal <|-- Duck');
+    expect(cls.diagram.getNodes().map((n) => n.id).sort()).toEqual(['Animal', 'Duck']);
+    expect(meta(cls.diagram)).toEqual({ title: undefined, accTitle: 'Animals', accDescr: 'Ducks are animals' });
+  });
+
+  it('a frontmatter title is metadata, in a flowchart and in a state diagram', () => {
+    const flow = importDiagramText('---\ntitle: Order flow\n---\nflowchart LR\n  A --> B');
+    expect(flow.diagram.getMetadata('title')).toBe('Order flow');
+    const state = importDiagramText('---\ntitle: "Invoice: lifecycle"\n---\nstateDiagram-v2\n  [*] --> A');
+    expect(state.diagram.getMetadata('title')).toBe('Invoice: lifecycle');
+  });
+
+  it('loading text INTO a model carries them (and clears them when the next text has none)', () => {
+    for (const key of ['title', 'accTitle', 'accDescr']) expect(TEXT_GRAMMAR_METADATA_KEYS).toContain(key);
+    const target = new DiagramModel('live');
+    adoptTextGrammarMetadata(target, dsl().parse('---\ntitle: T\n---\nflowchart LR\n  accTitle: A\n  accDescr: D\n  a --> b'));
+    expect(meta(target)).toEqual({ title: 'T', accTitle: 'A', accDescr: 'D' });
+    adoptTextGrammarMetadata(target, dsl().parse('flowchart LR\n  a --> b'));
+    expect(meta(target)).toEqual({ title: undefined, accTitle: undefined, accDescr: undefined });
+  });
+
+  it('a hand edit to accTitle in a sidecar-carrying text wins over the sidecar', () => {
+    const saved = exportDiagramText(importDiagramText('flowchart LR\n  accTitle: Old\n  A --> B').diagram);
+    const r = importDiagramText(saved.replace('accTitle: Old', 'accTitle: New'));
+    expect(r.sidecarMerged).toBe(true);
+    expect(r.diagram.getMetadata('accTitle')).toBe('New');
+  });
+
+  it('they travel back out: the exported body carries them, and re-imports to the same metadata', () => {
+    for (const text of [
+      '---\ntitle: Order flow\n---\nflowchart LR\n  accTitle: Orders\n  accDescr: From order to invoice\n  A --> B',
+      'stateDiagram-v2\n  accTitle: Lifecycle\n  accDescr {\n    two\n    lines\n  }\n  [*] --> A',
+    ]) {
+      const first = importDiagramText(text).diagram;
+      expect(first.getMetadata('accTitle')).toBeTruthy();
+      const body = exportDiagramText(first, { lossless: false });
+      expect(body).toMatch(/^\s*accTitle: /m);
+      const back = importDiagramText(body);
+      expect(back.errors).toEqual([]);
+      expect(meta(back.diagram)).toEqual(meta(first));
+    }
+  });
+});

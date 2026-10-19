@@ -4940,12 +4940,20 @@ export class SVGRenderer implements IRenderer {
   /** The canvas's own semantics. */
   private rootAriaProps(): Record<string, unknown> {
     const diagram = this.engine?.getDiagram?.();
+    // Mermaid's `accTitle` (else its frontmatter `title`) names the diagram and
+    // `accDescr` describes it, when the host gave no label of its own.
+    const meta = (key: string): string | undefined => {
+      const value = diagram?.getMetadata?.(key);
+      return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+    };
+    const description = meta('accDescr');
     return {
       role: DIAGRAM_ROLE,
       'aria-roledescription': diagramRoleDescription(this.config.diagramType),
       'aria-label': diagram
-        ? diagramAccessibleName(diagram as never, this.config.diagramLabel)
+        ? diagramAccessibleName(diagram as never, this.config.diagramLabel || meta('accTitle') || meta('title'))
         : 'Diagram',
+      ...(description ? { 'aria-description': description } : {}),
       // The single tab stop — surrendered to whichever child is focused.
       tabindex: this.a11yFocus ? '-1' : '0',
     };

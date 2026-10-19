@@ -63,6 +63,8 @@ import {
 
 // Advanced features (Phase 4)
 import { StyleParser, TemplateParser, TemplateDefinition } from './advanced';
+// Frontmatter `title`, `accTitle`, `accDescr`: diagram metadata in every type.
+import { blankFrontmatter, readDiagramMetadata } from './mermaid/lines';
 
 export interface DSLOptions {
   /**
@@ -193,6 +195,20 @@ export class DSL {
    * Parse DSL text with detailed results
    */
   parseDetailed(text: string): ParseResult {
+    const result = this.parseBody(text);
+    // The frontmatter `title` and the `accTitle` / `accDescr` directives are the
+    // DIAGRAM's, in every type — never a node, a state or an entity. The renderer
+    // names and describes the SVG with them.
+    if (result.diagram.getMetadata('unsupportedDiagramType') === undefined) {
+      const meta = readDiagramMetadata(text);
+      for (const key of ['title', 'accTitle', 'accDescr'] as const) {
+        if (meta[key] !== undefined) result.diagram.setMetadata(key, meta[key]);
+      }
+    }
+    return result;
+  }
+
+  private parseBody(text: string): ParseResult {
     const startTime = performance.now();
 
     try {
@@ -252,6 +268,10 @@ export class DSL {
           stats: { nodeCount: 0, linkCount: 0, parseTime: performance.now() - startTime },
         };
       }
+
+      // YAML frontmatter (`---` … `---`) is not flowchart grammar: blanked line for
+      // line, so the lexer never sees it and errors keep their line numbers.
+      text = blankFrontmatter(text);
 
       // Phase 4: Parse styles and templates first
       if (this.options.debug) {
@@ -393,7 +413,7 @@ export class DSL {
     }
 
     try {
-      this.lexer = new Lexer(text);
+      this.lexer = new Lexer(blankFrontmatter(text));
       const tokens = this.lexer.tokenize();
       this.parser.parse(tokens);
       for (const error of this.parser.getErrors()) errors.push(error.message);
@@ -513,21 +533,54 @@ export class DSL {
     // entity names as plain boxes — valid Mermaid, but a different diagram, and
     // the attributes/cardinality are gone. Route by the type the parser tagged.
     const graphType = diagram.getMetadata('diagramType') as string | undefined;
-    if (graphType === 'erDiagram' || graphType === 'erd') return generateErFromDiagram(diagram);
-    if (graphType === 'classDiagram') return generateClassFromDiagram(diagram);
-    if (graphType === 'stateDiagram' || graphType === 'stateDiagram-v2') {
-      return generateStateFromDiagram(diagram);
-    }
-    if (graphType === 'block-beta') return generateBlockFromDiagram(diagram);
-    if (graphType === 'architecture-beta') return generateArchitectureFromDiagram(diagram);
-
-    const text = this.generator.generate(diagram, options);
+    let text: string;
+    if (graphType === 'erDiagram' || graphType === 'erd') text = generateErFromDiagram(diagram);
+    else if (graphType === 'classDiagram') text = generateClassFromDiagram(diagram);
+    else if (graphType === 'stateDiagram' || graphType === 'stateDiagram-v2') text = generateStateFromDiagram(diagram);
+    else if (graphType === 'block-beta') text = generateBlockFromDiagram(diagram);
+    else if (graphType === 'architecture-beta') text = generateArchitectureFromDiagram(diagram);
+    else text = this.generator.generate(diagram, options);
 
     if (this.options.debug) {
       debugLog(`[DSL] Generated ${text.split('\n').length} lines of DSL text`);
     }
 
-    return text;
+    return DSL.withDiagramMetadata(text, diagram);
+  }
+
+  /**
+   * Write the diagram-level metadata back into a generated body: the frontmatter
+   * `title` above the header, `accTitle` / `accDescr` right after it — every
+   * Mermaid type takes both. A body without them is returned unchanged.
+   */
+  private static withDiagramMetadata(body: string, diagram: DiagramModel): string {
+    const read = (key: string): string | undefined => {
+      const value = diagram.getMetadata(key);
+      return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+    };
+    const title = read('title');
+    const accTitle = read('accTitle');
+    const accDescr = read('accDescr');
+    if (!title && !accTitle && !accDescr) return body;
+
+    const lines = body.split('\n');
+    const header = lines.findIndex((l) => l.trim() !== '' && !l.trim().startsWith('%%'));
+    const directives: string[] = [];
+    if (accTitle) directives.push(`    accTitle: ${accTitle.replace(/\s*\n\s*/g, ' ')}`);
+    if (accDescr) {
+      // The block form keeps line breaks, but it ends at the first `}`.
+      directives.push(
+        accDescr.includes('\n') && !accDescr.includes('}')
+          ? ['    accDescr {', ...accDescr.split('\n').map((l) => `      ${l}`), '    }'].join('\n')
+          : `    accDescr: ${accDescr.replace(/\s*\n\s*/g, ' ')}`
+      );
+    }
+    lines.splice(header + 1, 0, ...directives);
+    const out = lines.join('\n');
+    if (!title) return out;
+    // A plain YAML scalar when it is one; a JSON string (valid YAML) otherwise.
+    const plain = /^[A-Za-z0-9\u00c0-\uffff][^:#\n"'{}[\],&*!|>%@`]*$/.test(title) && !/\s$/.test(title);
+    return `---\ntitle: ${plain ? title : JSON.stringify(title)}\n---\n${out}`;
   }
 
   /**

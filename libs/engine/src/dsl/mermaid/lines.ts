@@ -27,9 +27,101 @@ function stripTrailingComment(raw: string): string {
 }
 
 /**
- * Content lines of a Mermaid body: frontmatter, init directives, comments and
- * blank lines removed. The header line (`erDiagram`, `classDiagram`, …) is
- * dropped when `header` matches its first word, case-insensitively.
+ * The accessibility directive starting at `lines[i]`, if there is one: `accTitle: …`,
+ * `accDescr: …`, or the block `accDescr { … }`, which may span lines to its `}`.
+ * Every Mermaid type takes them, and they are diagram METADATA — read as content, a
+ * state diagram drew a state called "Lifecycle" for `accTitle: Lifecycle`.
+ */
+function accessibilityAt(
+  lines: string[],
+  i: number
+): { key: 'accTitle' | 'accDescr'; value: string; last: number } | null {
+  const first = stripTrailingComment(lines[i]).trim();
+  const single = /^(accTitle|accDescr)\s*:\s*(.*)$/.exec(first);
+  if (single) return { key: single[1] as 'accTitle' | 'accDescr', value: single[2].trim(), last: i };
+  const block = /^accDescr\s*\{(.*)$/.exec(first);
+  if (!block) return null;
+  // Mermaid reads to the first `}`, across lines, and drops each line's indent.
+  let body = block[1];
+  let last = i;
+  while (!body.includes('}') && last + 1 < lines.length) body += '\n' + lines[++last];
+  const inner = body.includes('}') ? body.slice(0, body.indexOf('}')) : body;
+  return { key: 'accDescr', value: inner.trim().replace(/\n\s+/g, '\n'), last };
+}
+
+/** Where a LEADING `---` frontmatter block sits: its opening and closing line indices. */
+function frontmatterSpan(lines: string[]): { open: number; close: number } | null {
+  const open = lines.findIndex((l) => l.trim() !== '');
+  if (open < 0 || lines[open].trim() !== '---') return null;
+  for (let j = open + 1; j < lines.length; j++) if (lines[j].trim() === '---') return { open, close: j };
+  return null;
+}
+
+/**
+ * The text with its leading `---` frontmatter block blanked out, line for line —
+ * so a grammar that does not read YAML never sees it, and every error still names
+ * the line it has in the original text.
+ */
+export function blankFrontmatter(text: string): string {
+  const lines = text.split('\n');
+  const span = frontmatterSpan(lines.map((l) => l.replace(/\r$/, '')));
+  if (!span) return text;
+  for (let j = span.open; j <= span.close; j++) lines[j] = '';
+  return lines.join('\n');
+}
+
+/** The diagram-level metadata Mermaid text can carry, in any diagram type. */
+export interface MermaidDiagramMetadata {
+  /** Frontmatter `title:` — Mermaid draws it over the diagram. */
+  title?: string;
+  /** `accTitle: …` — the accessible name. */
+  accTitle?: string;
+  /** `accDescr: …` or `accDescr { … }` — the accessible description. */
+  accDescr?: string;
+}
+
+/** A YAML scalar as written: `"double"` (JSON escapes), `'single'` (`''` is a quote), or plain. */
+function yamlScalar(raw: string): string {
+  const v = raw.trim();
+  if (v.startsWith('"')) {
+    try {
+      return JSON.parse(v) as string;
+    } catch {
+      return v.replace(/^"|"$/g, '');
+    }
+  }
+  if (v.startsWith("'")) return v.replace(/^'|'$/g, '').replace(/''/g, "'");
+  return v.replace(/\s+#.*$/, '');
+}
+
+/**
+ * Read the frontmatter `title` and the `accTitle` / `accDescr` directives of a
+ * Mermaid body (any type). The last directive of each kind wins, as in Mermaid.
+ */
+export function readDiagramMetadata(text: string): MermaidDiagramMetadata {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const meta: MermaidDiagramMetadata = {};
+  const span = frontmatterSpan(lines);
+  if (span) {
+    for (let j = span.open + 1; j < span.close; j++) {
+      const title = /^title\s*:\s*(.*)$/.exec(lines[j]);
+      if (title) meta.title = yamlScalar(title[1]);
+    }
+  }
+  for (let i = span ? span.close + 1 : 0; i < lines.length; i++) {
+    const acc = accessibilityAt(lines, i);
+    if (!acc) continue;
+    meta[acc.key] = acc.value;
+    i = acc.last;
+  }
+  return meta;
+}
+
+/**
+ * Content lines of a Mermaid body: frontmatter, init directives, comments,
+ * `accTitle` / `accDescr` (metadata — see readDiagramMetadata) and blank lines
+ * removed. The header line (`erDiagram`, `classDiagram`, …) is dropped when
+ * `header` matches its first word, case-insensitively.
  */
 export function significantLines(text: string, header: string | string[]): SignificantLine[] {
   const headers = (Array.isArray(header) ? header : [header]).map((h) => h.toLowerCase());
@@ -48,6 +140,11 @@ export function significantLines(text: string, header: string | string[]): Signi
     if (inFrontmatter) continue;
     const text2 = stripTrailingComment(raw).trim();
     if (!text2) continue;
+    const acc = accessibilityAt(lines, i);
+    if (acc) {
+      i = acc.last;
+      continue;
+    }
     if (!headerSeen) {
       const first = text2.split(/[\s:]/)[0].toLowerCase();
       if (headers.includes(first)) {
