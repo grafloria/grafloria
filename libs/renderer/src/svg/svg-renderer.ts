@@ -1597,8 +1597,11 @@ export class SVGRenderer implements IRenderer {
   private lodTierNames(diagram: DiagramModel): string[] {
     // Only the tiers THIS diagram may use: a small diagram skips the shedding
     // tiers (LODTier.minNodes), and its governor must not step down into one —
-    // that would drop the very labels the policy keeps for it.
-    return diagram.getActiveLODTiers().map((t) => t.name);
+    // that would drop the very labels the policy keeps for it. An engine older
+    // than 0.6.2 has no getActiveLODTiers (and no size floor): every tier applies.
+    const tiers =
+      diagram.getActiveLODTiers?.() ?? [...diagram.getLODConfig().tiers].sort((a, b) => b.minZoom - a.minZoom);
+    return tiers.map((t) => t.name);
   }
 
   /**

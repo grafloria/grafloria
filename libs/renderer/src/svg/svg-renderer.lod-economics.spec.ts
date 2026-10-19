@@ -253,6 +253,21 @@ describe('LOD economics (wave8/culling — Card 4)', () => {
       expect(routes()).toBe(0); // and at the cheaper tier, nothing routes
     });
 
+    // getActiveLODTiers() came with engine 0.6.2. Under an older engine (a peer
+    // range an app may still resolve) the governor walks the whole ladder, as it
+    // did before, instead of throwing on the first frame.
+    test('…and still steps down under an engine without getActiveLODTiers', () => {
+      let diagram: DiagramModel;
+      ({ engine, diagram } = scene(20));
+      (diagram as unknown as { getActiveLODTiers?: unknown }).getActiveLODTiers = undefined;
+      renderer = new SVGRenderer(engine, { enableCaching: false, qualityGovernor: { budgetMs: 0 } }, LIGHT_THEME);
+
+      for (let i = 0; i < 3; i++) expect(() => renderer.render(VIEWPORT, SKETCH_ZOOM)).not.toThrow();
+      expect(renderer.getQualityState().governor?.lastDecision).toBe('escalated');
+      renderer.render(VIEWPORT, SKETCH_ZOOM);
+      expect(renderer.getQualityState().tier).toBe('low');
+    });
+
     // THE GOVERNOR (Card 7) THROUGH THE FRAME GATE (Card 0) — the two halves of this
     // wave, meeting. The real user scenario: a heavy scene being PANNED. Every frame
     // is genuinely built (the viewport moves, so the gate cannot skip), every frame
