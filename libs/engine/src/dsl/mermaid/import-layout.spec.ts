@@ -126,4 +126,20 @@ describe('imported Mermaid layout', () => {
       expect(target.getPort(line.targetPortId)?.side).toBe(right ? 'right' : 'left');
     }
   });
+
+  it('taking a route back restores the label too: its slot, or no added label at all', () => {
+    const flow = importDiagramText(LR).diagram;
+    const labelled = flow.getLinks().find((l) => l.labels[0]?.text === 'convert')!;
+    expect(labelled.labels[0].slot).toBeUndefined(); // pinned where the layout made room
+    flow.getNode('Inquiry')!.setPosition(0, 400);
+    expect(labelled.labels[0].slot).toBe('center'); // back at its own slot on the re-routed line
+    expect(labelled.labels[0].position).toBe(0.5);
+
+    const state = importDiagramText('stateDiagram-v2\n  A --> B: go').diagram;
+    const go = state.getLinks()[0];
+    expect(go.labels.map((l) => l.text)).toEqual(['go']); // the route placed a real label
+    state.getNode('A')!.setPosition(0, 400);
+    expect(go.labels).toEqual([]); // …and takes it back: the link's own label draws as before
+    expect(go.getMetadata('label')).toBe('go');
+  });
 });

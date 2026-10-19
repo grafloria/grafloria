@@ -35,6 +35,7 @@ import { deepClone, deepEqual } from '../utils/deep-clone';
 // (anchors, threads, convergence) lives in `../comments`, which depends on this file.
 import type { CommentRegisterTree } from '../comments/types';
 import type { NodeTemplateResolver } from './node-template';
+import { dropImportRoute } from './import-route';
 
 /**
  * How near a port must be to a point for {@link DiagramModel.findNearestPort} to
@@ -601,25 +602,7 @@ export class DiagramModel extends DiagramEntity {
    * are never touched.
    */
   private dropImportRoutes(nodeId: string): void {
-    for (const link of this.getLinksForNode(nodeId)) {
-      if (link.getMetadata('importRoute') !== true) continue;
-      link.setMetadata('importRoute', false);
-      link.setMetadata('hasManualWaypoints', false);
-      link.setMetadata('layoutAnchored', false);
-      link.setPoints([]);
-      // …and its own ports come back (the side anchors were the route's).
-      const own = link.getMetadata('importPorts') as { source?: string; target?: string } | undefined;
-      for (const end of ['source', 'target'] as const) {
-        const portId = own?.[end];
-        const node = this.getNode((end === 'source' ? link.sourceNodeId : link.targetNodeId) ?? '');
-        const current = end === 'source' ? link.sourcePortId : link.targetPortId;
-        if (!portId || !node?.getPort(portId) || current === portId) continue;
-        if (current) this.getPortById(current)?.removeConnection(link.id);
-        if (end === 'source') link.setSourcePort(portId, node.id);
-        else link.setTargetPort(portId, node.id);
-        node.getPort(portId)!.addConnection(link.id, end);
-      }
-    }
+    for (const link of this.getLinksForNode(nodeId)) dropImportRoute(link, this);
   }
 
   /**

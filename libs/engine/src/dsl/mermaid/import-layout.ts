@@ -26,6 +26,7 @@ import type { DiagramModel } from '../../models/DiagramModel';
 import type { NodeModel } from '../../models/NodeModel';
 import type { LinkModel } from '../../models/LinkModel';
 import { ensureSideAnchorPort } from '../../ports/side-anchor';
+import { dropImportRoute, type ImportRouteOriginal } from '../../models/import-route';
 
 // CJS interop, as in HierarchicalLayoutAlgorithm: Node's ESM loader exposes
 // dagre's API only on `.default`.
@@ -361,18 +362,7 @@ function dagreRankdir(direction: string | undefined): 'TB' | 'BT' | 'LR' | 'RL' 
  * other from then on.
  */
 export function clearImportRoute(link: LinkModel, diagram: DiagramModel): void {
-  if (link.getMetadata('importRoute') !== true) return;
-  link.setMetadata('importRoute', false);
-  link.setMetadata('hasManualWaypoints', false);
-  link.setMetadata('layoutAnchored', false);
-  link.setPoints([]);
-  // The link's own ports come back: the side anchors were the route's, and
-  // left behind they read as sides an author pinned.
-  const own = link.getMetadata('importPorts') as { source?: string; target?: string } | undefined;
-  const source = link.sourceNodeId ? diagram.getNode(link.sourceNodeId) : undefined;
-  const target = link.targetNodeId ? diagram.getNode(link.targetNodeId) : undefined;
-  if (own?.source && source?.getPort(own.source)) repointLinkEnd(diagram, link, 'source', source, own.source);
-  if (own?.target && target?.getPort(own.target)) repointLinkEnd(diagram, link, 'target', target, own.target);
+  dropImportRoute(link, diagram);
 }
 
 /**
@@ -632,9 +622,18 @@ export function applyImportRoute(
   const sourcePort = ensureSideAnchorPort(source, `${from.side}@${from.pct}%`);
   const targetPort = ensureSideAnchorPort(target, `${to.side}@${to.pct}%`);
   if (!sourcePort || !targetPort) return;
-  // Remember the link's own ports, so taking the route back restores them.
-  if (!link.getMetadata('importPorts')) {
-    link.setMetadata('importPorts', { source: link.sourcePortId, target: link.targetPortId });
+  // Remember what the link had — its own ports, its labels' places — so taking
+  // the route back restores exactly that (models/import-route.ts).
+  if (!link.getMetadata('importOriginal')) {
+    const original: ImportRouteOriginal = {
+      ports: { source: link.sourcePortId, target: link.targetPortId },
+      ...(link.labels?.length
+        ? { labels: link.labels.map((l) => ({ ...(l.slot ? { slot: l.slot } : {}), position: l.position })) }
+        : route.label
+          ? { added: true }
+          : {}),
+    };
+    link.setMetadata('importOriginal', original);
   }
   repointLinkEnd(diagram, link, 'source', source, sourcePort);
   repointLinkEnd(diagram, link, 'target', target, targetPort);
