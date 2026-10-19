@@ -14,7 +14,7 @@
  *   - every node and every edge of the model drawn, with its text;
  *   - no edge label overlapping another label or a node box (links paint
  *     under nodes, so such a label is clipped);
- *   - no node label cut with "…", or shrunk to fit a box too narrow for a word;
+ *   - no node label cut with "…", clipped by its box, or shrunk to fit a box too narrow for a word;
  *   - edge-label text at a contrast of at least 4.5:1 against its box.
  *
  * Run: node demos/e2e/mermaid-reader-run.mjs [--corpus file.json] [--width 713] [--shots dir]
@@ -148,6 +148,15 @@ for (const fence of corpus) {
         for (const t of texts) {
           const px = parseFloat(getComputedStyle(t).fontSize);
           if (px < 12) problems.push(`shrunk to ${px}px: "${t.textContent.trim()}"`);
+        }
+        // …and none cut by its clip box: the text as the browser lays it out, in
+        // the real font, wider or taller than the box it is clipped to.
+        for (const t of texts) {
+          const id = t.getAttribute('clip-path')?.match(/#([^)]+)/)?.[1];
+          const rect = id && document.getElementById(id)?.querySelector('rect');
+          if (!rect) continue;
+          const bb = t.getBBox();
+          if (bb.width > +rect.getAttribute('width') + 1 || bb.height > +rect.getAttribute('height') + 1) problems.push(`clipped: "${t.textContent.trim()}"`);
         }
 
         // No edge label under a node or another label. Links paint under nodes,
