@@ -22,6 +22,7 @@ import {
   DiagramType,
   NodeShape,
   LinkType,
+  mermaidEdgeEnds,
   StyleProperties,
   Position,
   SourceLocation,
@@ -97,6 +98,8 @@ const V11_SHAPE_MAP: Record<string, NodeShape> = {
   trapezoid: 'trapezoid', 'trap-b': 'trapezoid', 'manual-input': 'trapezoid',
   'trapezoid-alt': 'trapezoid-alt', 'trap-t': 'trapezoid-alt',
   'lean-r': 'parallelogram', 'in-out': 'parallelogram', 'lean-l': 'parallelogram-alt', 'out-in': 'parallelogram-alt',
+  // `>text]` — Mermaid v11 calls it `odd`.
+  odd: 'asymmetric',
   // v11's text block: words on the canvas, no box.
   text: 'text',
 };
@@ -349,12 +352,14 @@ export class Parser {
       let label: string | undefined;
       // Mermaid's other label spelling — the text BETWEEN the dashes:
       // `A -- text --> B`, `A -. text .-> B`, `A == text ==> B`. The opener is a
-      // bare `--` / `-.` / `==`; the next link token on the line closes the label
-      // and says what the line is.
+      // bare `--` / `-.` / `==` (with an optional start marker, `<-- text -->`);
+      // the next link token on the line closes the label and says what the line is.
+      const openerText = linkToken.value;
       const opener =
-        (linkToken.type === TokenType.LINE && linkToken.value === '--') ||
-        (linkToken.type === TokenType.DOTTED_LINE && linkToken.value === '-.') ||
-        (linkToken.type === TokenType.THICK_LINE && linkToken.value === '==');
+        (linkToken.type === TokenType.LINE && /^[<ox]?--$/.test(openerText)) ||
+        (linkToken.type === TokenType.DOTTED_LINE && /^[<ox]?-\.$/.test(openerText)) ||
+        (linkToken.type === TokenType.THICK_LINE && /^[<ox]?==$/.test(openerText));
+      let startMarker = '';
       if (opener) {
         let close = this.current;
         while (close < this.tokens.length && this.tokens[close]!.type !== TokenType.NEWLINE && !this.isLinkTokenAt(close)) close++;
@@ -369,9 +374,13 @@ export class Parser {
           label = text.trim();
           this.current = close;
           linkToken = this.advance();
+          startMarker = /^[<ox]/.test(openerText) ? openerText[0] : '';
         }
       }
       const linkType = this.getLinkType(linkToken.type);
+      // The ends, Mermaid's way; an inline label's opener lends its start marker
+      // (`<-- text -->` has arrows at both ends).
+      const ends = mermaidEdgeEnds(startMarker + linkToken.value);
 
       if (label === undefined && this.match(TokenType.PIPE)) {
         label = this.parseTextUntil(TokenType.PIPE);
@@ -395,6 +404,7 @@ export class Parser {
             source: source.id,
             target: target.id,
             linkType,
+            ends,
             label,
             sourceShape: source.shape,
             sourceLabel: source.label,

@@ -5,7 +5,9 @@
  *  - P0-5a  a state id with spaces is REFUSED with line errors (it used to load
  *           with the lines silently gone — or as an empty diagram);
  *  - P0-5b  `accTitle` / `accDescr` / a frontmatter `title` name and describe the
- *           SVG (they used to become a state, or nothing).
+ *           SVG (they used to become a state, or nothing);
+ *  - P1-10  `--o`, `--x`, `<-->` and `---` draw a circle, a cross, both ends and
+ *           no marker (all four drew one triangle), and `>text]` draws the flag.
  */
 import { createDiagram } from './create-diagram';
 import type { DiagramInstance } from './create-diagram';
@@ -74,4 +76,29 @@ describe('loadText — the Mermaid parse gaps, on the canvas', () => {
     expect(root().getAttribute('aria-label')).toBe('Diagram, 2 nodes, 1 edge');
   });
 
+
+  it('P1-10: each edge kind draws its own markers, and `>Flag]` draws the flag', () => {
+    diagram.loadText('flowchart LR\n A --o B\n B --x C\n C <--> D\n D --- E\n E --> F>Flag]');
+    diagram.renderNow();
+    const markers = (from: string, to: string): string[] => {
+      const link = diagram.getModel().getLinks().find((l) => l.sourceNodeId === from && l.targetNodeId === to)!;
+      return Array.from(container.querySelectorAll(`[data-link-id="${link.id}"] .arrow`))
+        .map((el) => Array.from(el.classList).find((c) => c !== 'arrow')!)
+        .sort();
+    };
+    expect(markers('A', 'B')).toEqual(['arrow-circle']);
+    expect(markers('B', 'C')).toEqual(['arrow-cross']);
+    expect(markers('C', 'D')).toEqual(['arrow-triangle', 'arrow-triangle']);
+    expect(markers('D', 'E')).toEqual([]);
+    expect(markers('E', 'F')).toEqual(['arrow-triangle']);
+
+    // The flag: a five-point outline with the notch on the left, not a rectangle.
+    const body = container.querySelector('[data-node-id="F"] polygon');
+    expect(body).not.toBeNull();
+    const points = (body!.getAttribute('points') ?? '').trim().split(/\s+/);
+    expect(points).toHaveLength(5);
+    const [x0] = points[0].split(',').map(Number);
+    const [xNotch] = points[4].split(',').map(Number);
+    expect(xNotch).toBeGreaterThan(x0);
+  });
 });

@@ -27,8 +27,10 @@ import {
   GrafloriaDirectiveNode,
   NodeShape,
   LinkType,
+  EdgeEnd,
   StyleProperties,
 } from '../types/ASTNode';
+import type { ArrowStyle } from '../../types/model.types';
 
 export interface TransformOptions {
   /**
@@ -641,8 +643,30 @@ export class ASTTransformer {
 
     // Set line style based on link type
     this.applyLinkTypeStyle(link, astEdge.linkType);
+    // …and the markers at its ends: every kind drew one triangle, so `---` stated
+    // a direction its author never wrote and `--o` / `--x` / `<-->` looked like `-->`.
+    this.applyLinkEnds(link, astEdge.ends);
 
     return link;
+  }
+
+  /**
+   * The end markers of a Mermaid edge, on the link's style: `arrowHead` at the
+   * target, `arrowTail` at the source. A plain arrow head is left unset — it is
+   * the renderer's default, so `-->` stays exactly what it was.
+   */
+  private applyLinkEnds(link: LinkModel, ends: EdgeDefinitionNode['ends']): void {
+    if (!ends) return;
+    const marker = (end: EdgeEnd): ArrowStyle =>
+      end === 'circle'
+        ? { type: 'circle', size: 10, filled: true }
+        : end === 'cross'
+          ? { type: 'cross', size: 10, filled: false }
+          : end === 'none'
+            ? { type: 'none', size: 0, filled: false }
+            : { type: 'arrow', size: 10, filled: true };
+    if (ends.end !== 'arrow') link.style.arrowHead = marker(ends.end);
+    if (ends.start !== 'none') link.style.arrowTail = marker(ends.start);
   }
 
   /**
@@ -879,7 +903,7 @@ export class ASTTransformer {
       'subroutine': { type: 'subroutine' },
       'cylindrical': { type: 'cylinder' },
       'circle': { type: 'circle' },
-      'asymmetric': { type: 'rect' }, // Mermaid's flag — no registry shape yet
+      'asymmetric': { type: 'asymmetric' }, // `>text]` — the flag, notched on the left
       'rhombus': { type: 'diamond' },
       'hexagon': { type: 'hexagon' },
       'trapezoid': { type: 'trapezoid' }, // [/ \] — wide bottom

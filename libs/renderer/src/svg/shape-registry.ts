@@ -678,7 +678,29 @@ function noteVerts(b: OutlineBox): ShapePoint[] {
   ];
 }
 
+/**
+ * Mermaid's asymmetric `>text]` (v11 `odd`): a box whose LEFT side is notched
+ * inward — a flag flying to the right. The notch is half the height, capped at a
+ * fifth of the width so a short box keeps room for its words.
+ */
+function asymmetricVerts(b: OutlineBox): ShapePoint[] {
+  const notch = Math.min(b.h / 2, b.w * 0.2);
+  return [
+    { x: b.x0, y: b.y0 },
+    { x: r3(b.x0 + b.w), y: b.y0 },
+    { x: r3(b.x0 + b.w), y: r3(b.y0 + b.h) },
+    { x: b.x0, y: r3(b.y0 + b.h) },
+    { x: r3(b.x0 + notch), y: r3(b.y0 + b.h / 2) },
+  ];
+}
+
 // ── Straight-edged shapes ──────────────────────────────────────────────────
+const AsymmetricShape = polygonShape('asymmetric', asymmetricVerts, {
+  innerRect: (w, h) => {
+    const notch = Math.min(h / 2, w * 0.2);
+    return { x: notch, y: 0.1 * h, w: w - notch - 0.06 * w, h: 0.8 * h };
+  },
+});
 const ParallelogramShape = polygonShape('parallelogram', (b) => parallelogramVerts(b, 1));
 const ParallelogramTopShape = polygonShape('parallelogram-top', (b) => parallelogramVerts(b, -1));
 const TrapezoidShape = polygonShape('trapezoid', (b) => trapezoidVerts(b, 'top'));
@@ -1225,6 +1247,7 @@ for (const def of [RectShape, CircleShape, EllipseShape, DiamondShape, HexagonSh
 // full ShapeDefinition, so it works everywhere the built-ins do — no switch
 // edits at any of the five render sites.
 for (const def of [
+  AsymmetricShape,
   ParallelogramShape,
   ParallelogramTopShape,
   TrapezoidShape,
@@ -1260,6 +1283,7 @@ const SHAPE_ALIASES: Record<string, ShapeDefinition> = {
   folder: PackageShape,
   comment: NoteShape,
   'use-case-actor': ActorShape,
+  odd: AsymmetricShape, // Mermaid v11's name for `>text]`
 };
 for (const [alias, def] of Object.entries(SHAPE_ALIASES)) {
   registry.set(alias, def);
