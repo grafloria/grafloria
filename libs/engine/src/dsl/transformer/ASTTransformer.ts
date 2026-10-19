@@ -9,7 +9,14 @@ import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { LinkModel } from '../../models/LinkModel';
 import { GroupModel } from '../../models/GroupModel';
-import { assignRanks, placeByRank } from '../mermaid/layout';
+import {
+  applyImportRoute,
+  clearImportRoute,
+  fitNodeToLabel,
+  repointLinkEnd,
+  importEdgeLabelBox,
+  layoutForImport,
+} from '../mermaid/import-layout';
 import { readMermaidLabel } from '../mermaid/rich-label';
 import { ensureSideAnchorPort } from '../../ports/side-anchor';
 import { layoutArchitecture } from '../../layout/architecture/architecture-layout';
@@ -148,12 +155,20 @@ export class ASTTransformer {
   }
 
   /**
-   * Rank-based placement over the whole parsed graph (Phase 2.5).
+   * Placement over the whole parsed graph (Phase 2.5): Mermaid's own layout.
+   *
+   * Every box first grows to hold its label (wrap at 200 px, then taller — see
+   * fitNodeToLabel), then dagre lays the graph out with each edge label as a
+   * box of its own between the ranks, subgraph members kept together, and
+   * every edge given a route (import-layout.ts). The route goes on the link:
+   * its ports where it meets its boxes, its bends as waypoints, its label
+   * where the layout made room — so a label is never under a box or another
+   * label, and two edges between one pair never share a track.
    *
    * Only nodes THIS transform auto-positioned (`this.nodePositions`) move — a
    * guard, not a hope: anything with an explicit position (restored later by
    * the sidecar, or added by a caller) must never be rearranged by a parse.
-   * Synchronous and deterministic; see dsl/mermaid/layout.ts.
+   * Synchronous and deterministic.
    */
   private applyRankPlacement(
     diagram: DiagramModel,
@@ -163,10 +178,10 @@ export class ASTTransformer {
       .getNodes()
       .filter((node) => this.nodePositions.has(node.id));
     if (placeable.length === 0) return;
+    for (const node of placeable) fitNodeToLabel(node);
 
-    const ids = placeable.map((n) => n.id);
-    const idSet = new Set(ids);
-    const edges = diagram
+    const idSet = new Set(placeable.map((n) => n.id));
+    const links = diagram
       .getLinks()
       .filter(
         (l) =>
@@ -174,50 +189,60 @@ export class ASTTransformer {
           l.targetNodeId !== undefined &&
           idSet.has(l.sourceNodeId) &&
           idSet.has(l.targetNodeId)
-      )
-      .map((l) => ({ from: l.sourceNodeId!, to: l.targetNodeId! }));
+      );
 
-    const direction = (diagram.getMetadata('direction') as string) ?? 'TD';
-    const ranks = assignRanks(ids, edges);
-    const positions = placeByRank(placeable, ranks, {
-      direction,
-      start: startPosition,
-      // Bands are size-aware, so these are true GAPS — derived from the same
-      // nodeSpacing constant the chain-wrap used (150 ⇒ 75 / 50 by default).
-      rankGap: this.nodeSpacing / 2,
-      crossGap: this.nodeSpacing / 3,
-    });
+    // Subgraph containment: a node's group, a nested group's parent group.
+    const parents = new Map<string, string>();
+    for (const group of diagram.getGroups()) {
+      for (const member of group.members ?? []) parents.set(member, group.id);
+    }
+
+    const layout = layoutForImport(
+      placeable.map((n) => ({ id: n.id, width: n.size.width, height: n.size.height })),
+      links.map((l) => ({
+        key: l.id,
+        from: l.sourceNodeId!,
+        to: l.targetNodeId!,
+        label: importEdgeLabelBox(l),
+      })),
+      {
+        direction: (diagram.getMetadata('direction') as string) ?? 'TD',
+        parents,
+      }
+    );
 
     for (const node of placeable) {
-      const position = positions.get(node.id);
-      if (!position) continue;
+      const at = layout.positions.get(node.id);
+      if (!at) continue;
+      const position = { x: startPosition.x + at.x, y: startPosition.y + at.y };
       node.setPosition(position.x, position.y);
       this.nodePositions.set(node.id, position);
     }
-
-    // The links were smart-linked against the CHAIN-WRAP positions: their port
-    // sides and generated paths describe the old picture. Re-select ports with
-    // the rank context (forward edges leave the flow side, back-edges loop),
-    // then drop the routed polylines so the renderer re-routes from the real
-    // geometry on first paint — the same invalidate-on-move rule the layout
-    // engine applies (see layout-route-invalidation.spec.ts).
+    // Each link's OWN ports, chosen against the final picture (forward edges
+    // leave the flow side, back-edges loop): what a link falls back to when
+    // its route is taken back, and what an unrouted one draws from.
     const contextDirection = (
       { TD: 'TB', TB: 'TB', BT: 'BT', LR: 'LR', RL: 'RL' } as const
-    )[direction.toUpperCase() as 'TD' | 'TB' | 'BT' | 'LR' | 'RL'];
+    )[String(diagram.getMetadata('direction') ?? 'TD').toUpperCase() as 'TD' | 'TB' | 'BT' | 'LR' | 'RL'];
     diagram.getLayoutManager().optimizeConnections({
       ...(contextDirection ? { direction: contextDirection } : {}),
-      ranks,
+      ranks: layout.ranks,
     });
-    for (const link of diagram.getLinks()) {
-      if (
-        link.sourceNodeId !== undefined &&
-        link.targetNodeId !== undefined &&
-        idSet.has(link.sourceNodeId) &&
-        idSet.has(link.targetNodeId) &&
-        link.points.length > 0
-      ) {
-        link.setPoints([]);
+    for (const link of links) {
+      const route = layout.routes.get(link.id);
+      if (!route) {
+        // No route (cannot happen for a laid-out pair, but never keep the
+        // chain-wrap polyline): the renderer routes from the real geometry.
+        if (link.points.length > 0) link.setPoints([]);
+        continue;
       }
+      const shift = (p: { x: number; y: number }) => ({ x: p.x + startPosition.x, y: p.y + startPosition.y });
+      applyImportRoute(
+        link,
+        diagram,
+        { points: route.points.map(shift), ...(route.label ? { label: shift(route.label) } : {}) },
+        (diagram.getMetadata('direction') as string) ?? 'TD'
+      );
     }
   }
 
@@ -435,6 +460,8 @@ export class ASTTransformer {
       : diagram.getLinks().filter((l) => l.sourceNodeId === source && l.targetNodeId === target).slice(0, 1);
     const p = node.properties;
     for (const link of links) {
+      // A side or bends the author wrote outrank the route the import's layout made.
+      if (p['from'] || p['to'] || p['via']) clearImportRoute(link, diagram);
       if (p['animation']) {
         const anim: Record<string, string> = { type: p['animation'] };
         if (p['speed']) anim['speed'] = p['speed'];
@@ -449,14 +476,14 @@ export class ASTTransformer {
         const side = plain(p['from']);
         if (side) link.setMetadata('sourceSide', side);
         const port = n ? ensureSideAnchorPort(n, side ? `${side}@50%` : p['from']) : null;
-        if (port) link.setSourcePort(port, link.sourceNodeId);
+        if (port && n) repointLinkEnd(diagram, link, 'source', n, port);
       }
       if (p['to'] && link.targetNodeId) {
         const n = diagram.getNode(link.targetNodeId);
         const side = plain(p['to']);
         if (side) link.setMetadata('targetSide', side);
         const port = n ? ensureSideAnchorPort(n, side ? `${side}@50%` : p['to']) : null;
-        if (port) link.setTargetPort(port, link.targetNodeId);
+        if (port && n) repointLinkEnd(diagram, link, 'target', n, port);
       }
       if (p['label'] === 'above' || p['label'] === 'below' || p['label'] === 'on') {
         link.setMetadata('labelPlacement', p['label'] === 'on' ? undefined : p['label']);

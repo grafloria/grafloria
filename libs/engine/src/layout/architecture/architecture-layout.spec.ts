@@ -204,11 +204,14 @@ describe("engine.layout('architecture') — the same composition for a diagram b
     const { DiagramEngine } = await import('../../engine/DiagramEngine');
     const text = HEALTHPAY_STRUCTURE.replace('%%grafloria:layout architecture', '');
     const d = importDiagramText(text).diagram;
-    expect(R(d, 'hp').y + R(d, 'hp').h).toBeGreaterThan(R(d, 'ours').y); // not composed yet: the zones overlap
+    // Not composed yet: the import's own layout (Mermaid's — subgraph members
+    // kept together, so the zones no longer overlap as they did) is not this one.
+    const imported = JSON.stringify(d.getNodes().map((n) => [n.id, n.position]));
     const engine = new DiagramEngine();
     engine.setDiagram(d);
     const result = await engine.layout('architecture');
     expect(result.algorithm).toBe('architecture');
+    expect(JSON.stringify(d.getNodes().map((n) => [n.id, n.position]))).not.toBe(imported);
     expect(R(d, 'hp').y + R(d, 'hp').h).toBeLessThan(R(d, 'ours').y);
     expect(R(d, 'page').y - R(d, 'hp').y).toBeGreaterThanOrEqual(36); // the caption band: our frames, not the nested path's
     const a = anchor(d, link(d, 'customer', 'page'), 'source'), b = anchor(d, link(d, 'customer', 'page'), 'target');

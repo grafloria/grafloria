@@ -37,6 +37,7 @@ import type { GroupModel } from '../../models/GroupModel';
 import type { LinkModel } from '../../models/LinkModel';
 import { ensureSideAnchorPort, isSideAnchorPort, parseSideAnchor, type AnchorSide } from '../../ports/side-anchor';
 import { estimateTextWidth, widestLine, type MeasureText, type TextFont } from './text-metrics';
+import { clearImportRoute } from '../../dsl/mermaid/import-layout';
 
 export interface ArchitectureLayoutOptions {
   /** 'LR' (default: the diagram's own direction, else LR) or 'TB'. */
@@ -151,6 +152,10 @@ const SHAPES_NEEDING_ROOM = new Set(['diamond', 'rhombus', 'circle', 'ellipse', 
 
 /** Lay a diagram out as an architecture composition. Writes into the model. */
 export function layoutArchitecture(diagram: DiagramModel, options: ArchitectureLayoutOptions = {}): ArchitectureLayoutResult {
+  // This layout places every box and anchors every line itself: a route a
+  // Mermaid import laid out (dsl/mermaid/import-layout.ts) is the import's,
+  // not this composition's — and its `layoutAnchored` would read as ours.
+  for (const link of diagram.getLinks()) clearImportRoute(link, diagram);
   return new ArchitectureComposer(diagram, options).run();
 }
 

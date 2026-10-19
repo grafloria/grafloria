@@ -484,7 +484,10 @@ describe('Mermaid compat — Phase 3: stateDiagram-v2', () => {
 
   // C9 (docs review v3): `Idle --> Running : start` + `Running --> Idle : stop` drew
   // BOTH transitions down the same line between the same two ports, so the two
-  // labels printed over each other ("stop" over "start").
+  // labels printed over each other ("stop" over "start"). Since the import lays
+  // out as Mermaid does (dsl/mermaid/import-layout.ts), the pair is two curves
+  // side by side, each label on its own — as Mermaid draws it — rather than the
+  // return swung round another side of the boxes.
   it('a transition and its REVERSE take different routes (their labels cannot collide)', () => {
     const r = imp('stateDiagram-v2\n  [*] --> Idle\n  Idle --> Running : start\n  Running --> Idle : stop');
     const link = (from: string, to: string) =>
@@ -493,10 +496,14 @@ describe('Mermaid compat — Phase 3: stateDiagram-v2', () => {
     const back = link('Running', 'Idle');
     const ports = (l: typeof there) => [l.sourcePortId, l.targetPortId].sort().join(',');
     expect(ports(back)).not.toBe(ports(there));
-    // …and on two distinct SIDES of each node, so the lines do not overlap either.
-    const side = (portId: string) => r.diagram.getPortById(portId)?.side;
-    expect(side(back.sourcePortId)).not.toBe(side(there.targetPortId));
-    expect(side(back.targetPortId)).not.toBe(side(there.sourcePortId));
+    // …and the lines themselves are apart: no point of one is a point of the other.
+    const key = (p: { x: number; y: number }) => `${Math.round(p.x)},${Math.round(p.y)}`;
+    const thereKeys = new Set(there.points.map(key));
+    expect(back.points.some((p) => thereKeys.has(key(p)))).toBe(false);
+    // …and so are their labels.
+    expect(there.labels[0].position).not.toBeUndefined();
+    const at = (l: typeof there) => l.getPointAtPosition(l.labels[0].position)!;
+    expect(Math.hypot(at(there).x - at(back).x, at(there).y - at(back).y)).toBeGreaterThan(30);
   });
 
   it('a COMPOSITE state becomes a group, and its `[*]` is scoped to it', () => {

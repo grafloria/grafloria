@@ -558,9 +558,11 @@ export class DiagramModel extends DiagramEntity {
 
     // Phase 0.2: Forward position and size changes as diagram-level events for LiveReroutingEngine
     node.on('change:position', () => {
+      this.dropImportRoutes(node.id);
       this.emitOrQueue('node:moved', { nodeId: node.id, position: node.position });
     });
     node.on('change:size', () => {
+      this.dropImportRoutes(node.id);
       this.emitOrQueue('node:resized', { nodeId: node.id, size: node.size });
     });
 
@@ -583,10 +585,41 @@ export class DiagramModel extends DiagramEntity {
         if (desc === node) continue;
         desc.markDirty('incremental');
         this.nodeSpatialIndex.update(desc);
+        this.dropImportRoutes(desc.id);
         this.emitOrQueue('node:moved', { nodeId: desc.id, position: desc.getWorldPosition() });
         this.emitOrQueue('node:changed', desc);
       }
     });
+  }
+
+  /**
+   * A ROUTE A MERMAID IMPORT LAID OUT belongs to the boxes as the import placed
+   * them (dsl/mermaid/import-layout.ts: its bends are the gaps the layout made,
+   * its label sits where the layout made room). Once either end moves or
+   * resizes, those bends are wrong, so the link goes back to being routed like
+   * any other — a user's own bends (`hasManualWaypoints` without `importRoute`)
+   * are never touched.
+   */
+  private dropImportRoutes(nodeId: string): void {
+    for (const link of this.getLinksForNode(nodeId)) {
+      if (link.getMetadata('importRoute') !== true) continue;
+      link.setMetadata('importRoute', false);
+      link.setMetadata('hasManualWaypoints', false);
+      link.setMetadata('layoutAnchored', false);
+      link.setPoints([]);
+      // …and its own ports come back (the side anchors were the route's).
+      const own = link.getMetadata('importPorts') as { source?: string; target?: string } | undefined;
+      for (const end of ['source', 'target'] as const) {
+        const portId = own?.[end];
+        const node = this.getNode((end === 'source' ? link.sourceNodeId : link.targetNodeId) ?? '');
+        const current = end === 'source' ? link.sourcePortId : link.targetPortId;
+        if (!portId || !node?.getPort(portId) || current === portId) continue;
+        if (current) this.getPortById(current)?.removeConnection(link.id);
+        if (end === 'source') link.setSourcePort(portId, node.id);
+        else link.setTargetPort(portId, node.id);
+        node.getPort(portId)!.addConnection(link.id, end);
+      }
+    }
   }
 
   /**

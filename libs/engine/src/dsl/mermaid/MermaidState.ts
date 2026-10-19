@@ -29,7 +29,16 @@ import { NodeModel } from '../../models/NodeModel';
 import { LinkModel } from '../../models/LinkModel';
 import { GroupModel } from '../../models/GroupModel';
 import { significantLines, unquote } from './lines';
-import { placeByRank, assignRanks, type RankEdge } from './layout';
+import { type RankEdge } from './layout';
+import {
+  applyImportRoute,
+  estimateLabelWidth,
+  fitNodeToLabel,
+  IMPORT_EDGE_FONT,
+  IMPORT_EDGE_PAD,
+  layoutForImport,
+  type ImportRoute,
+} from './import-layout';
 
 export type StateKind =
   | 'state' | 'start' | 'end' | 'choice' | 'fork' | 'join' | 'history' | 'deep-history';
@@ -337,6 +346,8 @@ const CROSS_GAP = 40;
 interface ScopeArrangement {
   /** Local top-left per direct child, relative to the scope's CONTENT origin. */
   positions: Map<string, { x: number; y: number }>;
+  /** Routes of the transitions between two direct children, by transition index (local). */
+  routes: Map<number, ImportRoute>;
   /** Content extent (children bbox; no padding). */
   width: number;
   height: number;
@@ -350,7 +361,7 @@ function layoutStateModel(
   model: MermaidStateModel,
   nodes: Map<string, NodeModel>,
   start: { x: number; y: number }
-): void {
+): Array<{ index: number; route: ImportRoute; direction: string }> {
   const byId = new Map(model.states.map((s) => [s.id, s]));
   const childrenOf = (scope: string | undefined): MermaidStateNode[] =>
     model.states.filter((s) => (s.parent ?? undefined) === scope);
@@ -366,18 +377,33 @@ function layoutStateModel(
     return undefined;
   };
 
-  /** Transitions, lifted into `scope` — the edges that rank ITS children. */
-  const scopeEdges = (scope: string | undefined): RankEdge[] => {
-    const edges: RankEdge[] = [];
-    for (const t of model.transitions) {
+  /**
+   * Transitions, lifted into `scope` — the edges that place ITS children. One
+   * that runs between two direct children carries its label (the layout makes
+   * room for it, and it is routed here); one lifted from inside a composite
+   * only pulls the composite into place (the renderer routes it).
+   */
+  const scopeEdges = (scope: string | undefined): Array<RankEdge & { key: string; label?: { w: number; h: number } }> => {
+    const edges: Array<RankEdge & { key: string; label?: { w: number; h: number } }> = [];
+    model.transitions.forEach((t, index) => {
       const from = liftTo(t.from, scope);
       const to = liftTo(t.to, scope);
-      if (from !== undefined && to !== undefined && from !== to) {
-        edges.push({ from, to });
-      }
-    }
+      if (from === undefined || to === undefined || (from === to && t.from !== t.to)) return;
+      const direct = from === t.from && to === t.to;
+      edges.push({
+        key: String(index),
+        from,
+        to,
+        ...(direct && t.label
+          ? { label: { w: estimateLabelWidth(t.label, IMPORT_EDGE_FONT) + 2 * IMPORT_EDGE_PAD, h: IMPORT_EDGE_FONT + 2 * IMPORT_EDGE_PAD } }
+          : {}),
+      });
+    });
     return edges;
   };
+  /** The direction a scope's children flow in. */
+  const directionOf = (scope: string | undefined): string =>
+    (scope !== undefined ? byId.get(scope)?.direction : undefined) ?? model.direction ?? 'TB';
 
   // Bottom-up: measured outer size per state (leaves read their NodeModel).
   const measured = new Map<string, { width: number; height: number }>();
@@ -423,15 +449,22 @@ function layoutStateModel(
     if (cached) return cached;
     const children = childrenOf(scope);
     const placeable = children.map((child) => ({ id: child.id, size: measure(child) }));
-    const direction =
-      (scope !== undefined ? byId.get(scope)?.direction : undefined) ??
-      model.direction ??
-      'TB';
-    const positions = placeByRank(
-      placeable,
-      assignRanks(placeable.map((p) => p.id), scopeEdges(scope)),
-      { direction, start: { x: 0, y: 0 }, rankGap: RANK_GAP, crossGap: CROSS_GAP }
+    const edges = scopeEdges(scope);
+    // Mermaid's layout (dagre), with each label a box between the ranks: see
+    // import-layout.ts. Only transitions between two direct children are
+    // routed at this level.
+    const laid = layoutForImport(
+      placeable.map((p) => ({ id: p.id, width: p.size.width, height: p.size.height })),
+      edges,
+      { direction: directionOf(scope), nodeSpacing: CROSS_GAP, rankSpacing: RANK_GAP }
     );
+    const positions = laid.positions;
+    const routes = new Map<number, ImportRoute>();
+    for (const edge of edges) {
+      const t = model.transitions[Number(edge.key)];
+      const route = laid.routes.get(edge.key);
+      if (route && t && edge.from === t.from && edge.to === t.to) routes.set(Number(edge.key), route);
+    }
     let width = 0;
     let height = 0;
     for (const p of placeable) {
@@ -439,10 +472,16 @@ function layoutStateModel(
       width = Math.max(width, at.x + p.size.width);
       height = Math.max(height, at.y + p.size.height);
     }
-    const arrangement: ScopeArrangement = { positions, width, height };
+    // The layout's own extent counts its routes and label boxes too.
+    width = Math.max(width, laid.width);
+    height = Math.max(height, laid.height);
+    const arrangement: ScopeArrangement = { positions, routes, width, height };
     arrangements.set(key, arrangement);
     return arrangement;
   };
+
+  // Where each scope's content origin landed in the world (for its routes).
+  const origins = new Map<string, { x: number; y: number }>();
 
   // Top-down: convert local placements to world coordinates and commit.
   const commit = (state: MermaidStateNode, x: number, y: number): void => {
@@ -462,6 +501,7 @@ function layoutStateModel(
         // Uniform width: every band spans the composite's content width.
         regionNode.setSize(bandWidth, band.height);
         const inner = arrangements.get(region.id) ?? arrange(region.id);
+        origins.set(region.id, { x: x + STATE_PAD + REGION_PAD, y: bandY + REGION_PAD });
         for (const child of childrenOf(region.id)) {
           const local = inner.positions.get(child.id)!;
           commitChild(child, x + STATE_PAD + REGION_PAD + local.x, bandY + REGION_PAD + local.y);
@@ -472,6 +512,7 @@ function layoutStateModel(
       const pad = state.region ? REGION_PAD : STATE_PAD;
       const header = state.region ? 0 : STATE_HEADER;
       const inner = arrangements.get(state.id) ?? arrange(state.id);
+      origins.set(state.id, { x: x + pad, y: y + pad + header });
       for (const child of childrenOf(state.id)) {
         const local = inner.positions.get(child.id)!;
         commitChild(child, x + pad + local.x, y + pad + header + local.y);
@@ -480,11 +521,36 @@ function layoutStateModel(
   };
   const commitChild = commit; // alias for readability above
 
+  // Every state's box holds all of its label (wrap, then taller; a long
+  // one-word name widens its box rather than shrinking to a few pixels).
+  for (const state of model.states) {
+    if (state.composite || PSEUDO_KINDS.has(state.kind)) continue;
+    const node = nodes.get(state.id);
+    if (node) fitNodeToLabel(node);
+  }
+
   const root = arrange(undefined);
+  origins.set('', { x: start.x, y: start.y });
   for (const child of childrenOf(undefined)) {
     const local = root.positions.get(child.id)!;
     commit(child, start.x + local.x, start.y + local.y);
   }
+
+  // The routes, in world coordinates, for the caller to hand to the links.
+  const out: Array<{ index: number; route: ImportRoute; direction: string }> = [];
+  for (const [key, arrangement] of arrangements) {
+    const origin = origins.get(key);
+    if (!origin) continue;
+    const shift = (p: { x: number; y: number }) => ({ x: p.x + origin.x, y: p.y + origin.y });
+    for (const [index, route] of arrangement.routes) {
+      out.push({
+        index,
+        route: { points: route.points.map(shift), ...(route.label ? { label: shift(route.label) } : {}) },
+        direction: directionOf(key === '' ? undefined : key),
+      });
+    }
+  }
+  return out;
 }
 
 export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
@@ -527,7 +593,7 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
   // against the real geometry (a link wired to the placeholder grid keeps the
   // wrong sides). Composites are sized to contain their children; concurrent
   // regions band. See layoutStateModel.
-  layoutStateModel(model, nodes, { x: 80, y: 60 });
+  const routes = layoutStateModel(model, nodes, { x: 80, y: 60 });
 
   // Composite states become groups whose members are their scoped children.
   // Every group is created BEFORE membership is wired, because a nested
@@ -556,14 +622,26 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
     }
   }
 
-  for (const transition of model.transitions) {
+  const linkOf = new Map<number, LinkModel>();
+  model.transitions.forEach((transition, index) => {
     const source = nodes.get(transition.from);
     const target = nodes.get(transition.to);
-    if (!source || !target) continue;
+    if (!source || !target) return;
     const link = reverseRoute(diagram, source, target) ?? diagram.createSmartLink(source, target, 'orthogonal');
-    if (!link) continue;
+    if (!link) return;
     if (transition.label) link.setLabel(transition.label);
     link.setMetadata('stateTransition', transition);
+    linkOf.set(index, link);
+  });
+
+  // Each transition the layout routed takes its route — ports where it meets
+  // its boxes, waypoints, its label where the layout made room — and draws as
+  // Mermaid draws a transition: a curve.
+  for (const { index, route, direction } of routes) {
+    const link = linkOf.get(index);
+    if (!link) continue;
+    link.setPathType('smooth');
+    applyImportRoute(link, diagram, route, direction);
   }
 
   return diagram;
