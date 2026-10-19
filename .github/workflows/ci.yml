@@ -95,6 +95,11 @@ jobs:
       # directions. The site says this runs in CI; this is the line that makes
       # that true.
       - run: node demos/e2e/mermaid-oracle-run.mjs
+      # Mermaid in a documentation reader: every fence mounted read-only at a
+      # reader's column width, light and dark, default level of detail — every
+      # word drawn, no label under a box or another label, no "…", label
+      # contrast 4.5:1. A real manual drew 13 of 32 diagrams with text lost.
+      - run: node demos/e2e/mermaid-reader-run.mjs
       - run: node demos/e2e/save-load-run.mjs
       # The dashboard covenant: 30 board scenarios driven by a real mouse. This
       # file called itself "the gate" for months while nothing — not CI, not nx,

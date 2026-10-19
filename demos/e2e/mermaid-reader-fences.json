@@ -1,0 +1,66 @@
+[
+ {
+  "id": "flow-branching-lifecycle",
+  "source": "flowchart LR\n    Lead -->|qualify| Inquiry\n    Inquiry -->|Convert To Quotation| Quotation\n    Inquiry -->|cancel inquiry| Cancelled[Cancelled inquiries]\n    Inquiry -->|mark as lost| Lost\n    Quotation -->|Convert To Order| Order\n    Quotation -->|Regret To Quote| Regretted[Regretted to quote]\n    Regretted -->|Disapprove regretted| Quotation\n    Order -->|deliver| Delivered\n"
+ },
+ {
+  "id": "flow-long-label-between-ranks",
+  "source": "flowchart LR\n    Inquiry -->|convert| Offer\n    Offer -->|Convert To Order Once The Client Signs| Order\n"
+ },
+ {
+  "id": "flow-long-node-text",
+  "source": "flowchart LR\n    O[Order] --> C[Orders confirmation and activation of every order line]\n    C --> D[Delivered]\n    D --> W[Warehouse detailed delivery work for each delivered item and its packaging]\n"
+ },
+ {
+  "id": "flow-writer-way-back",
+  "source": "flowchart LR\n    Draft -->|Submit| R[\"In review\"]\n    R -->|Reject| Draft\n    R -->|Approve| P[Published]\n"
+ },
+ {
+  "id": "flow-fan-out-fan-in",
+  "source": "flowchart LR\n    P[Potential] --> I[Inquiry]\n    I --> O[Offer]\n    O --> R[Order]\n    P --> M[Missed]\n    I --> CI[Cancelled Inquiries]\n    I --> RO[Regretted to Offer]\n    O --> RO\n    O --> L[Lost]\n    O --> CO[Cancelled Offer]\n    R --> CA[Cancelled Orders]\n    R --> RE[Rejected Orders]\n"
+ },
+ {
+  "id": "flow-nine-step-chain",
+  "source": "flowchart LR\n    A[Job created] --> B[Items added] --> C[Prices set] --> D[Quantities checked] --> E[Discounts applied] --> F[Taxes applied] --> G[Totals reviewed] --> H[Approved] --> I[Sent to client]\n"
+ },
+ {
+  "id": "flow-right-to-left",
+  "source": "flowchart RL\n    A[طلب عرض سعر] -->|إرسال| B[عرض السعر]\n    B -->|موافقة| C[أمر الشراء]\n    C --> D[فاتورة المبيعات]\n"
+ },
+ {
+  "id": "flow-subgraphs",
+  "source": "flowchart LR\n    subgraph Sales[Sales team]\n      I[Inquiry] --> F[Offer]\n    end\n    subgraph Ops[Operations]\n      R[Order] --> D[Delivery]\n    end\n    F -->|win| R\n"
+ },
+ {
+  "id": "flow-top-down-decision",
+  "source": "flowchart TD\n    S[Start] --> Q{Is the stock enough?}\n    Q -->|yes| P[Pick and pack]\n    Q -->|no, order more| O[Order from the supplier]\n    O --> P\n"
+ },
+ {
+  "id": "state-fan-out-lifecycle",
+  "source": "stateDiagram-v2\n    [*] --> Leads\n    Leads --> Inquiries: convert lead\n    Leads --> Missed: mark missed\n    Inquiries --> Quotes: convert inquiry\n    Inquiries --> CancelledInquiries: cancel inquiry\n    Inquiries --> LostInquiries: mark lost\n    Inquiries --> DeletedInquiries: delete inquiry\n    Quotes --> Orders: convert quote\n    Quotes --> RegrettedQuotes: regret to quote\n    Quotes --> CancelledQuotes: cancel quote\n    Orders --> Delivered: deliver all active orders\n    Orders --> CancelledOrders: cancel order\n    Orders --> RejectedOrders: reject order\n"
+ },
+ {
+  "id": "state-both-directions",
+  "source": "stateDiagram-v2\n    Offer --> Order: convert eligible offer\n    Order --> Delivered: deliver all active order work\n    Order --> Offer: Back to offer\n    Order --> Rejected: Reject order acceptance\n    Order --> Cancelled: Cancelled order\n"
+ },
+ {
+  "id": "state-parallel-transitions",
+  "source": "stateDiagram-v2\n    Quotation --> Order: quotation conversion\n    Order --> AwaitingApproval: Request approval\n    AwaitingApproval --> Approved: Approved\n    Approved --> AwardSubmitted: Send the order award to the supplier\n    Approved --> AwardSubmitted: Consider the award as submitted\n    AwardSubmitted --> Received: receipt action\n"
+ },
+ {
+  "id": "state-aliases",
+  "source": "stateDiagram-v2\n    state \"Awaiting Approval\" as sAwaiting\n    state \"Rejected Approval\" as sRejected\n    state \"Due for Return\" as sDue\n    [*] --> sRequested\n    sRequested --> sAwaiting: Request approval\n    sAwaiting --> sApproved: Approve\n    sAwaiting --> sRejected: Reject approval request\n    sAwaiting --> sRequested: Cancel approval request\n    sApproved --> sActive: Activate\n    sActive --> sDue: Due for return\n    sActive --> [*]\n"
+ },
+ {
+  "id": "state-long-one-word-name",
+  "source": "stateDiagram-v2\n    Draft --> GoodsReleasedForShipment: release goods\n    GoodsReleasedForShipment --> ConsideredAsSentToPrincipal: consider as sent\n"
+ },
+ {
+  "id": "state-composite",
+  "source": "stateDiagram-v2\n    [*] --> Active\n    state Active {\n        [*] --> Running\n        Running --> Paused: Pause\n        Paused --> Running: Resume\n    }\n    Active --> Closed: Close\n    Closed --> [*]\n"
+ },
+ {
+  "id": "state-notes",
+  "source": "stateDiagram-v2\n    [*] --> Draft\n    Draft --> Sent: send\n    note right of Draft : Only the owner edits a draft\n    note left of Sent\n        A sent record is read only\n    end note\n"
+ }
+]
