@@ -534,7 +534,10 @@ describe('Mermaid compat — Phase 3: stateDiagram-v2', () => {
     // bare-state rule: `note right of A / hello / end note` minted a state
     // literally called "hello".
     const r = imp('stateDiagram-v2\n  A --> B\n  note right of A\n    hello\n  end note');
-    expect(nodeIds(r.diagram)).toEqual(['A', 'B']);
+    // The STATES are A and B; "hello" is drawn as a note box beside A, not minted as a state.
+    const notes = r.diagram.getNodes().filter((n) => n.getMetadata('stateNote') === true);
+    expect(nodeIds(r.diagram).filter((id) => !notes.some((n) => n.id === id))).toEqual(['A', 'B']);
+    expect(notes.map((n) => n.getLabel())).toEqual(['hello']);
     expect(parseMermaidState('stateDiagram-v2\n  A --> B\n  note right of A\n    hello\n  end note').notes)
       .toEqual([{ position: 'right of', target: 'A', text: 'hello' }]);
   });

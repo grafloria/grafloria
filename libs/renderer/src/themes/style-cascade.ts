@@ -174,9 +174,20 @@ function shapeMetadataStyle(node: NodeModel): Partial<NodeStyle> {
 /**
  * A 'text' node is words with no box: its body is transparent, borderless and
  * shadowless unless the node itself sets a fill or stroke (a highlighted note).
+ *
+ * An INK node (`shape.ink: true`) is a solid glyph in the diagram's text colour —
+ * a state diagram's start dot and bullseye, a fork/join bar. In CSS mode the
+ * stylesheet paints it (`.diagram-node.node-ink`, the theme's VARIABLE: one SVG,
+ * every theme, visible on a dark page); with no stylesheet the theme's literal
+ * joins the spread here. A node's own fill still wins (a classDef).
  */
-function shapeKindStyle(node: NodeModel): Partial<NodeStyle> {
-  const shape = node.getMetadata?.('shape') as { type?: string } | undefined;
+function shapeKindStyle(node: NodeModel, theme: Theme, options: CascadeOptions): Partial<NodeStyle> {
+  const shape = node.getMetadata?.('shape') as { type?: string; ink?: boolean } | undefined;
+  if (shape?.ink) {
+    if (!options.includeThemeBase) return { shadow: false };
+    const ink = theme.colors.text.primary;
+    return { fill: ink, stroke: ink, shadow: false };
+  }
   if (shape?.type !== 'text') return {};
   return { fill: 'transparent', stroke: 'none', strokeWidth: 0, shadow: false };
 }
@@ -196,7 +207,7 @@ function belowStateNodeStyle(node: NodeModel, theme: Theme, options: CascadeOpti
   return {
     ...(options.includeThemeBase ? nodeThemeBase(theme) : undefined),
     ...nodeTypeDefaults(theme, node.type),
-    ...shapeKindStyle(node),
+    ...shapeKindStyle(node, theme, options),
     ...resolveStyleClasses<NodeStyle>(node.style?.styleClass),
     // element-inline: the entity's own props, from BOTH places they can live.
     // The typed `node.style` wins over the legacy `metadata.shape` paints.

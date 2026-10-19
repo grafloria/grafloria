@@ -5212,6 +5212,8 @@ export class SVGRenderer implements IRenderer {
     // Option 2: Enhanced visual effects
     const isHovered = node.state.hovered;
     const isSelected = node.isSelected();
+    // `labelPlacement: 'header'` — a CONTAINER (a composite state): caption band on top.
+    const headerContainer = node.getMetadata('labelPlacement') === 'header';
 
     // Phase 2: Check if node is a valid connection target
     const connectionState = this.engine.getConnectionStateManager().getState();
@@ -5264,9 +5266,13 @@ export class SVGRenderer implements IRenderer {
         // Drop shadow (Phase 3.1: Shape-aware). `style.shadow: false` turns it
         // OFF — it used to add nothing and remove nothing, so a flat box (and a
         // text note) still wore a blurred grey slab under it.
-        ...(this.lodAllows('shadows', lod) && this.resolvedNodeStyle(node).shadow !== false ? [this.renderShadow(node, isHovered)] : []),
-        // Node shape (Phase 3.1: Shape-based rendering)
-        this.renderNodeShape(node, styles, isHovered),
+        // A HEADER CONTAINER (see renderHeaderBand) casts none: its body is see-through.
+        ...(this.lodAllows('shadows', lod) && !headerContainer && this.resolvedNodeStyle(node).shadow !== false ? [this.renderShadow(node, isHovered)] : []),
+        // Node shape (Phase 3.1: Shape-based rendering). A header container's body
+        // is see-through — lines inside it paint BELOW nodes, and an opaque body hid
+        // every one of them — and its paint moves to the caption band.
+        this.renderNodeShape(node, headerContainer ? { ...styles, fill: 'none' } : styles, isHovered),
+        ...(headerContainer ? [this.renderHeaderBand(node, styles)] : []),
         // Far zoom: an HTML card over an invisible shape keeps a silhouette.
         ...(!this.lodAllows('decorations', lod) && hasHtmlContent(node) && this.bodyPaintsNothing(styles)
           ? [this.renderHtmlSilhouette(node)]
@@ -5938,6 +5944,9 @@ export class SVGRenderer implements IRenderer {
     if (node.getMetadata('labelPlacement') === 'below') {
       return this.renderNodeLabelBelow(node);
     }
+    if (node.getMetadata('labelPlacement') === 'header') {
+      return this.renderNodeLabelHeader(node);
+    }
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
     if (shapeConfig.type === 'text') return this.renderTextNoteLabel(node);
     const { width, height } = node.size;
@@ -6197,6 +6206,86 @@ export class SVGRenderer implements IRenderer {
    * sits {@link BELOW_LABEL_GAP} px under the node's height, so it can never
    * straddle the silhouette edge.
    */
+  /** A header container's caption band height: `metadata.headerHeight`, default 22. */
+  private headerBandHeight(node: NodeModel): number {
+    const h = node.getMetadata('headerHeight');
+    const band = typeof h === 'number' && Number.isFinite(h) && h > 0 ? h : 22;
+    return Math.min(band, node.size.height);
+  }
+
+  /**
+   * `metadata.labelPlacement: 'header'` — a CONTAINER's caption band: a composite
+   * state ("Active" over its sub-states), a UML package. The band runs across
+   * the node's top (`metadata.headerHeight`, default 22) with the node's own
+   * corners on top and a straight edge below — that edge is the divider — in the
+   * node's paint, while the body below stays see-through. Without it a composite
+   * was an opaque box with its name dead centre, UNDER its children, and every
+   * transition inside it hidden beneath its fill.
+   */
+  private renderHeaderBand(node: NodeModel, styles: { fill?: unknown; stroke?: unknown; strokeWidth?: unknown }): VNode {
+    const { width } = node.size;
+    const h = this.headerBandHeight(node);
+    const r = Math.max(0, Math.min(this.nodeCornerRadius(node) ?? 0, h, width / 2));
+    const d =
+      `M 0 ${h} L 0 ${r} A ${r} ${r} 0 0 1 ${r} 0 L ${width - r} 0 A ${r} ${r} 0 0 1 ${width} ${r} L ${width} ${h} Z`;
+    // The node's resolved paint where a layer set one (a classDef, a state); the
+    // theme's otherwise — its VARIABLE in CSS mode. Inline: it must beat no rule,
+    // and it is the one place a var() is legal.
+    const css = this.config.useCSSMode;
+    const fill = styles.fill ?? this.chromePaint('node.fill');
+    const stroke = styles.stroke ?? this.chromePaint('node.stroke');
+    const strokeWidth =
+      styles.strokeWidth ?? (css ? `var(${THEME_VARS['node.strokeWidth'].cssVar})` : this.theme.nodes.default.strokeWidth);
+    return {
+      type: 'path',
+      key: `node-header-${node.id}`,
+      props: {
+        d,
+        className: 'gf-node-header',
+        style: { fill, stroke, strokeWidth },
+        pointerEvents: 'none',
+        'aria-hidden': 'true',
+      },
+    };
+  }
+
+  /** The caption of a header container, centred in its band (see renderHeaderBand). */
+  private renderNodeLabelHeader(node: NodeModel): VNode[] {
+    const { width } = node.size;
+    const band = this.headerBandHeight(node);
+    const label = String(node.getLabel());
+    const typo = this.nodeTextStyle(node);
+    const baseFont = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
+    // One line: it shrinks to the band's width rather than wrapping out of it.
+    const maxWidth = Math.max(1, width - 16);
+    const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont), Math.max(8, Math.floor(band / 1.3)));
+    const shrunk = fontSize < baseFont;
+    const css = this.config.useCSSMode;
+    const text = renderTextBlock({
+      text: label,
+      x: width / 2,
+      y: band / 2,
+      maxWidth,
+      align: 'middle',
+      valign: 'middle',
+      fontSize,
+      lineHeight: 1.2,
+      maxLines: 1,
+      nonInteractive: true,
+      className: css ? 'diagram-label gf-label-header' : 'gf-label-header',
+      emitFontSize: !css || shrunk,
+      color: css ? undefined : (typo.style.fill ?? (this.theme.colors.text.primary as string)),
+      fontWeight: css ? undefined : (typo.style.fontWeight ?? (this.theme.typography.fontWeight.medium as number)),
+    });
+    const inline: LabelCss = { ...typo.style };
+    if (shrunk) inline.fontSize = `${fontSize}px`;
+    if (Object.keys(inline).length > 0) {
+      const props = text.props as Record<string, unknown>;
+      props['style'] = { ...((props['style'] as object) ?? {}), ...inline };
+    }
+    return [text];
+  }
+
   private renderNodeLabelBelow(node: NodeModel): VNode[] {
     const { width, height } = node.size;
     const label = String(node.getLabel());
@@ -8244,6 +8333,8 @@ export class SVGRenderer implements IRenderer {
     if (this.connectSnap?.nodeId === node.id) classes.push(`connect-snap-${this.connectSnap.verdict}`);
     if (!node.state.enabled) classes.push('disabled');
     if (node.state.error) classes.push('error');
+    // A solid glyph in the theme's ink — the stylesheet's `.node-ink` paints it.
+    if ((node.getMetadata('shape') as { ink?: boolean } | undefined)?.ink) classes.push('node-ink');
 
     // Named styles (classDef): a marker class per applied name so hosts/tests can
     // see which ones landed. Their VALUES were already resolved into `style`.
@@ -8293,6 +8384,9 @@ export class SVGRenderer implements IRenderer {
       // so untouched props still fall back to the theme.
       ...(style.opacity !== undefined && { opacity: style.opacity }),
       ...(style.borderRadius !== undefined && { rx: style.borderRadius }),
+      // A dashed border (`style.strokeDasharray`, a classDef's stroke-dasharray, a
+      // concurrent region's divider) — declared on NodeStyle and drawn by nothing.
+      ...(style.strokeDasharray && { strokeDasharray: style.strokeDasharray }),
       ...(shadowFilter && { filter: shadowFilter }),
     };
   }
@@ -8316,6 +8410,7 @@ export class SVGRenderer implements IRenderer {
       strokeWidth: style.strokeWidth ?? themeDefaults.strokeWidth,
       rx: style.borderRadius ?? themeDefaults.borderRadius,
       opacity: style.opacity ?? themeDefaults.opacity,
+      ...(style.strokeDasharray && { strokeDasharray: style.strokeDasharray }),
       ...(shadowFilter && { filter: shadowFilter }),
     };
   }

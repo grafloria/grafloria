@@ -30,6 +30,15 @@ import { LinkModel } from '../../models/LinkModel';
 import { GroupModel } from '../../models/GroupModel';
 import { significantLines, unquote } from './lines';
 import { placeByRank, assignRanks, type RankEdge } from './layout';
+import {
+  addStateNotes,
+  applyStateClass,
+  applyStateNodeLook,
+  markCompositeGroup,
+  readStateClassDefs,
+  stateFlowDirection,
+  type StateClassDefs,
+} from './state-notation';
 
 export type StateKind =
   | 'state' | 'start' | 'end' | 'choice' | 'fork' | 'join' | 'history' | 'deep-history';
@@ -62,8 +71,9 @@ export interface MermaidStateNode {
    */
   direction?: string;
   /**
-   * The `:::cssClass` style hook, captured by NAME. Not applied and not
-   * re-emitted (state-level styling is an open gap), but it has to be parsed:
+   * The `:::cssClass` style hook (or a `class a, b name` statement), captured by
+   * NAME and painted from the model's `classDefs` on import. Not re-emitted on
+   * export (state-level styling export is still an open gap). It has to be parsed:
    * `[*] --> A:::hot` used to read as a state `A` LABELLED `::hot`, and export
    * then wrote `[*] --> A : ::hot` — a transition label the author never typed.
    */
@@ -81,6 +91,8 @@ export interface MermaidStateModel {
   transitions: MermaidStateTransition[];
   direction?: string;
   notes: Array<{ position: string; target: string; text: string }>;
+  /** `classDef name decls` — the paint a `:::name` / `class … name` state takes. */
+  classDefs?: StateClassDefs;
 }
 
 const ID = '[A-Za-z0-9_\\u00c0-\\uffff][A-Za-z0-9_\\-.\\u00c0-\\uffff]*';
@@ -308,7 +320,10 @@ export function parseMermaidState(text: string): MermaidStateModel {
     // classDef / class / style / anything newer: ignored, never nodified.
   }
 
-  return { states: [...states.values()], transitions, notes, ...(direction ? { direction } : {}) };
+  // `classDef` / `class` statements: read after the body, so a class may be
+  // defined after the states that use it (Mermaid allows either order).
+  const styling = readStateClassDefs(lines, states);
+  return { states: [...states.values()], transitions, notes, ...(direction ? { direction } : {}), ...styling };
 }
 
 // ── Model building ─────────────────────────────────────────────────────────
@@ -509,16 +524,11 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
     });
     node.setLabel(state.label);
     node.setMetadata('stateNode', state);
-    // Start/end/history are circles; a choice is a diamond; the rest are the
-    // familiar rounded state boxes.
-    const shape =
-      isPseudo ? 'circle' : state.kind === 'choice' ? 'rhombus' : 'rounded-rectangle';
-    node.setMetadata('dslShape', shape);
-    node.setMetadata('shape', {
-      type: isPseudo ? 'circle' : state.kind === 'choice' ? 'diamond' : 'rect',
-      cornerRadius: isPseudo || state.kind === 'choice' ? 0 : 8,
-      ...(state.kind === 'start' ? { fill: '#0f172a' } : {}),
-    });
+    // How it LOOKS — a start dot and a bullseye in the theme's ink, a fork/join
+    // bar, a composite's caption band, a see-through region, the classDef paint.
+    // See state-notation.ts.
+    applyStateNodeLook(node, state, { direction: stateFlowDirection(model, state), headerHeight: STATE_HEADER });
+    applyStateClass(node, state.cssClass ? model.classDefs?.[state.cssClass] : undefined);
     diagram.addNode(node);
     nodes.set(state.id, node);
   });
@@ -539,6 +549,8 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
     diagram.addGroup(
       new GroupModel({ id: `group-${state.id}`, name: state.region ? '' : state.label || state.id })
     );
+    // Containment only: the composite's own node draws the frame and caption.
+    markCompositeGroup(diagram, `group-${state.id}`);
   }
   for (const state of model.states) {
     if (!state.composite) continue;
@@ -555,6 +567,11 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
       if (diagram.getNode(child.id)) group.addMember(child.id, diagram);
     }
   }
+
+  // Notes: a note node beside its state, joined by a dashed, arrowless line.
+  // Created before the transitions, so a layout step that runs after them
+  // finds them in place. Placement is the layout's (they start at the origin).
+  addStateNotes(diagram, model, nodes);
 
   for (const transition of model.transitions) {
     const source = nodes.get(transition.from);
@@ -606,6 +623,8 @@ function reverseRoute(diagram: DiagramModel, source: NodeModel, target: NodeMode
 export function stateModelFromDiagram(diagram: DiagramModel): MermaidStateModel {
   const states: MermaidStateNode[] = [];
   for (const node of diagram.getNodes()) {
+    // A note box is not a state: its text travels in `metadata.stateNotes`.
+    if (node.getMetadata('stateNote') === true) continue;
     const stored = node.getMetadata('stateNode') as MermaidStateNode | undefined;
     states.push(
       stored
@@ -615,6 +634,8 @@ export function stateModelFromDiagram(diagram: DiagramModel): MermaidStateModel 
   }
   const transitions: MermaidStateTransition[] = [];
   for (const link of diagram.getLinks()) {
+    // …and the dashed line to it is not a transition.
+    if (link.getMetadata('noteLink') === true) continue;
     const from = link.sourceNodeId;
     const to = link.targetNodeId;
     if (!from || !to) continue;

@@ -51,6 +51,13 @@ export const BASE_STYLE_RULES: readonly StyleRule[] = [
       'stroke-width': themeVar('node.strokeWidth'),
     },
   },
+  // A solid glyph in the diagram's INK (`shape.ink`): a state diagram's start dot,
+  // its bullseye, a fork/join bar. The label colour is the theme's ink, and every
+  // theme keeps it readable on its own canvas.
+  {
+    selector: '.diagram-node.node-ink',
+    decls: { fill: themeVar('label.color'), stroke: themeVar('label.color') },
+  },
   {
     selector: '.diagram-node.error',
     decls: { fill: themeVar('node.error.fill'), stroke: themeVar('node.error.stroke') },

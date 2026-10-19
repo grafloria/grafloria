@@ -81,6 +81,10 @@ describe('renderToStaticSVG — one SVG for every page theme', () => {
   it.each([
     ['a subgraph frame', 'flowchart LR\n    subgraph Sales[Sales team]\n      direction TB\n      Inquiry --> Offer\n    end\n    subgraph Ops[Operations]\n      Order --> Delivery\n    end\n    Offer --> Order', 'group-frame-label'],
     ['a two-line (sublabel) node', 'flowchart LR\n    A["Invoice<br/>draft"] --> B["**Approved**<br/>by finance"]\n    B -->|"**Send** to client"| C', 'diagram-sublabel'],
+    // State notation: an ink start dot / bullseye / fork bar is a stylesheet class
+    // (`node-ink`), a composite's band the theme's variables — never a literal.
+    ['a state diagram: start, end, composite caption', 'stateDiagram-v2\n    [*] --> Active\n    state Active {\n      [*] --> Running\n      Running --> Paused: Pause\n    }\n    Active --> Closed: Close\n    Closed --> [*]', 'gf-node-header'],
+    ['a state diagram: fork/join bars and a note', 'stateDiagram-v2\n    state f <<fork>>\n    [*] --> f\n    f --> A\n    f --> B\n    note right of A : a note', 'node-ink'],
   ])('%s: light and dark SVG strings are identical', (_name, fence, marker) => {
     const light = ssr(fence, LIGHT_THEME);
     const dark = ssr(fence, DARK_THEME);
