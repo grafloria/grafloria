@@ -287,9 +287,13 @@ export class DSLGenerator {
     return `${nodeId}${opening}${this.escapeLabel(this.labelMarkup(label), closing)}${closing}`;
   }
 
-  /** A label's line breaks as `<br/>` — the form every Mermaid renderer reads. */
+  /**
+   * A label's line breaks as `<br/>` — the form every Mermaid renderer reads — and
+   * its `<` / `>` as `#lt;` / `#gt;`, so text in angle brackets (`Context<T>`) is
+   * never read back as a tag, by Mermaid or by our own label reader.
+   */
   private labelMarkup(text: string): string {
-    return String(text).replace(/\n/g, '<br/>');
+    return String(text).replace(/</g, '#lt;').replace(/>/g, '#gt;').replace(/\n/g, '<br/>');
   }
 
   /**
@@ -301,6 +305,7 @@ export class DSLGenerator {
   private escapeLabel(label: string, closing: string): string {
     const needsQuoting =
       /[[\](){}"|<>]/.test(label) ||
+      /#\w+;/.test(label) ||
       label !== label.trim() ||
       (closing.length > 0 && label.includes(closing));
     if (!needsQuoting) return label;
@@ -334,7 +339,7 @@ export class DSLGenerator {
     if (label) {
       // Line breaks as <br/>; a label with quotes or a break travels quoted.
       const text = this.labelMarkup(label);
-      const written = /["|<>]/.test(text) ? `"${text.replace(/"/g, '#quot;')}"` : text;
+      const written = /["|<>]|#\w+;/.test(text) ? `"${text.replace(/"/g, '#quot;')}"` : text;
       return `${sourceId} ${linkSyntax.split('>')[0]}>|${written}|${linkSyntax.split('>')[1] || ''} ${targetId}`;
     }
 
