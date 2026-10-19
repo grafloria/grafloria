@@ -22,6 +22,7 @@ import {
   LinkModel,
   PortModel,
   PortVisibilityStrategy,
+  createDefaultLODConfig,
 } from '@grafloria/engine';
 import { LIGHT_THEME } from '../themes';
 import type { VNode } from '../types';
@@ -67,6 +68,12 @@ const LOW_ZOOM = 0.12;
 function scene(nodeCount: number): { engine: DiagramEngine; diagram: DiagramModel } {
   const engine = new DiagramEngine();
   const diagram = engine.createDiagram('lod-econ')!;
+  // LOD economics are about BIG scenes. These are small stand-ins for one (a
+  // 10k scene would make every test here take seconds), and the default policy
+  // exempts a diagram under 200 nodes from the shedding tiers — it costs nothing
+  // to draw in full and keeps its words (DiagramModel.lod-small.spec). So the
+  // stand-in runs the full ladder: what a 200+ node scene gets.
+  diagram.setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 }));
   // Ports are on-hover by default, so nothing would draw a glyph to gate.
   engine.setInteractionConfig({ portVisibility: PortVisibilityStrategy.ALWAYS });
 
@@ -415,6 +422,7 @@ describe('LOD economics (wave8/culling — Card 4)', () => {
     const gradientScene = () => {
       const e = new DiagramEngine();
       const d = e.createDiagram('grad')!;
+      d.setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 })); // a stand-in for a big scene, as in scene()
       const node = new NodeModel({
         type: 'basic',
         position: { x: 10, y: 10 },
@@ -489,6 +497,7 @@ describe('LOD economics (wave8/culling — Card 4)', () => {
     const curveScene = () => {
       const e = new DiagramEngine();
       const d = e.createDiagram('curve')!;
+      d.setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 })); // a stand-in for a big scene, as in scene()
       for (const [id, x] of [
         ['a', 0],
         ['b', 400],

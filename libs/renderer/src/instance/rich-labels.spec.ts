@@ -64,7 +64,11 @@ describe('a node draws its own typography, and a subtitle under its name', () =>
     expect(s.textContent).toBe('the card is typed here');
     expect(t.style.fontWeight).toBe('600'); // a name over a subtitle reads as a name
     expect(Number.parseFloat(s.style.fontSize)).toBeLessThan(14); // smaller than the theme's 14
-    expect(s.style.fill).toBe('#6b7280'); // the light theme's secondary text
+    // The theme's muted ink, as its VARIABLE (one server render serves every theme);
+    // the light theme's block gives it its secondary text colour.
+    expect(s.style.fill).toBe('var(--grafloria-label-muted)');
+    const block = Array.from(document.querySelectorAll('style')).map((e) => e.textContent ?? '').join('\n');
+    expect(block).toMatch(/--grafloria-label-muted:\s*#6b7280;/);
     expect(y(t)).toBeLessThan(y(s)); // name above subtitle
     // the pair is centred: the name's top half above the middle, the subtitle below it
     expect(y(t)).toBeLessThan(36);

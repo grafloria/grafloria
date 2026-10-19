@@ -13,7 +13,7 @@ import type {
   ImportTextResult,
 } from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
-import type { HighlightConnectedOptions, SVGRendererConfig } from '../types/renderer.interface';
+import type { HighlightConnectedOptions, LODMode, SVGRendererConfig } from '../types/renderer.interface';
 import type { Rectangle } from '../types/geometry.types';
 import { contentBounds } from './content-bounds';
 import type { ExportFormat, ExportOptions } from '../types/renderer.interface';
@@ -164,6 +164,17 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * anything set here, and `instanceId` is omitted because hydration owns it.
    */
   renderer?: Omit<SVGRendererConfig, 'instanceId'>;
+
+  /**
+   * Level of detail. `'document'` is for a STATIC FIGURE — a diagram in a page
+   * of documentation, fitted to its column, that the reader cannot zoom: it
+   * never sheds labels, arrowheads or anything else, at any zoom or size, and
+   * the quality governor is off. `'auto'` (default) lets the diagram's LOD
+   * policy follow the zoom — which, by default, already keeps every label and
+   * arrowhead on a diagram under 200 nodes. Wins over `renderer.lod`.
+   * See {@link SVGRendererConfig.lod}.
+   */
+  lod?: LODMode;
 
   /**
    * Select a node and its lines come forward in the page's ink while every other
@@ -726,6 +737,7 @@ export function createDiagram(
       themes: options.themes,
       tokenBridge: options.tokenBridge,
       highlightConnected: options.highlightConnected ?? options.renderer?.highlightConnected,
+      lod: options.lod ?? options.renderer?.lod,
       // "My picture improved with no model change — repaint me." Fired by the
       // async route solver's refinements and by motion-stable routing's settle
       // frame (a tween's provisional routes re-deciding once motion stops).

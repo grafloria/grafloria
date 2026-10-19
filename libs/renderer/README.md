@@ -24,6 +24,27 @@ const svg = diagram.exportSvgString();
 Framework packages build on this: `@grafloria/element`, `@grafloria/react`,
 `@grafloria/angular`, `@grafloria/vue`.
 
+## Static figures: `lod: 'document'`
+
+Level of detail follows the zoom: zoomed far out, a big scene drops its labels
+and arrowheads to stay interactive. A diagram under 200 nodes never does that
+(the default policy exempts it), but a figure in a page of documentation can't
+be zoomed by its reader at any size. Ask for the document mode and nothing is
+ever shed, at any zoom:
+
+```ts
+createDiagram(el, { readonly: true, lod: 'document' });            // in the browser
+renderToStaticSVG({ nodes, edges, fitView: true, lod: 'document' }); // on the server
+```
+
+`getQualityState().tier` reports `'document'`, and the quality governor is off.
+For the policy itself see `createDefaultLODConfig({ smallDiagramNodes })`,
+`createDocumentLODConfig()` and `LODTier.minNodes` in `@grafloria/engine`.
+
+`renderToStaticSVG()` returns one `svg` for every theme: its colours are
+`var(--grafloria-*)` references, and the theme's values travel in `css`. Ship a
+light and a dark `css` and the same `svg` follows the page.
+
 ## Bundle size — what actually ships
 
 Don't judge this library by npm's **unpacked size** stat — that is

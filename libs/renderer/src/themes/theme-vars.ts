@@ -64,10 +64,16 @@ export type ThemeToken =
   | 'link.highlighted.stroke'
   | 'link.highlighted.strokeWidth'
   | 'link.hovered.stroke'
+  // A line's label: its text and the chip behind it
+  | 'linkLabel.color'
+  | 'linkLabel.background'
   // Labels
   | 'label.fontFamily'
   | 'label.fontSize'
   | 'label.color'
+  | 'label.muted'
+  // Group / subgraph frames
+  | 'group.fill'
   // Ports
   | 'port.fill'
   | 'port.strokeWidth'
@@ -132,10 +138,25 @@ export const THEME_VARS: Record<ThemeToken, ThemeVarBinding> = {
 
   'link.hovered.stroke': { cssVar: '--grafloria-link-hovered-stroke', read: t => t.colors.link.hovered },
 
+  // ---- Link labels ------------------------------------------------------
+  // The text on a line and the chip it sits on. Written into the SVG as
+  // `var(…)` (see LabelRenderer), so a server-rendered picture takes these from
+  // whichever theme block the page carries. The chip is the canvas surface, the
+  // text the theme's ink — the pair every theme already keeps at AA contrast.
+  'linkLabel.color': { cssVar: '--grafloria-link-label-color', read: t => t.colors.text.primary },
+  'linkLabel.background': { cssVar: '--grafloria-link-label-background', read: t => t.colors.background.surface },
+
   // ---- Labels -----------------------------------------------------------
   'label.fontFamily': { cssVar: '--grafloria-label-font-family', read: t => t.typography.fontFamily.default },
   'label.fontSize': { cssVar: '--grafloria-label-font-size', read: t => t.typography.fontSize.md, unit: 'px' },
   'label.color': { cssVar: '--grafloria-label-color', read: t => t.colors.text.primary },
+  // The quieter second line of a node (its subtitle) and a zone's caption.
+  'label.muted': { cssVar: '--grafloria-label-muted', read: t => t.colors.text.secondary },
+
+  // ---- Group frames -----------------------------------------------------
+  // A subgraph / group frame's wash and title band. Its border is the node
+  // border (`node.stroke`) and its caption the label ink (`label.color`).
+  'group.fill': { cssVar: '--grafloria-group-fill', read: t => t.colors.background.surface },
 
   // ---- Ports ------------------------------------------------------------
   'port.fill': { cssVar: '--grafloria-port-fill', read: t => t.colors.background.surface },

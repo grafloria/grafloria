@@ -23,7 +23,7 @@ import type { VNode } from '../types/vnode.types';
 import type { Theme } from '../types/theme.types';
 import type { Rectangle } from '../types/geometry.types';
 import { LIGHT_THEME } from '../themes/default-light-theme';
-import { createClassStyleResolver } from './style-flattener';
+import { createClassStyleResolver, themeVarLookup } from './style-flattener';
 import { serializeVNode, escapeAttr, type ForeignObjectMode } from './vnode-serializer';
 import { clampOutputSize, DEFAULT_MAX_OUTPUT_SIZE, padRect, vnodeBounds } from './bounds';
 import { filterTreeByIds } from './scope';
@@ -229,6 +229,8 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
   const height = clamped.height;
 
   const classStyles = createClassStyleResolver(theme, warnings);
+  // An element's own inline `var()` paint resolves through the same theme.
+  const resolveVar = themeVarLookup(theme);
 
   // Defs the serializer had to synthesize (blur filters). Filled during the walk,
   // emitted after it — hence children are serialized BEFORE the document is composed.
@@ -237,6 +239,7 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
   const serialize = (child: VNode): string =>
     serializeVNode(child, {
       classStyles,
+      resolveVar,
       foreignObject: options.foreignObject,
       captureForeignObject: options.captureForeignObject,
       warnings,

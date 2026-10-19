@@ -81,6 +81,17 @@ export interface LODTier {
   minZoom: number;
   /** The set of features that render at this tier. */
   features: Set<LODFeature>;
+  /**
+   * The fewest NODES a diagram must have for this tier to be used. A smaller
+   * diagram skips it: its zoom falls through to the richest tier that does
+   * apply. Omitted means every diagram may use the tier.
+   *
+   * This is how the default policy keeps a SMALL diagram's words: its shedding
+   * tiers ('sketch', 'low') exist to make a big scene affordable, and carry
+   * `minNodes: SMALL_DIAGRAM_NODES`, so a 9-box figure fitted to a narrow column
+   * keeps its labels and arrowheads at any zoom. See {@link createDefaultLODConfig}.
+   */
+  minNodes?: number;
 }
 
 /**
@@ -89,6 +100,23 @@ export interface LODTier {
  */
 export interface LODConfig {
   tiers: LODTier[];
+}
+
+/**
+ * Below this many nodes the default policy never sheds labels or arrowheads,
+ * at any zoom (see {@link LODTier.minNodes}).
+ */
+export const SMALL_DIAGRAM_NODES = 200;
+
+/** Options for {@link createDefaultLODConfig}. */
+export interface DefaultLODOptions {
+  /**
+   * A diagram with fewer nodes than this never uses the shedding tiers
+   * ('sketch', 'low'): it keeps its labels and arrowheads at every zoom.
+   * Default {@link SMALL_DIAGRAM_NODES} (200). `0` turns the floor off — the
+   * full zoom ladder at any size (what a demo OF the ladder wants).
+   */
+  smallDiagramNodes?: number;
 }
 
 /**
@@ -123,9 +151,24 @@ export interface LODConfig {
  * the scenes and machines that need it. Perception picks the tier; measurement
  * decides whether you can afford it.
  *
+ * SMALL DIAGRAMS ARE EXEMPT. 'sketch' and 'low' carry `minNodes:
+ * SMALL_DIAGRAM_NODES` (200), so a diagram with fewer nodes never sheds its
+ * labels or arrowheads: below zoom 0.5 it stays at 'medium'. The perception
+ * argument above is about a 12px label on a canvas you can zoom; a figure
+ * fitted to a documentation column (a 9-box `flowchart LR` lands at ~0.4 on a
+ * desktop reader, ~0.17 on a phone) cannot be zoomed, and dropping its words
+ * turned it into empty boxes. A small scene costs nothing to draw in full, so
+ * the cost argument never applied to it. `smallDiagramNodes: 0` restores the
+ * full ladder at any size.
+ *
  * Fresh `Set`s are created per call so no two diagrams share mutable state.
  */
-export function createDefaultLODConfig(): LODConfig {
+export function createDefaultLODConfig(options: DefaultLODOptions = {}): LODConfig {
+  // The shedding tiers only apply to a scene big enough to need them. Below
+  // this, the zoom falls through to 'medium': a small diagram keeps its labels
+  // and arrowheads at any zoom (a docs figure fitted to a phone lands at ~0.17).
+  const small = Math.max(0, options.smallDiagramNodes ?? SMALL_DIAGRAM_NODES);
+  const floor = small > 0 ? { minNodes: small } : {};
   return {
     tiers: [
       {
@@ -174,6 +217,7 @@ export function createDefaultLODConfig(): LODConfig {
         // afford it.
         name: 'sketch',
         minZoom: 0.2,
+        ...floor,
         features: new Set<LODFeature>([
           'borders',
           // The shape of the graph IS the content at this zoom. Keep it.
@@ -183,6 +227,7 @@ export function createDefaultLODConfig(): LODConfig {
       },
       {
         name: 'low',
+        ...floor,
         // Floor tier: every zoom is >= -Infinity, so this always matches last. Below
         // 0.2 a node is under 24px wide and an edge is a hairline — the routing
         // detour around a node body is now genuinely sub-pixel, and this is where
@@ -201,4 +246,20 @@ export function createDefaultLODConfig(): LODConfig {
 export interface EntityWithLOD<T> {
   entity: T;
   lod: LODLevel;
+}
+
+/**
+ * The DOCUMENT policy: one tier, every feature, at every zoom.
+ *
+ * For a figure nobody can zoom — a page in a manual, a server-rendered SVG, a
+ * PDF — where shedding a label to save a frame removes words the author wrote.
+ * The tier is named `'high'` so every `lod === 'high'` check treats it as full
+ * detail. Install it with `diagram.setLODConfig(createDocumentLODConfig())`, or
+ * ask the renderer for it: `createDiagram(el, { lod: 'document' })`,
+ * `renderToStaticSVG({ lod: 'document' })`.
+ */
+export function createDocumentLODConfig(): LODConfig {
+  return {
+    tiers: [{ name: 'high', minZoom: Number.NEGATIVE_INFINITY, features: new Set<LODFeature>(ALL_LOD_FEATURES) }],
+  };
 }

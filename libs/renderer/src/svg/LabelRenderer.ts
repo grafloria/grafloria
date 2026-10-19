@@ -17,7 +17,14 @@ import { linkLabelPosition, type LinkLabel, type LinkModel, type Point } from '@
 import type { VNode } from '../types/vnode.types';
 import type { Theme } from '../types/theme.types';
 import { renderTextBlock } from './text-block';
+import { THEME_VARS } from '../themes/theme-vars';
 import { getLabelTemplate, htmlLabelVNode, type LabelTemplateContext } from './edge-templates';
+
+/** CSS-mode defaults: the theme variables a label's text and chip are painted with. */
+export const LINK_LABEL_COLOR_VAR = `var(${THEME_VARS['linkLabel.color'].cssVar})`;
+export const LINK_LABEL_BACKGROUND_VAR = `var(${THEME_VARS['linkLabel.background'].cssVar})`;
+
+const isCssVar = (paint: string | undefined): paint is string => typeof paint === 'string' && paint.trim().startsWith('var(');
 
 /** Default box for an HTML / template label (a `foreignObject` needs a size). */
 export const DEFAULT_HTML_LABEL_WIDTH = 120;
@@ -32,6 +39,14 @@ export interface LabelRenderContext {
    */
   offset?: Point;
   theme?: Theme;
+  /**
+   * The renderer is in CSS mode: theme DEFAULTS are written as
+   * `var(--grafloria-link-label-color)` / `var(--grafloria-link-label-background)`
+   * (inline style — a presentation attribute cannot hold `var()`), so one
+   * rendered SVG follows whichever theme's variable block the page carries.
+   * Off (programmatic / Canvas), they are the theme's literals.
+   */
+  cssMode?: boolean;
   /**
    * The line AS PAINTED, when that is not `link.points`: a hand-bent right-angle
    * line stores its bends and is drawn with the jogs between them, so a label
@@ -169,12 +184,22 @@ export class LabelRenderer {
     // Get style properties
     const fontSize = label.style?.fontSize ?? this.defaultFontSize;
     const fontFamily = label.style?.fontFamily;
-    const color = label.style?.color ?? this.defaultColor;
+    const theme = context.theme as Theme | undefined;
+    // THE THEME'S DEFAULTS, when the label sets no colour of its own. The text
+    // used to fall back to a hard-coded black while the chip below followed the
+    // theme — black on the dark theme's chip, 1.43:1. Both now come from the
+    // theme: its ink and its canvas surface. In CSS mode they are the theme's
+    // VARIABLES (emitted as inline style below), so one server-rendered SVG
+    // follows the page's theme; without a theme (the bare public API) the old
+    // black default stands.
+    const cssDefaults = !!context.cssMode && !!theme;
+    const color =
+      label.style?.color ?? (cssDefaults ? LINK_LABEL_COLOR_VAR : (theme?.colors?.text?.primary as string | undefined) ?? this.defaultColor);
     // A label rides ON the stroke — without a chip the line strikes straight
     // through the text (the screenshot audit caught exactly that). Default to
     // the theme's canvas surface so the chip reads as "the line passes behind";
     // `background: 'none'` opts back out.
-    const themedSurface = (context.theme as Theme | undefined)?.colors.background.surface;
+    const themedSurface = theme ? (cssDefaults ? LINK_LABEL_BACKGROUND_VAR : (theme.colors?.background?.surface as string | undefined)) : undefined;
     const rawBackground = label.style?.background ?? themedSurface;
     const background = rawBackground === 'none' ? undefined : rawBackground;
     const padding = label.style?.padding ?? this.defaultPadding;
@@ -196,7 +221,9 @@ export class LabelRenderer {
           y: -textHeight / 2 - padding,
           width: textWidth + padding * 2,
           height: textHeight + padding * 2,
-          fill: background,
+          // A `var()` paint must be inline style: as an attribute it is invalid
+          // and the chip would paint black.
+          ...(isCssVar(background) ? { style: { fill: background } } : { fill: background }),
           stroke: label.style?.border,
           rx: borderRadius,
           className: 'link-label-bg'
@@ -309,9 +336,14 @@ export class LabelRenderer {
       // LabelStyle has always declared weight, style and decoration; nothing
       // drew them — a bold green "card number and CVV" rendered regular.
       fontWeight: label.style?.fontWeight,
-      color,
+      color: isCssVar(color) ? undefined : color,
       className: 'link-label-text',
     });
+    // The theme's variable rides an inline style — the one place `var()` is legal.
+    if (isCssVar(color)) {
+      const props = block.props as Record<string, unknown>;
+      props['style'] = { ...((props['style'] as object) ?? {}), fill: color };
+    }
     if (label.style?.fontStyle || label.style?.textDecoration) {
       const props = block.props as Record<string, unknown>;
       if (label.style.fontStyle) props['fontStyle'] = label.style.fontStyle;

@@ -6,7 +6,7 @@
 //         (was an unbounded Map).
 
 import { SVGRenderer } from './svg-renderer';
-import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
+import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel, createDefaultLODConfig } from '@grafloria/engine';
 import type { VNode, Rectangle } from '../types';
 
 const VIEWPORT: Rectangle = { x: 0, y: 0, width: 800, height: 600 };
@@ -19,6 +19,9 @@ describe('SVGRenderer - cache-correctness fixes', () => {
   beforeEach(() => {
     engine = new DiagramEngine();
     diagram = engine.createDiagram('Cache Fix Test');
+    // Tier crossings are what these pin; a diagram under 200 nodes never sheds
+    // labels or arrows by default, so the small fixture runs the full ladder.
+    diagram.setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 }));
   });
 
   afterEach(() => {

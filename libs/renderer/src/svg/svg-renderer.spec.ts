@@ -1,6 +1,6 @@
 import { SVGRenderer, GRAFLORIA_BASE_STYLE_ID } from './svg-renderer';
 import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
-import type { LODFeature } from '@grafloria/engine';
+import { createDefaultLODConfig, type LODFeature } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME } from '../themes';
 import type { VNode, Rectangle } from '../types';
 
@@ -356,6 +356,20 @@ describe('SVGRenderer', () => {
   describe('Engine Integration - LOD System', () => {
     beforeEach(() => {
       renderer = new SVGRenderer(engine, {});
+      // The zoom ladder as a 200+ node scene gets it: the default policy exempts
+      // a smaller diagram from the shedding tiers (see the test below).
+      diagram.setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 }));
+    });
+
+    test('a SMALL diagram on the default policy keeps its label at far zoom', () => {
+      diagram.setLODConfig(createDefaultLODConfig());
+      const node = new NodeModel({ type: 'basic', position: { x: 100, y: 100 }, size: { width: 200, height: 100 } });
+      node.setMetadata('label', 'Still here');
+      diagram.addNode(node);
+      const vnode = renderer.render({ x: 0, y: 0, width: 800, height: 600 }, 0.15) as VNode;
+      const n = vnode.children![1].children![0];
+      expect(n.children?.some((child) => child.type === 'text')).toBe(true);
+      expect(diagram.getLODLevel(0.15)).toBe('medium');
     });
 
     test('should use engine LOD system for zoom levels', () => {
@@ -445,7 +459,9 @@ describe('SVGRenderer', () => {
       diagram.addNode(node);
       const viewport = { x: 0, y: 0, width: 800, height: 600 };
 
-      // Default policy @ 0.1 => 'low' => no label.
+      // The default ladder @ 0.1 => 'low' => no label (on a 200+ node scene; a
+      // smaller one is exempt, so the ladder is installed without that floor).
+      diagram.setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 }));
       const low = renderer.render(viewport, 0.1) as VNode;
       expect(hasText(low.children![1].children![0])).toBe(false);
 

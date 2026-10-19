@@ -11,7 +11,7 @@
  * silhouette", a card whose HTML painted the box over an INVISIBLE shape had
  * no silhouette at all: the boxes vanished and only the lines stayed.
  */
-import { DiagramEngine, NodeModel } from '@grafloria/engine';
+import { DiagramEngine, NodeModel, createDefaultLODConfig } from '@grafloria/engine';
 import { SVGRenderer } from './svg-renderer';
 import type { VNode } from '../types/vnode.types';
 
@@ -30,6 +30,9 @@ const hasClass = (v: VNode, c: string) => String(v.props?.className ?? '').split
 function render(setup: (n: NodeModel) => void, zoom = 1) {
   const engine = new DiagramEngine();
   engine.createDiagram();
+  // One node standing in for a big scene at far zoom: a diagram under 200 nodes
+  // never reaches the tiers that drop the rich body, so run the full ladder.
+  engine.getDiagram()!.setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 }));
   const node = new NodeModel({ type: 'rect', position: { x: 0, y: 0 }, size: { width: 240, height: 140 } });
   setup(node);
   engine.getDiagram()!.addNode(node);

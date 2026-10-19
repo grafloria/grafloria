@@ -15,8 +15,13 @@ import { createDefaultLODConfig } from '../types/performance.types';
 describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
   let diagram: DiagramModel;
 
+  // These tests examine the ZOOM LADDER itself, on diagrams of a handful of
+  // nodes. The default policy exempts a diagram under SMALL_DIAGRAM_NODES (200)
+  // from the shedding tiers — it keeps its words at any zoom; that floor has its
+  // own spec (DiagramModel.lod-small.spec.ts) — so the ladder is examined here
+  // with the floor switched off: what every diagram of 200+ nodes gets.
   beforeEach(() => {
-    diagram = new DiagramModel('LOD Test');
+    diagram = new DiagramModel('LOD Test', { lodConfig: createDefaultLODConfig({ smallDiagramNodes: 0 }) });
   });
 
   describe('LOD Level Determination', () => {
@@ -124,7 +129,7 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
     // down must be able to say so and pay for it — otherwise the "declarative
     // LOD policy" is decoration on a hardcoded rule.
     it('lets an app buy routing back at low zoom', () => {
-      const custom = createDefaultLODConfig();
+      const custom = createDefaultLODConfig({ smallDiagramNodes: 0 });
       custom.tiers.find((t) => t.name === 'low')!.features.add('routing');
       diagram.setLODConfig(custom);
 
