@@ -44,7 +44,7 @@ const labelCount = (host) => host.querySelectorAll('svg text').length;
 
 defineDemo({
   name: 'Contextual zoom (LOD)',
-  blurb: 'The detail tier follows the zoom: high → medium → sketch → low. Both the reported tier and the amount of text in the DOM drop as you zoom out — the tiers are genuinely different renders, not one picture with 17 names.',
+  blurb: 'The detail tier follows the zoom: high → medium → sketch → low. Both the reported tier and the amount of text in the DOM drop as you zoom out — the tiers are genuinely different renders, not one picture with 17 names. (A diagram under 200 nodes keeps its words at every zoom by default; this one switches that floor off to show the whole ladder.)',
   howTo: [
     'Click "1.5× high" — full detail: labels everywhere, and the readout on the right reports the tier plus how much text is in the DOM.',
     'Click "0.7× medium", then "0.3× sketch" — each click zooms out a band, the readout names the new tier, and detail visibly falls away.',
@@ -59,6 +59,14 @@ defineDemo({
     const api = render({ nodes: NODES, edges: EDGES }, ctx.host, { renderer: { qualityGovernor: false } });
     ctx.instance = api;
     ctx.diagram = api.getModel();
+    // 12 boxes is a SMALL diagram, and by default a diagram under 200 nodes keeps
+    // its labels and arrowheads at every zoom (a figure fitted to a page cannot be
+    // zoomed in, and a small scene costs nothing to draw in full). This demo exists
+    // to SHOW the ladder, so it switches that floor off: the full ladder, as a
+    // 200+ node scene gets it. (`minNodes` is the per-tier floor.)
+    const cfg = ctx.diagram.getLODConfig();
+    for (const tier of cfg.tiers) delete tier.minNodes;
+    ctx.diagram.setLODConfig(cfg);
     // Centre the camera on the content BEFORE driving zoom levels: setZoom is
     // centre-preserving, so zooming around the default (uncentred) camera slices
     // the graph off at the left edge at every tier.

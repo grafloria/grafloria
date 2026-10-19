@@ -372,6 +372,12 @@ const CHANNEL_NUDGE_TRIGGER = 4;
  */
 const CONTENT_RENDER_SLACK = 200;
 
+/**
+ * The tier a `lod: 'document'` renderer draws at every zoom: not one of the
+ * diagram's tiers, but "everything" — see {@link SVGRendererConfig.lod}.
+ */
+const DOCUMENT_TIER = 'document';
+
 function polylineLength(points: Array<{ x: number; y: number }>): number {
   let total = 0;
   for (let i = 0; i < points.length - 1; i++) {
@@ -1050,6 +1056,8 @@ export class SVGRenderer implements IRenderer {
       // defaults off: the alternative is zoom breakpoints pessimistic enough to
       // protect a 10k scene, imposed on a 30-node one that never needed them.
       qualityGovernor: config.qualityGovernor ?? true,
+      // 'document': a static figure — never shed detail (see the option docs).
+      lod: config.lod ?? 'auto',
       routeSolverPort: config.routeSolverPort,
       routeSolverOptions: config.routeSolverOptions,
       onRoutesRefined: config.onRoutesRefined,
@@ -1072,7 +1080,9 @@ export class SVGRenderer implements IRenderer {
     // governor null and the tier purely zoom-derived (deterministic — what a
     // screenshot test or a print job wants).
     const gov = this.config.qualityGovernor;
-    if (gov) {
+    // A DOCUMENT figure has one tier — everything — so there is nothing for a
+    // governor to step down to, and no interaction whose frame rate it protects.
+    if (gov && this.config.lod !== 'document') {
       this.governor = new QualityGovernor(typeof gov === 'object' ? gov : {});
     }
 
@@ -1252,8 +1262,11 @@ export class SVGRenderer implements IRenderer {
     // changes go through node.setSize() → change:size → spatial index + routing.
     this.autoSizeNodes(diagram);
 
-    // The tier the ZOOM asks for — what the picture NEEDS.
-    const zoomTier = diagram.getLODLevel(zoom);
+    // The tier the ZOOM asks for — what the picture NEEDS. A DOCUMENT figure
+    // (`lod: 'document'`) cannot be zoomed by its reader, so it needs everything
+    // at every zoom: its tier is the virtual 'document' tier, in which every LOD
+    // feature renders (see lodAllows).
+    const zoomTier = this.config.lod === 'document' ? DOCUMENT_TIER : diagram.getLODLevel(zoom);
 
     // …and the tier this MACHINE can afford. Card 7. The zoom knows how big a node
     // is on screen; it has no idea whether the last twelve frames took 4ms or 400.
@@ -1582,9 +1595,10 @@ export class SVGRenderer implements IRenderer {
    * stale list would step a custom tier into one that no longer exists.
    */
   private lodTierNames(diagram: DiagramModel): string[] {
-    return [...diagram.getLODConfig().tiers]
-      .sort((a, b) => b.minZoom - a.minZoom)
-      .map((t) => t.name);
+    // Only the tiers THIS diagram may use: a small diagram skips the shedding
+    // tiers (LODTier.minNodes), and its governor must not step down into one —
+    // that would drop the very labels the policy keeps for it.
+    return diagram.getActiveLODTiers().map((t) => t.name);
   }
 
   /**
@@ -4267,6 +4281,8 @@ export class SVGRenderer implements IRenderer {
    * Returns false when there is no diagram (nothing to render anyway).
    */
   private lodAllows(feature: LODFeature, lod: LODLevel): boolean {
+    // A document figure sheds nothing: every feature, whatever the policy says.
+    if (lod === DOCUMENT_TIER && this.config.lod === 'document') return true;
     // wave8/culling: MEMOISED PER FRAME. `shouldRender` linearly scans the tier
     // list and allocates a closure on every call, and this gate is asked ~12
     // times per entity per frame (shadows, panel, label, html body, lock, ports,
@@ -4458,7 +4474,7 @@ export class SVGRenderer implements IRenderer {
       else diagram.getLink(entry.id)?.markDirty?.();
       // The VNode cache is keyed per entity — evict just those two.
       this.vnodeCache.delete(`${entry.type}-${entry.id}`);
-      for (const lod of ['high', 'medium', 'low'] as const) {
+      for (const lod of [...diagram.getLODConfig().tiers.map((t) => t.name), DOCUMENT_TIER]) {
         this.vnodeCache.delete(`${entry.type}-${entry.id}-${lod}`);
       }
     }
@@ -5260,7 +5276,7 @@ export class SVGRenderer implements IRenderer {
         ...(this.lodAllows('decorations', lod) ? this.renderPanelOverlay(node) : []),
         // Label (if LOD allows and label exists) — shape-fit wrap + ellipsis,
         // clipped to the shape's inner rect (see renderNodeLabel).
-        ...(diagram.shouldRenderLabels(lod) && node.getLabel()
+        ...(this.lodAllows('labels', lod) && node.getLabel()
           ? this.renderNodeLabel(node)
           : []),
         // Card 4: HTML / foreignObject body (sanitized) on top of the shape

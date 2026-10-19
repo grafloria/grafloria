@@ -620,6 +620,24 @@ export interface SVGRendererConfig {
   qualityGovernor?: boolean | GovernorOptions;
 
   /**
+   * How the LEVEL OF DETAIL is chosen.
+   *
+   * - `'auto'` (default): the diagram's LOD policy picks a tier from the zoom
+   *   (`DiagramModel.getLODLevel`), and the quality governor may simplify further
+   *   on a slow frame. With the default policy a diagram under 200 nodes never
+   *   sheds labels or arrowheads (see `createDefaultLODConfig`); a bigger one
+   *   drops them below zoom 0.5 to stay interactive.
+   * - `'document'`: a STATIC FIGURE — a page in a manual, a server-rendered SVG,
+   *   a PDF. Nobody can zoom it, so nothing is ever shed: every feature (labels,
+   *   arrowheads, ports' glyphs, shadows, routing) renders at every zoom and
+   *   every size, whatever the diagram's own LOD policy says, and the quality
+   *   governor is off. `getQualityState().tier` reports `'document'`.
+   *
+   * Default: 'auto'
+   */
+  lod?: LODMode;
+
+  /**
    * The port the global route solver runs on — a real `Worker`, typically
    * `new Worker(new URL('...', import.meta.url))` whose body is
    * `serveSolver(self)`. Omit and the solver runs INLINE on this thread: same
@@ -750,3 +768,9 @@ export interface CanvasRendererConfig {
    */
   hitCanvasScale?: number;
 }
+
+/**
+ * How a renderer picks its level of detail — see `SVGRendererConfig.lod`.
+ * `'document'` never sheds anything (a static figure cannot be zoomed).
+ */
+export type LODMode = 'auto' | 'document';

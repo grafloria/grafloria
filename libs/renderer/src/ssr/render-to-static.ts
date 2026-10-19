@@ -1,5 +1,6 @@
 import { DiagramEngine, runDeterministic } from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
+import type { LODMode } from '../types/renderer.interface';
 import { SVGRenderer } from '../svg/svg-renderer';
 import { ViewportController } from '../viewport/viewport-controller';
 import { applyEdges, applyGroups, applyNodes } from '../instance/model-input';
@@ -76,6 +77,14 @@ export interface StaticRenderOptions {
   fitPadding?: number;
   /** Add `xmlns` to the `<svg>` so it stands alone as a file. Default false. */
   standalone?: boolean;
+  /**
+   * Level of detail. `'document'` — what a figure in a page wants: never shed
+   * labels or arrowheads, at any zoom or size (a static picture cannot be
+   * zoomed in). `'auto'` (default) follows the zoom through the diagram's LOD
+   * policy, which keeps every label on a diagram under 200 nodes but drops them
+   * on a bigger one below zoom 0.5. See `SVGRendererConfig.lod`.
+   */
+  lod?: LODMode;
 }
 
 /** Everything the client needs to reproduce this render exactly. */
@@ -150,7 +159,7 @@ function renderStaticNow(options: StaticRenderOptions): StaticRenderResult {
   // `useCSSMode` stays ON: the renderer's document access is now guarded
   // (see SVGRenderer.injectThemeCSS), so the VNode tree the server produces is
   // the SAME tree the browser produces — which is the whole point.
-  const renderer = new SVGRenderer(engine, { instanceId }, options.theme);
+  const renderer = new SVGRenderer(engine, { instanceId, lod: options.lod }, options.theme);
   const vnode = renderer.render(viewport.getRenderViewport(), viewport.getZoom());
   // ONE serializer, in DOM fidelity: the snapshot must describe exactly the DOM the
   // client's VNodePatcher would build, or hydration rebuilds the tree and flashes.

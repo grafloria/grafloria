@@ -2245,10 +2245,14 @@ export class DiagramModel extends DiagramEntity {
    *
    * Driven by the declarative {@link LODConfig}. Picks the
    * tier whose `minZoom` the zoom crosses — tiers are pre-sorted highest-first,
-   * so the first match wins. With the default config this is exactly:
+   * so the first match wins. With the default config, for a diagram of at least
+   * SMALL_DIAGRAM_NODES (200) nodes:
    *   zoom >= 1.0        -> 'high'
    *   0.5 <= zoom < 1.0  -> 'medium'
-   *   zoom <  0.5        -> 'low'
+   *   0.2 <= zoom < 0.5  -> 'sketch'
+   *   zoom <  0.2        -> 'low'
+   * A smaller diagram skips the tiers whose `minNodes` it does not reach, so
+   * with the default config it never goes below 'medium'.
    *
    * (See {@link createDefaultLODConfig} for why the medium/low breakpoint is 0.5.)
    *
@@ -2257,12 +2261,21 @@ export class DiagramModel extends DiagramEntity {
    */
   getLODLevel(zoom: number): LODLevel {
     const tiers = this._lodTiersDesc;
+    const count = this.nodes.size;
+    // A tier with `minNodes` above this diagram's size is skipped: the zoom falls
+    // through to the richest tier that applies (a small diagram keeps its words —
+    // see createDefaultLODConfig).
+    let coarsestActive: LODTier | undefined;
     for (const tier of tiers) {
+      if ((tier.minNodes ?? 0) > count) continue;
       if (zoom >= tier.minZoom) {
         return tier.name;
       }
+      coarsestActive = tier;
     }
-    // Below every tier's minZoom → fall back to the coarsest (last) tier.
+    // Below every applicable tier's minZoom → the coarsest tier that applies,
+    // else (nothing applies at all) the coarsest tier there is.
+    if (coarsestActive) return coarsestActive.name;
     return tiers.length > 0 ? tiers[tiers.length - 1].name : 'low';
   }
 
@@ -2283,6 +2296,17 @@ export class DiagramModel extends DiagramEntity {
   // =========================================================================
   // LOD configuration API (wave2/rendering)
   // =========================================================================
+
+  /**
+   * The tiers this diagram may use at its CURRENT size, richest first — every
+   * tier whose `minNodes` (if any) the node count reaches. What a renderer's
+   * quality governor may step through: a small diagram's governor must not step
+   * down into a shedding tier its zoom could never select.
+   */
+  getActiveLODTiers(): LODTier[] {
+    const count = this.nodes.size;
+    return this._lodTiersDesc.filter((tier) => (tier.minNodes ?? 0) <= count);
+  }
 
   /** Get the current Level-of-Detail policy. */
   getLODConfig(): LODConfig {
