@@ -7,9 +7,9 @@
  * near-black, and figures fitted to a narrow column drawn as empty boxes (the
  * default level of detail shed their text). This gate is that measurement,
  * made permanent. Each fence is mounted the way a reader mounts it —
- * `createDiagram(host, { readonly: true, theme })`, `loadText`, `fitView` —
- * at the reader's column width (713 px), in light and in dark, at the DEFAULT
- * level of detail, and the live SVG must show:
+ * `createDiagram(host, { readonly: true, theme, lod: 'document' })` (a figure
+ * nobody can zoom sheds nothing), `loadText`, `fitView` — at the reader's
+ * column width (713 px), in light and in dark, and the live SVG must show:
  *
  *   - every node and every edge of the model drawn, with its text;
  *   - no edge label overlapping another label or a node box (links paint
@@ -117,7 +117,7 @@ for (const fence of corpus) {
         const height = Math.max(140, Math.min(900, Math.round((width * (maxy - miny + 80)) / (maxx - minx + 80))));
         host.style.width = width + 'px';
         host.style.height = height + 'px';
-        const inst = GF.createDiagram(host, { readonly: true, theme: theme === 'dark' ? GF.DARK_THEME : GF.LIGHT_THEME });
+        const inst = GF.createDiagram(host, { readonly: true, lod: 'document', theme: theme === 'dark' ? GF.DARK_THEME : GF.LIGHT_THEME });
         inst.loadText(source);
         inst.fitView(16);
         inst.renderNow();

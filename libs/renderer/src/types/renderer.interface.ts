@@ -624,9 +624,9 @@ export interface SVGRendererConfig {
    *
    * - `'auto'` (default): the diagram's LOD policy picks a tier from the zoom
    *   (`DiagramModel.getLODLevel`), and the quality governor may simplify further
-   *   on a slow frame. With the default policy a diagram under 200 nodes never
-   *   sheds labels or arrowheads (see `createDefaultLODConfig`); a bigger one
-   *   drops them below zoom 0.5 to stay interactive.
+   *   on a slow frame. The default policy drops labels and arrowheads below
+   *   zoom 0.5 to stay interactive; `createDefaultLODConfig({ smallDiagramNodes:
+   *   200 })` keeps them on a diagram under 200 nodes.
    * - `'document'`: a STATIC FIGURE — a page in a manual, a server-rendered SVG,
    *   a PDF. Nobody can zoom it, so nothing is ever shed: every feature (labels,
    *   arrowheads, ports' glyphs, shadows, routing) renders at every zoom and

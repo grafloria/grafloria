@@ -26,10 +26,9 @@ Framework packages build on this: `@grafloria/element`, `@grafloria/react`,
 
 ## Static figures: `lod: 'document'`
 
-Level of detail follows the zoom: zoomed far out, a big scene drops its labels
-and arrowheads to stay interactive. A diagram under 200 nodes never does that
-(the default policy exempts it), but a figure in a page of documentation can't
-be zoomed by its reader at any size. Ask for the document mode and nothing is
+Level of detail follows the zoom: zoomed far out, a scene drops its labels and
+arrowheads to stay interactive. A figure in a page of documentation can't be
+zoomed by its reader, at any size. Ask for the document mode and nothing is
 ever shed, at any zoom:
 
 ```ts
@@ -38,8 +37,10 @@ renderToStaticSVG({ nodes, edges, fitView: true, lod: 'document' }); // on the s
 ```
 
 `getQualityState().tier` reports `'document'`, and the quality governor is off.
-For the policy itself see `createDefaultLODConfig({ smallDiagramNodes })`,
-`createDocumentLODConfig()` and `LODTier.minNodes` in `@grafloria/engine`.
+A canvas that should keep a small diagram's words while still shedding on a
+big one opts in to a floor:
+`diagram.setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 200 }))`.
+See also `createDocumentLODConfig()` and `LODTier.minNodes` in `@grafloria/engine`.
 
 `renderToStaticSVG()` returns one `svg` for every theme: its colours are
 `var(--grafloria-*)` references, and the theme's values travel in `css`. Ship a

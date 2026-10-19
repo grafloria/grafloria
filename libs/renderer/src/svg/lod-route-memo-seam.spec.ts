@@ -21,7 +21,7 @@
 // to it by construction — that is exactly how the bug survived to the merge.)
 
 import { SVGRenderer } from './svg-renderer';
-import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel, createDefaultLODConfig } from '@grafloria/engine';
+import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
 import type { Rectangle } from '../types';
 
 const VIEWPORT: Rectangle = { x: -200, y: -200, width: 1600, height: 1200 };
@@ -81,10 +81,6 @@ function geometry(diagram: DiagramModel): string {
 function render(zoom: number): { renderer: SVGRenderer; engine: DiagramEngine; diagram: DiagramModel } {
   const engine = new DiagramEngine();
   const diagram = engine.createDiagram('d')!;
-  // Three nodes standing in for a big scene: the default policy keeps a diagram
-  // under 200 nodes out of the shedding tiers entirely (it would never reach
-  // 'low'), so the stand-in runs the full ladder — what a 200+ node scene gets.
-  diagram.setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 }));
   buildBlockedScene(diagram);
   const renderer = new SVGRenderer(engine, {});
   renderer.render(VIEWPORT, zoom);

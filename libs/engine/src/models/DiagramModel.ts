@@ -2284,14 +2284,14 @@ export class DiagramModel extends DiagramEntity {
    *
    * Driven by the declarative {@link LODConfig}. Picks the
    * tier whose `minZoom` the zoom crosses — tiers are pre-sorted highest-first,
-   * so the first match wins. With the default config, for a diagram of at least
-   * SMALL_DIAGRAM_NODES (200) nodes:
+   * so the first match wins. With the default config:
    *   zoom >= 1.0        -> 'high'
    *   0.5 <= zoom < 1.0  -> 'medium'
    *   0.2 <= zoom < 0.5  -> 'sketch'
    *   zoom <  0.2        -> 'low'
-   * A smaller diagram skips the tiers whose `minNodes` it does not reach, so
-   * with the default config it never goes below 'medium'.
+   * A diagram skips the tiers whose `minNodes` it does not reach — with
+   * `createDefaultLODConfig({ smallDiagramNodes: 200 })`, one under 200 nodes
+   * never goes below 'medium'.
    *
    * (See {@link createDefaultLODConfig} for why the medium/low breakpoint is 0.5.)
    *

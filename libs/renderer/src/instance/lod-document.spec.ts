@@ -8,13 +8,15 @@
  * fences did the same. A static figure cannot be zoomed, so the words were
  * simply gone.
  *
- * Two fixes, both pinned here:
- *   1. the DEFAULT: a diagram under 200 nodes never sheds labels or arrowheads
- *      (the shedding tiers exist to make a BIG scene affordable);
- *   2. `lod: 'document'` on createDiagram / renderToStaticSVG: nothing is ever
- *      shed, at any zoom, whatever the diagram's size or its own LOD policy.
+ * Two ways out, both pinned here:
+ *   1. `lod: 'document'` on createDiagram / renderToStaticSVG: nothing is ever
+ *      shed, at any zoom, whatever the diagram's size or its own LOD policy —
+ *      what a docs reader passes;
+ *   2. opt-in on a canvas: `createDefaultLODConfig({ smallDiagramNodes: 200 })`,
+ *      and a diagram under 200 nodes never sheds labels or arrowheads.
+ * The DEFAULT is unchanged: a small canvas zoomed out follows the full ladder.
  */
-import { createDefaultLODConfig } from '@grafloria/engine';
+import { createDefaultLODConfig, SMALL_DIAGRAM_NODES } from '@grafloria/engine';
 import { createDiagram, type DiagramInstance } from './create-diagram';
 import { renderToStaticSVG } from '../ssr/render-to-static';
 import type { EdgeSpec, NodeSpec } from './model-input';
@@ -55,8 +57,10 @@ describe('a fitted 9-node flowchart LR chain at zoom ~0.4 keeps every label and 
     expect(d.viewport.getZoom()).toBeGreaterThan(0.3);
   });
 
-  it('BY DEFAULT (a small diagram): all 9 node labels and all 8 arrowheads render', () => {
+  it('opted in (smallDiagramNodes: 200): all 9 node labels and all 8 arrowheads render', () => {
     const d = mount();
+    d.getModel().setLODConfig(createDefaultLODConfig({ smallDiagramNodes: SMALL_DIAGRAM_NODES }));
+    d.renderNow();
     expect(labels(container)).toEqual(Array.from({ length: 9 }, (_, i) => `Step ${i + 1}`));
     expect(arrows(container)).toBe(8);
     // …and pinned at exactly 0.4, and at a phone's ~0.17:
@@ -70,9 +74,8 @@ describe('a fitted 9-node flowchart LR chain at zoom ~0.4 keeps every label and 
 
   it("lod: 'document': every label and arrowhead at 0.4 — even under a policy that sheds", () => {
     const d = mount({ lod: 'document' });
-    // The diagram's OWN policy says shed (the full ladder, no small-diagram floor);
-    // a document figure ignores that — nobody can zoom it.
-    d.getModel().setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 }));
+    // The diagram's OWN policy says shed (the default: the full ladder, no
+    // small-diagram floor); a document figure ignores that — nobody can zoom it.
     for (const zoom of [0.4, 0.1]) {
       d.viewport.setZoom(zoom);
       d.renderNow();
@@ -82,9 +85,8 @@ describe('a fitted 9-node flowchart LR chain at zoom ~0.4 keeps every label and 
     expect(d.getQualityState().tier).toBe('document');
   });
 
-  it('control: the same shedding policy WITHOUT document mode drops them at 0.4 (LOD still works)', () => {
+  it('BY DEFAULT, as before: without document mode or the floor it sheds them at 0.4 (LOD still works)', () => {
     const d = mount();
-    d.getModel().setLODConfig(createDefaultLODConfig({ smallDiagramNodes: 0 }));
     d.viewport.setZoom(0.4);
     d.renderNow();
     expect(d.getQualityState().tier).toBe('sketch');
@@ -94,7 +96,7 @@ describe('a fitted 9-node flowchart LR chain at zoom ~0.4 keeps every label and 
 });
 
 describe("renderToStaticSVG({ lod: 'document' })", () => {
-  // 220 nodes: big enough that the DEFAULT policy sheds at far zoom.
+  // 220 nodes: past even the opt-in floor, so any policy sheds at far zoom.
   const N = 220;
   const nodes: NodeSpec[] = Array.from({ length: N }, (_, i) => ({
     id: `n${i}`,

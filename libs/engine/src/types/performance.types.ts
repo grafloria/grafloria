@@ -86,10 +86,11 @@ export interface LODTier {
    * diagram skips it: its zoom falls through to the richest tier that does
    * apply. Omitted means every diagram may use the tier.
    *
-   * This is how the default policy keeps a SMALL diagram's words: its shedding
-   * tiers ('sketch', 'low') exist to make a big scene affordable, and carry
-   * `minNodes: SMALL_DIAGRAM_NODES`, so a 9-box figure fitted to a narrow column
-   * keeps its labels and arrowheads at any zoom. See {@link createDefaultLODConfig}.
+   * This is how a policy keeps a SMALL diagram's words: its shedding tiers
+   * ('sketch', 'low') exist to make a big scene affordable, and with
+   * `createDefaultLODConfig({ smallDiagramNodes: SMALL_DIAGRAM_NODES })` they
+   * carry `minNodes`, so a 9-box figure fitted to a narrow column keeps its
+   * labels and arrowheads at any zoom. See {@link createDefaultLODConfig}.
    */
   minNodes?: number;
 }
@@ -103,8 +104,9 @@ export interface LODConfig {
 }
 
 /**
- * Below this many nodes the default policy never sheds labels or arrowheads,
- * at any zoom (see {@link LODTier.minNodes}).
+ * The suggested small-diagram floor: pass it as `smallDiagramNodes` and a
+ * diagram with fewer nodes never sheds labels or arrowheads, at any zoom
+ * (see {@link LODTier.minNodes}). Not on by default.
  */
 export const SMALL_DIAGRAM_NODES = 200;
 
@@ -113,8 +115,9 @@ export interface DefaultLODOptions {
   /**
    * A diagram with fewer nodes than this never uses the shedding tiers
    * ('sketch', 'low'): it keeps its labels and arrowheads at every zoom.
-   * Default {@link SMALL_DIAGRAM_NODES} (200). `0` turns the floor off — the
-   * full zoom ladder at any size (what a demo OF the ladder wants).
+   * {@link SMALL_DIAGRAM_NODES} (200) is the suggested value. Default `0`: no
+   * floor, the full zoom ladder at any size. A figure nobody can zoom wants the
+   * renderer's `lod: 'document'` instead, which sheds nothing at any size.
    */
   smallDiagramNodes?: number;
 }
@@ -151,23 +154,23 @@ export interface DefaultLODOptions {
  * the scenes and machines that need it. Perception picks the tier; measurement
  * decides whether you can afford it.
  *
- * SMALL DIAGRAMS ARE EXEMPT. 'sketch' and 'low' carry `minNodes:
- * SMALL_DIAGRAM_NODES` (200), so a diagram with fewer nodes never sheds its
- * labels or arrowheads: below zoom 0.5 it stays at 'medium'. The perception
- * argument above is about a 12px label on a canvas you can zoom; a figure
- * fitted to a documentation column (a 9-box `flowchart LR` lands at ~0.4 on a
- * desktop reader, ~0.17 on a phone) cannot be zoomed, and dropping its words
- * turned it into empty boxes. A small scene costs nothing to draw in full, so
- * the cost argument never applied to it. `smallDiagramNodes: 0` restores the
- * full ladder at any size.
+ * SMALL DIAGRAMS CAN BE EXEMPT. With `smallDiagramNodes: SMALL_DIAGRAM_NODES`
+ * (200), 'sketch' and 'low' carry that `minNodes`, so a diagram with fewer
+ * nodes never sheds its labels or arrowheads: below zoom 0.5 it stays at
+ * 'medium'. The perception argument above is about a 12px label on a canvas
+ * you can zoom; a figure fitted to a documentation column (a 9-box
+ * `flowchart LR` lands at ~0.4 on a desktop reader, ~0.17 on a phone) cannot
+ * be zoomed, and dropping its words turns it into empty boxes. The floor is
+ * opt-in because it changes what every small canvas shows when zoomed out; a
+ * static figure is better served by the renderer's `lod: 'document'`.
  *
  * Fresh `Set`s are created per call so no two diagrams share mutable state.
  */
 export function createDefaultLODConfig(options: DefaultLODOptions = {}): LODConfig {
-  // The shedding tiers only apply to a scene big enough to need them. Below
-  // this, the zoom falls through to 'medium': a small diagram keeps its labels
-  // and arrowheads at any zoom (a docs figure fitted to a phone lands at ~0.17).
-  const small = Math.max(0, options.smallDiagramNodes ?? SMALL_DIAGRAM_NODES);
+  // Opted in, the shedding tiers only apply to a scene big enough to need them.
+  // Below that, the zoom falls through to 'medium': a small diagram keeps its
+  // labels and arrowheads at any zoom (a docs figure fitted to a phone lands at ~0.17).
+  const small = Math.max(0, options.smallDiagramNodes ?? 0);
   const floor = small > 0 ? { minNodes: small } : {};
   return {
     tiers: [

@@ -170,8 +170,7 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * of documentation, fitted to its column, that the reader cannot zoom: it
    * never sheds labels, arrowheads or anything else, at any zoom or size, and
    * the quality governor is off. `'auto'` (default) lets the diagram's LOD
-   * policy follow the zoom — which, by default, already keeps every label and
-   * arrowhead on a diagram under 200 nodes. Wins over `renderer.lod`.
+   * policy follow the zoom. Wins over `renderer.lod`.
    * See {@link SVGRendererConfig.lod}.
    */
   lod?: LODMode;

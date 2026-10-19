@@ -43,7 +43,7 @@ measurement kept as a gate (`demos/e2e/mermaid-reader-run.mjs`, in CI; run
 | Two edges, one pair | both directions (or two parallel transitions) on one track | two curves, each label on its own |
 | Routing | LR edges out of a box's top and looping; `flowchart RL` broken | forward edges leave the side facing the next rank; RL mirrors LR |
 | Dark theme | flowchart edge-label text black on dark (1.43:1) | the theme's ink; one SSR SVG for both themes (CSS variables) |
-| Small figures | default LOD dropped labels and arrowheads below zoom 0.5 | under 200 nodes nothing is shed; `lod: 'document'` sheds nothing |
+| Small figures | default LOD dropped labels and arrowheads below zoom 0.5 | a reader passes `lod: 'document'` and nothing is shed; a canvas can opt in to `smallDiagramNodes: 200` (the default ladder is unchanged) |
 | Silent drops | state ids with spaces dropped, no error; `accTitle` became a state; `<T>` deleted from labels | a line error naming the line; metadata (and the SVG's accessible name); the text kept |
 | Refused valid Mermaid | `End[…]`, `'` or `/` inside `[ ]`, YAML frontmatter | read, as Mermaid reads them |
 | Edge ends, shapes | `--o`, `--x`, `<-->`, `---` all one arrowhead; `>flag]` a rectangle | each end as written; the flag shape |

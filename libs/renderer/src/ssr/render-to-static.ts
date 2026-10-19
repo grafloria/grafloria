@@ -81,8 +81,7 @@ export interface StaticRenderOptions {
    * Level of detail. `'document'` — what a figure in a page wants: never shed
    * labels or arrowheads, at any zoom or size (a static picture cannot be
    * zoomed in). `'auto'` (default) follows the zoom through the diagram's LOD
-   * policy, which keeps every label on a diagram under 200 nodes but drops them
-   * on a bigger one below zoom 0.5. See `SVGRendererConfig.lod`.
+   * policy, which drops them below zoom 0.5. See `SVGRendererConfig.lod`.
    */
   lod?: LODMode;
 }
