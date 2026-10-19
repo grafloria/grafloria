@@ -52,9 +52,12 @@ const SHAPE_OPENERS: ReadonlySet<TokenType> = new Set([
   TokenType.TRAPEZOID_OPEN,
 ]);
 
-/** The lexer's token for a quote with no closing quote (it runs to the end of its line). */
+/**
+ * The lexer's token for a `"` with no closing quote (it runs to the end of its
+ * line). A `'` is not a quote in Mermaid — it is a character of the label.
+ */
 function isUnclosedQuote(token: Token): boolean {
-  return token.type === TokenType.UNKNOWN && (token.value.startsWith('"') || token.value.startsWith("'"));
+  return token.type === TokenType.UNKNOWN && token.value.startsWith('"');
 }
 
 /** What the author has to type to close a label, for the error message. */
@@ -427,13 +430,32 @@ export class Parser {
       }
       const key = this.advance().value;
       this.consume(TokenType.COLON, 'Expected ":" in node metadata');
-      const value = this.advance().value.replace(/#quot;/g, '"');
+      const value = this.readMetadataValue().replace(/#quot;/g, '"');
       if (key === 'label') label = value;
       else if (key === 'shape') shape = V11_SHAPE_MAP[value.toLowerCase()] ?? 'rectangle';
     }
 
     this.consume(TokenType.RHOMBUS_CLOSE, 'Expected "}" to close node metadata');
     return { shape, label };
+  }
+
+  /**
+   * One value of a `@{ … }` block: a token, or a YAML `'single-quoted'` run (the
+   * lexer emits `'` as a character, since a flowchart label is not quoted by it),
+   * rejoined by source adjacency like any label.
+   */
+  private readMetadataValue(): string {
+    const first = this.advance();
+    if (!(first.type === TokenType.UNKNOWN && first.value === "'")) return first.value;
+    let text = '';
+    let prevEnd = first.endIndex;
+    while (!this.isAtEnd() && !this.check(TokenType.NEWLINE) && !(this.peek().type === TokenType.UNKNOWN && this.peek().value === "'")) {
+      const token = this.advance();
+      text += (token.startIndex > prevEnd ? ' ' : '') + token.value;
+      prevEnd = token.endIndex;
+    }
+    if (!this.isAtEnd() && this.peek().value === "'") this.advance();
+    return text;
   }
 
   /**
@@ -831,6 +853,19 @@ export class Parser {
     let prevEnd = -1;
 
     while (!this.check(endType)) {
+      // `[Join segments with /]`: the lexer read `/]` (or `\]`) as a slash shape's
+      // close, but inside a square label it is the label's last character and the
+      // `]` that closes it. Split the token in place; the loop takes the slash as
+      // text and stops at the `]`.
+      if (endType === TokenType.SQUARE_CLOSE && this.check(TokenType.TRAPEZOID_CLOSE)) {
+        const t = this.peek();
+        this.tokens.splice(
+          this.current,
+          1,
+          { ...t, type: TokenType.UNKNOWN, value: t.value[0], endIndex: t.startIndex + 1 },
+          { ...t, type: TokenType.SQUARE_CLOSE, value: ']', startIndex: t.startIndex + 1, column: t.column + 1 }
+        );
+      }
       if (this.isAtEnd()) throw unclosed();
       if (this.check(TokenType.NEWLINE)) {
         if (firstBreak < 0) firstBreak = this.current;

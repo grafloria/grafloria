@@ -166,8 +166,13 @@ export class Lexer {
         break;
 
       case '"':
-      case "'":
         this.scanString(char, start, startColumn);
+        break;
+
+      // NOT a string delimiter: Mermaid quotes with `"` only, so `[I'm here]` is
+      // the text "I'm here" (it was an unclosed quote that refused the line).
+      case "'":
+        this.addToken(TokenType.UNKNOWN, char, start, this.position);
         break;
 
       default:
@@ -492,13 +497,17 @@ export class Lexer {
    * Get keyword token type
    */
   private getKeywordType(value: string): TokenType {
+    // Mermaid's flowchart lexer is case-SENSITIVE for these two: `End` and `END`
+    // are node ids (its docs tell authors to capitalise `end` for exactly that),
+    // and reading them as the keyword refused `Handler --> End[…]`.
+    if (value === 'subgraph') return TokenType.SUBGRAPH;
+    if (value === 'end') return TokenType.END;
+
     const lower = value.toLowerCase();
 
     const keywords: Record<string, TokenType> = {
       'flowchart': TokenType.FLOWCHART,
       'graph': TokenType.GRAPH,
-      'subgraph': TokenType.SUBGRAPH,
-      'end': TokenType.END,
       'bpmn': TokenType.BPMN,
       'erd': TokenType.ERD,
       'classDiagram': TokenType.CLASSDIAAGRAM,
