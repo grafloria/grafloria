@@ -90,6 +90,13 @@ export interface MermaidStateModel {
   transitions: MermaidStateTransition[];
   direction?: string;
   notes: Array<{ position: string; target: string; text: string }>;
+  /**
+   * The lines the parser could not read and SKIPPED, each naming its line
+   * (`Line 2: …`). The parse is still best effort — the readable lines are in the
+   * model — but a skipped line must be REPORTED: dropped in silence, a fence of
+   * `Draft --> Release for Approval` lines loaded as an empty diagram, no error.
+   */
+  errors?: string[];
 }
 
 const ID = '[A-Za-z0-9_\\u00c0-\\uffff][A-Za-z0-9_\\-.\\u00c0-\\uffff]*';
@@ -118,6 +125,58 @@ const DIRECTION_RE = /^direction\s+(TB|BT|LR|RL|TD)$/i;
  */
 const REGION_SEPARATOR_RE = /^(?:--)+$/;
 const HISTORY_RE = /^\[H(\*)?\]$/;
+/**
+ * Valid Mermaid state statements we read but do not model: styling
+ * (`classDef` / `class` / `style` — state styling is an open gap), `click`,
+ * `scale … width`, `hide empty description`, and the floating note
+ * `note "text" as N1`. Skipping these is not a loss of the diagram's meaning, so
+ * they are NOT errors — everything else the parser cannot read is.
+ */
+const KNOWN_UNMODELLED_RE =
+  /^(?:(?:classDef|class|style|click)\s|scale\s+\d+\s+width$|hide empty description$|note\s+"[^"]*"\s+as\s+\S+$)/;
+
+/** `Release for Approval` → `ReleaseForApproval`: an id to suggest for a spaced name. */
+function suggestId(name: string): string {
+  const id = name
+    .split(/\s+/)
+    .map((w) => w.replace(/[^A-Za-z0-9_\u00c0-\uffff]/g, ''))
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join('');
+  return /^[A-Za-z_\u00c0-\uffff]/.test(id) ? id : `S${id}`;
+}
+
+/**
+ * Why a line the grammar did not match was skipped. Mermaid ids cannot contain
+ * spaces: Mermaid itself reads `Release for Approval` as three states and draws
+ * garbage, so the honest answer is an error that says how to write it.
+ */
+function skippedLineError(text: string, line: number): string {
+  const endpoint = (raw: string): string => raw.replace(/:::[A-Za-z0-9_-]+$/, '').trim();
+  let names: string[] = [];
+  const arrow = text.indexOf('-->');
+  if (arrow > 0) {
+    // A transition: `<from> --> <to> [: label]`.
+    const from = endpoint(text.slice(0, arrow));
+    const rest = text.slice(arrow + 3);
+    const colon = rest.indexOf(':');
+    const to = endpoint(colon >= 0 ? rest.slice(0, colon) : rest);
+    names = [from, to];
+  } else if (!/^(?:state|note|direction)\b/.test(text)) {
+    // A description (`<id> : text`) or a state on its own line.
+    const colon = text.indexOf(':');
+    names = [endpoint(colon >= 0 ? text.slice(0, colon) : text)];
+  }
+  const spaced = names.filter((n) => /\s/.test(n) && !/["\[\]{}<>]/.test(n));
+  if (spaced.length > 0) {
+    const fixes = spaced.map((n) => `state "${n}" as ${suggestId(n)}`).join(' and ');
+    return (
+      `Line ${line}: a state id cannot contain spaces — write ${fixes}, ` +
+      `then use the short id in the transition`
+    );
+  }
+  return `Line ${line}: "${text}" is not a state, a transition or a directive — the line was skipped`;
+}
 
 /** Does the composite body opening at `lines[open]` contain a `--` at ITS depth? */
 function hasConcurrentRegions(lines: { text: string }[], open: number): boolean {
@@ -143,10 +202,15 @@ function hasConcurrentRegions(lines: { text: string }[], open: number): boolean 
  * syntax, so refusing v1 would be arbitrary.
  */
 export function parseMermaidState(text: string): MermaidStateModel {
-  const lines = significantLines(text, ['stateDiagram', 'stateDiagram-v2']);
+  const lines = significantLines(text, ['stateDiagram', 'stateDiagram-v2'])
+    // `;` ends a statement in Mermaid's state grammar (`A --> B;`), and `#` opens
+    // a comment there (`# draft states`).
+    .map((l) => ({ ...l, text: l.text.replace(/\s*;+$/, '') }))
+    .filter((l) => l.text !== '' && !l.text.startsWith('#'));
   const states = new Map<string, MermaidStateNode>();
   const transitions: MermaidStateTransition[] = [];
   const notes: MermaidStateModel['notes'] = [];
+  const errors: string[] = [];
   let direction: string | undefined;
 
   const touch = (id: string, scope: string | undefined, kind: StateKind = 'state'): MermaidStateNode => {
@@ -314,10 +378,13 @@ export function parseMermaidState(text: string): MermaidStateModel {
       touchStyled(line);
       continue;
     }
-    // classDef / class / style / anything newer: ignored, never nodified.
+    // classDef / class / style / … : valid, read, not modelled — never nodified.
+    if (KNOWN_UNMODELLED_RE.test(line)) continue;
+    // Anything else is skipped too, never nodified — and REPORTED, naming its line.
+    errors.push(skippedLineError(line, lines[i].line));
   }
 
-  return { states: [...states.values()], transitions, notes, ...(direction ? { direction } : {}) };
+  return { states: [...states.values()], transitions, notes, ...(direction ? { direction } : {}), errors };
 }
 
 // ── Model building ─────────────────────────────────────────────────────────

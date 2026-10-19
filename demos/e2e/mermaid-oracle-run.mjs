@@ -55,6 +55,27 @@ const CASES = {
   'flow inline labels': 'flowchart LR\n  a -- writes --> b\n  b -- "twice, quoted" --> c\n  c -. note .-> d\n  d == big ==> e\n  e ==> f',
   'flow slash shapes': 'flowchart LR\n  a[/Wide bottom\\] --> b[\\Wide top/] --> c[/In or out/] --> d[\\Lean left\\] --> e[(DB)]',
 
+  // ── flowchart: valid Mermaid found in real pages that we used to REFUSE ──
+  // (Atloria brief 2026-10-19, P1-6). Only lowercase `end` is reserved; `'` and a
+  // `/` before `]` are label text; YAML frontmatter is read and its title kept.
+  'flow End node id': 'flowchart LR\n  Handler --> End[Timing middleware records elapsed time]',
+  'flow apostrophe': "flowchart LR\n  D --> E[418 I'm a Teapot Response]",
+  'flow slash before ]': 'flowchart LR\n  D --> E[Join segments with /]',
+  'flow frontmatter title': '---\ntitle: Order flow\n---\nflowchart LR\n  A --> B',
+
+  // ── accTitle / accDescr: diagram metadata in every type, never a node (P0-5b)
+  'flow acc metadata': 'flowchart LR\n  accTitle: Orders\n  accDescr {\n    From order\n    to invoice\n  }\n  A --> B',
+  'state acc metadata': 'stateDiagram-v2\n  accTitle: Lifecycle\n  accDescr: How an invoice moves\n  [*] --> A\n  A --> [*]',
+
+  // ── text in angle brackets is TEXT unless it is a label tag (P0-5c) ──────
+  'flow angle brackets':
+    'flowchart LR\n  A[Request] --> B["params: Record<string, string>"]\n  B --> C[Context&lt;T&gt;]\n  C --> D["a < b > c"]',
+
+  // ── edge ends: circle, cross, both, none — and the flag shape (P1-10) ───
+  'flow edge ends + flag': 'flowchart LR\n A --o B\n B --x C\n C <--> D\n D --- E\n E --> F>Flag]',
+  'flow edge end variants':
+    'flowchart LR\n  A -.- B\n  B === C\n  C o--o D\n  D x--x E\n  E <-.-> F\n  F <==> G\n  G -.-o H\n  H ==x I\n  I ---|plain| J\n  J --o|ball| K\n  K <-- both --> L',
+
   // ── architecture-beta: groups, services, junctions, sided edges ─────────
   'architecture docs':
     'architecture-beta\n    group api(cloud)[API]\n\n    service db(database)[Database] in api\n    service disk1(disk)[Storage] in api\n    service disk2(disk)[Storage] in api\n    service server(server)[Server] in api\n\n    db:L -- R:server\n    disk1:T -- B:server\n    disk2:T -- B:db',
@@ -252,6 +273,60 @@ const CASES = {
     '    classDef cool fill:#9cf',
 };
 
+// What a case must READ, beyond "it read": a validity pass alone cannot see an
+// `accTitle` drawn as a state or a label with its `<T>` cut off. Each check gets
+// Grafloria's summary and returns what is wrong, or null.
+const EXPECT = {
+  'flow End node id': (g) => g.labels.End === 'Timing middleware records elapsed time' ? null : `End reads ${JSON.stringify(g.labels.End)}`,
+  'flow apostrophe': (g) => g.labels.E === "418 I'm a Teapot Response" ? null : `E reads ${JSON.stringify(g.labels.E)}`,
+  'flow slash before ]': (g) => g.labels.E === 'Join segments with /' ? null : `E reads ${JSON.stringify(g.labels.E)}`,
+  'flow frontmatter title': (g) => g.meta.title === 'Order flow' ? null : `title is ${JSON.stringify(g.meta.title)}`,
+  'flow acc metadata': (g) =>
+    g.meta.accTitle === 'Orders' && g.meta.accDescr === 'From order\nto invoice' && g.nodes.join() === 'A,B'
+      ? null : `meta ${JSON.stringify(g.meta)} nodes ${g.nodes}`,
+  'state acc metadata': (g) =>
+    g.meta.accTitle === 'Lifecycle' && g.meta.accDescr === 'How an invoice moves' && !Object.values(g.labels).includes('Lifecycle')
+      ? null : `meta ${JSON.stringify(g.meta)} labels ${JSON.stringify(g.labels)}`,
+  'flow angle brackets': (g) =>
+    g.labels.B === 'params: Record<string, string>' && g.labels.C === 'Context<T>' && g.labels.D === 'a < b > c'
+      ? null : `labels ${JSON.stringify(g.labels)}`,
+  'flow edge ends + flag': (g) => {
+    const want = { 'A->B': 'none/circle', 'B->C': 'none/cross', 'C->D': 'arrow/arrow', 'D->E': 'none/none', 'E->F': 'none/arrow' };
+    const bad = Object.entries(want).filter(([k, v]) => g.ends[k] !== v);
+    if (g.shapes.F !== 'asymmetric') bad.push(['F shape', g.shapes.F]);
+    return bad.length ? `ends ${JSON.stringify(g.ends)} shape F=${g.shapes.F}` : null;
+  },
+  'flow edge end variants': (g) => {
+    const want = {
+      'A->B': 'none/none', 'B->C': 'none/none', 'C->D': 'circle/circle', 'D->E': 'cross/cross', 'E->F': 'arrow/arrow',
+      'F->G': 'arrow/arrow', 'G->H': 'none/circle', 'H->I': 'none/cross', 'I->J': 'none/none', 'J->K': 'none/circle', 'K->L': 'arrow/arrow',
+    };
+    return Object.entries(want).every(([k, v]) => g.ends[k] === v) ? null : `ends ${JSON.stringify(g.ends)}`;
+  },
+};
+
+// Mermaid ACCEPTS these — and draws something the author did not write — so
+// Grafloria refuses them on purpose, with an error naming each line (P0-5a). A
+// state id cannot contain spaces: Mermaid reads `Release for Approval` as three
+// states. This is the real corpus fence `invoice-lifecycle#1`.
+const REFUSED = {
+  'state ids with spaces (invoice-lifecycle#1)': {
+    text:
+      'stateDiagram-v2\n' +
+      '    Draft --> Release for Approval: Request approval\n' +
+      '    Release for Approval --> Approved: Approve\n' +
+      '    Approved --> Due: Consider as sent to client/principal\n' +
+      '    Due --> Overdue: payment period overdue\n' +
+      '    Due --> Paid: due amount ≤ 0\n' +
+      '    Approved --> Draft: Consider as not approved\n',
+    lines: [2, 3],
+  },
+  'state ids with spaces only': {
+    text: 'stateDiagram-v2\n    Draft --> Release for Approval\n    Release for Approval --> Sent to Client: Send\n',
+    lines: [2, 3],
+  },
+};
+
 // Bundle the public entry point (same alias map as demos/build.mjs).
 await build({
   entryPoints: [join(REPO, 'libs/element/src/index.ts')],
@@ -319,17 +394,35 @@ for (const [name, text] of Object.entries(CASES)) {
   const body = await p.evaluate((t) => window.oracle.grafloriaExportBody(t), text);
   const exported = await p.evaluate((t) => window.oracle.mermaidParse(t), body);
   const grafloria = await p.evaluate((t) => window.oracle.grafloriaRender(t), text);
-  // Grafloria must read it (nodes present), and BOTH the original and Grafloria's
-  // exported body must be valid Mermaid.
-  const readOk = grafloria.nodes.length > 0;
-  const ok = original.valid && exported.valid && readOk;
+  // Grafloria must read it (nodes present, no line skipped), BOTH the original and
+  // Grafloria's exported body must be valid Mermaid, and what it read must be
+  // what the case expects.
+  const readOk = grafloria.nodes.length > 0 && grafloria.errors.length === 0;
+  const expectFail = EXPECT[name]?.(grafloria) ?? null;
+  const ok = original.valid && exported.valid && readOk && !expectFail;
   if (!ok) fail++;
   console.log(
     `  ${ok ? 'OK  ' : 'FAIL'} ${name.padEnd(26)} ` +
     `grafloria=[${grafloria.nodes.length}n/${grafloria.links.length}l] mermaid(orig)=${original.valid ? 'valid' : 'INVALID:' + original.error} ` +
-    `mermaid(export)=${exported.valid ? 'valid' : 'INVALID:' + exported.error}`
+    `mermaid(export)=${exported.valid ? 'valid' : 'INVALID:' + exported.error}` +
+    (grafloria.errors.length ? ` grafloria errors: ${grafloria.errors.join(' | ')}` : '') +
+    (expectFail ? ` EXPECTED: ${expectFail}` : '')
   );
   if (!ok) console.log('       exported body was:\n' + body.split('\n').map((l) => '       | ' + l).join('\n'));
+}
+
+console.log('\n--- REFUSED ON PURPOSE: Mermaid draws garbage, Grafloria names the lines ---');
+for (const [name, { text, lines }] of Object.entries(REFUSED)) {
+  const mermaid = await p.evaluate((t) => window.oracle.mermaidParse(t), text);
+  const grafloria = await p.evaluate((t) => window.oracle.grafloriaRender(t), text);
+  const named = grafloria.errors.map((e) => Number(/^Line (\d+):/.exec(e)?.[1]));
+  const ok = named.join() === lines.join();
+  if (!ok) fail++;
+  console.log(
+    `  ${ok ? 'OK  ' : 'FAIL'} ${name.padEnd(26)} errors on lines [${named}] (want [${lines}]) ` +
+    `mermaid=${mermaid.valid ? 'accepts' : 'refuses'}`
+  );
+  if (!ok) console.log('       errors were: ' + grafloria.errors.join(' | '));
 }
 
 console.log('\n--- VISUAL PARITY: the styling case, Grafloria vs Mermaid, side by side ---');

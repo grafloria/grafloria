@@ -43,11 +43,19 @@ window.oracle = {
     api = render(modelToSpec(r.diagram), stage);
     api.renderNow();
     api.fitView?.(30);
+    // What a case can assert beyond "it read": the lines it skipped, every label,
+    // the diagram metadata, each link's end markers and each node's shape.
+    const end = (style, unset) => (style ? style.type : unset);
     return {
       unsupported: r.unsupported ?? null,
+      errors: r.errors ?? [],
       nodes: r.diagram.getNodes().map((n) => n.id).sort(),
       links: r.diagram.getLinks().map((l) => `${l.sourceNodeId}->${l.targetNodeId}`).sort(),
       fills: Object.fromEntries(r.diagram.getNodes().map((n) => [n.id, (n.getMetadata('shape') || {}).fill || null])),
+      labels: Object.fromEntries(r.diagram.getNodes().map((n) => [n.id, labelOf(n) ?? null])),
+      shapes: Object.fromEntries(r.diagram.getNodes().map((n) => [n.id, (n.getMetadata('shape') || {}).type || null])),
+      meta: { title: r.diagram.getMetadata('title') ?? null, accTitle: r.diagram.getMetadata('accTitle') ?? null, accDescr: r.diagram.getMetadata('accDescr') ?? null },
+      ends: Object.fromEntries(r.diagram.getLinks().map((l) => [`${l.sourceNodeId}->${l.targetNodeId}`, `${end(l.style.arrowTail, 'none')}/${end(l.style.arrowHead, 'arrow')}`])),
     };
   },
   /** The lossless-off body Grafloria would export for this text. */

@@ -12,8 +12,13 @@
 // A label whose FIRST line is bold, followed by more lines, is a name and a
 // subtitle (`node.metadata.sublabel`); a subtitle written as <code>…</code> or
 // `…` is a monospace one. Anything else keeps its words, with <br/> as a real
-// line break, tags and markdown markers removed, and #quot;-style entities
+// line break, label tags and markdown markers removed, and #quot;-style entities
 // decoded.
+//
+// Only the tags Mermaid's HTML labels understand are markup. Any other `<…>` is
+// TEXT — `Record<string, string>`, `a < b > c` — and entities decode LAST, so an
+// escaped `&lt;T&gt;` is the text "<T>", never a tag to strip. (Stripping every
+// `<…>` after decoding drew "Record", "Context" and "a  c".)
 
 /** What a Mermaid label means: its text, and — for a box — an optional subtitle. */
 export interface RichLabel {
@@ -33,15 +38,19 @@ export function decodeLabelEntities(s: string): string {
 
 const BOLD = /^(?:\*\*(.+)\*\*|__(.+)__|<b>(.+)<\/b>|<strong>(.+)<\/strong>)$/i;
 const CODE = /^(?:<code>(.+)<\/code>|`(.+)`)$/i;
+/** The tags Mermaid's HTML labels understand — the only `<…>` that is markup. */
+const LABEL_TAG = /<\/?(?:b|strong|i|em|u|code|span|br|sub|sup|small)(?=[\s/>])[^<>]*>/gi;
 
-/** Remove markdown emphasis markers and HTML tags, keeping the words. */
+/** Remove markdown emphasis markers and label tags, keeping the words; then decode entities. */
 function plain(s: string): string {
-  return s
-    .replace(/<[^>]+>/g, '')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/__(.+?)__/g, '$1')
-    .replace(/(^|[^*])\*(?!\s)([^*]+?)\*(?!\*)/g, '$1$2')
-    .replace(/`([^`]+)`/g, '$1');
+  return decodeLabelEntities(
+    s
+      .replace(LABEL_TAG, '')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/__(.+?)__/g, '$1')
+      .replace(/(^|[^*])\*(?!\s)([^*]+?)\*(?!\*)/g, '$1$2')
+      .replace(/`([^`]+)`/g, '$1')
+  );
 }
 
 /**
@@ -53,7 +62,8 @@ export function readMermaidLabel(raw: string, splitTitle: boolean): RichLabel {
   // A markdown string: "`…`" — the backticks are the string's own quotes.
   if (s.length >= 2 && s.startsWith('`') && s.endsWith('`')) s = s.slice(1, -1);
   s = s.replace(/<br\s*\/?>/gi, '\n');
-  const lines = decodeLabelEntities(s)
+  // Split and match the markup on the RAW text: entities decode in plain(), last.
+  const lines = s
     .split('\n')
     .map((l) => l.trim())
     .filter((l, i, all) => l !== '' || (i > 0 && i < all.length - 1));

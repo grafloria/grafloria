@@ -287,9 +287,13 @@ export class DSLGenerator {
     return `${nodeId}${opening}${this.escapeLabel(this.labelMarkup(label), closing)}${closing}`;
   }
 
-  /** A label's line breaks as `<br/>` — the form every Mermaid renderer reads. */
+  /**
+   * A label's line breaks as `<br/>` — the form every Mermaid renderer reads — and
+   * its `<` / `>` as `#lt;` / `#gt;`, so text in angle brackets (`Context<T>`) is
+   * never read back as a tag, by Mermaid or by our own label reader.
+   */
   private labelMarkup(text: string): string {
-    return String(text).replace(/\n/g, '<br/>');
+    return String(text).replace(/</g, '#lt;').replace(/>/g, '#gt;').replace(/\n/g, '<br/>');
   }
 
   /**
@@ -301,6 +305,7 @@ export class DSLGenerator {
   private escapeLabel(label: string, closing: string): string {
     const needsQuoting =
       /[[\](){}"|<>]/.test(label) ||
+      /#\w+;/.test(label) ||
       label !== label.trim() ||
       (closing.length > 0 && label.includes(closing));
     if (!needsQuoting) return label;
@@ -327,15 +332,18 @@ export class DSLGenerator {
 
     // Get link type from metadata or infer from style
     const linkType = this.inferLinkType(link);
-    const linkSyntax = this.getLinkSyntax(linkType);
+    const linkSyntax = this.getLinkSyntax(linkType, link);
 
     // Add label if present (canonical read; see generateNodeDefinition)
     const label = link.getLabel();
     if (label) {
       // Line breaks as <br/>; a label with quotes or a break travels quoted.
+      // `|label|` follows ANY link token. Splitting the token at its `>` turned an
+      // undirected `---|x|` into an arrow (`--->|x|`) and `--o|x|` into the invalid
+      // `--o>|x|`.
       const text = this.labelMarkup(label);
-      const written = /["|<>]/.test(text) ? `"${text.replace(/"/g, '#quot;')}"` : text;
-      return `${sourceId} ${linkSyntax.split('>')[0]}>|${written}|${linkSyntax.split('>')[1] || ''} ${targetId}`;
+      const written = /["|<>]|#\w+;/.test(text) ? `"${text.replace(/"/g, '#quot;')}"` : text;
+      return `${sourceId} ${linkSyntax}|${written}| ${targetId}`;
     }
 
     return `${sourceId} ${linkSyntax} ${targetId}`;
@@ -556,22 +564,36 @@ export class DSLGenerator {
   }
 
   /**
-   * Get link syntax for link type
+   * The Mermaid link token for a link: its STROKE from the link type (solid,
+   * dotted, thick), its ENDS from the markers the link actually draws —
+   * `arrowHead` at the target, `arrowTail` at the source — so `o--o`, `<-.->` or
+   * `===` come back as written, and a marker changed on the canvas is exported
+   * too. With no marker set, the link type's own ends apply (`---` has none).
    */
-  private getLinkSyntax(linkType: LinkType): string {
-    const syntax: Record<LinkType, string> = {
-      'arrow': '-->',
-      'line': '---',
-      'dotted-arrow': '-.->',
-      'dotted-line': '-.-',
-      'thick-arrow': '==>',
-      'thick-line': '===',
-      'bidirectional': '<-->',
-      'circle-edge': '--o',
-      'cross-edge': '--x',
+  private getLinkSyntax(linkType: LinkType, link?: LinkModel): string {
+    const stroke = linkType.startsWith('dotted') ? 'dotted' : linkType.startsWith('thick') ? 'thick' : 'solid';
+    const kindOf = (style: { type?: string } | undefined): 'arrow' | 'circle' | 'cross' | 'none' | undefined => {
+      if (!style?.type) return undefined;
+      if (style.type === 'none' || style.type === 'circle' || style.type === 'cross') return style.type;
+      return 'arrow'; // the nearest a flowchart can say for any other marker
     };
+    const typeEnd =
+      linkType === 'line' || linkType === 'dotted-line' || linkType === 'thick-line'
+        ? 'none'
+        : linkType === 'circle-edge'
+          ? 'circle'
+          : linkType === 'cross-edge'
+            ? 'cross'
+            : 'arrow';
+    const end = kindOf(link?.style?.arrowHead) ?? typeEnd;
+    const start = kindOf(link?.style?.arrowTail) ?? (linkType === 'bidirectional' ? 'arrow' : 'none');
 
-    return syntax[linkType] || '-->';
+    const endChar = { arrow: '>', circle: 'o', cross: 'x', none: '' }[end];
+    // Mermaid can only mark the source end with the SAME marker as the target end.
+    const startChar = start !== 'none' && start === end ? { arrow: '<', circle: 'o', cross: 'x' }[start] : '';
+    if (stroke === 'dotted') return `${startChar}-.-${endChar}`;
+    if (stroke === 'thick') return `${startChar}==${endChar || '='}`;
+    return `${startChar}--${endChar || '-'}`;
   }
 
   /**

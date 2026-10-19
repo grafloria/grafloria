@@ -333,6 +333,13 @@ function applyBodyOntoSidecar(
   // The body's direction is authoritative for the text form's own metadata.
   const direction = parsed.getMetadata?.('direction');
   if (direction !== undefined) base.setMetadata?.('direction', direction);
+  // …and so are its title and accessibility directives: the grammar says them, so
+  // an edit (or a deletion) in the body wins over the sidecar's copy.
+  for (const key of ['title', 'accTitle', 'accDescr']) {
+    const value = parsed.getMetadata(key);
+    if (value !== undefined) base.setMetadata(key, value);
+    else if (base.getMetadata(key) !== undefined) base.deleteMetadata(key);
+  }
 
   return base;
 }

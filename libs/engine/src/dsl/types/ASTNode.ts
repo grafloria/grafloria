@@ -41,6 +41,25 @@ export type LinkType =
   | 'circle-edge'        // --o
   | 'cross-edge';        // --x
 
+/** What one END of a Mermaid edge draws: `>` an arrow, `o` a circle, `x` a cross. */
+export type EdgeEnd = 'none' | 'arrow' | 'circle' | 'cross';
+
+/**
+ * The two ends of a Mermaid edge, Mermaid's way (flowDb.destructLink): the LAST
+ * character names the target end (`>` arrow, `o` circle, `x` cross, else none),
+ * and a FIRST character that matches it (`<`, `o`, `x`) puts the same marker on
+ * the source end — `<-->`, `o--o`, `x-.-x`. A first character that does not
+ * match is ignored (`o-->` is a plain arrow), as Mermaid ignores it.
+ */
+export function mermaidEdgeEnds(linkText: string): { start: EdgeEnd; end: EdgeEnd } {
+  const text = linkText.trim();
+  const last = text[text.length - 1];
+  const end: EdgeEnd = last === '>' ? 'arrow' : last === 'o' ? 'circle' : last === 'x' ? 'cross' : 'none';
+  const opener: Record<EdgeEnd, string> = { arrow: '<', circle: 'o', cross: 'x', none: '' };
+  const start: EdgeEnd = end !== 'none' && text.length > 1 && text[0] === opener[end] ? end : 'none';
+  return { start, end };
+}
+
 /**
  * Base AST Node
  */
@@ -106,6 +125,8 @@ export interface EdgeDefinitionNode extends ASTNode {
   source: string;
   target: string;
   linkType: LinkType;
+  /** The markers at each end (`--o`, `<-->`, `---`…); absent = Mermaid's `-->`. */
+  ends?: { start: EdgeEnd; end: EdgeEnd };
   label?: string;
   style?: StyleProperties;
   /**

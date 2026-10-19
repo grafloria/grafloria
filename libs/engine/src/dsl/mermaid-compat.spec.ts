@@ -194,3 +194,50 @@ describe('Mermaid compat — generator symmetry (body round-trips)', () => {
     }
   });
 });
+
+// P1-6 (Atloria brief 2026-10-19): valid Mermaid, found in real pages, that
+// Grafloria REFUSED. Each must get Mermaid's verdict — it parses, every line.
+describe('Mermaid compat — valid Mermaid that used to be refused', () => {
+  const clean = (text: string) => {
+    const r = imp(text);
+    expect(r.errors).toEqual([]);
+    expect(new DSL({ autoLayout: false }).validate(text)).toEqual({ valid: true, errors: [] });
+    return r.diagram;
+  };
+
+  it('`End` is a node id — only lowercase `end` is reserved (was "Expected target node after link")', () => {
+    const d = clean('flowchart LR\n  Handler --> End[Timing middleware records elapsed time]');
+    expect(nodeIds(d)).toEqual(['End', 'Handler']);
+    expect(d.getNode('End')!.getLabel()).toBe('Timing middleware records elapsed time');
+    // …and `END` too, as in Mermaid's own docs; lowercase `end` still closes a subgraph.
+    expect(nodeIds(clean('flowchart LR\n  A --> END'))).toEqual(['A', 'END']);
+    const sub = clean('flowchart LR\n  subgraph S\n    A --> End\n  end\n  End --> B');
+    expect([...sub.getGroups()[0].members].sort()).toEqual(['A', 'End']);
+  });
+
+  it("an apostrophe inside [ ] is text (was \"the quote ' is never closed\")", () => {
+    const d = clean("flowchart LR\n  D --> E[418 I'm a Teapot Response]");
+    expect(d.getNode('E')!.getLabel()).toBe("418 I'm a Teapot Response");
+    expect(clean("flowchart LR\n  A[it's Bob's] --> B").getNode('A')!.getLabel()).toBe("it's Bob's");
+  });
+
+  it('a slash before ] is text (was `"[" is never closed`)', () => {
+    const d = clean('flowchart LR\n  D --> E[Join segments with /]');
+    expect(d.getNode('E')!.getLabel()).toBe('Join segments with /');
+    expect(clean('flowchart LR\n  A[C:\\Temp\\] --> B').getNode('A')!.getLabel()).toBe('C:\\Temp\\');
+    // The slash shapes are untouched.
+    expect(clean('flowchart LR\n  a[/In or out/] --> b').getNode('a')!.getMetadata('dslShape')).toBe('parallelogram');
+  });
+
+  it('YAML frontmatter is read, not refused (was \'Unexpected "---"\'); its title is metadata', () => {
+    const d = clean('---\ntitle: Order flow\n---\nflowchart LR\n  A --> B');
+    expect(nodeIds(d)).toEqual(['A', 'B']);
+    expect(linkPairs(d)).toEqual(['A->B']);
+    expect(d.getMetadata('title')).toBe('Order flow');
+    expect(new DSL({ autoLayout: false }).parseDetailed('---\ntitle: x\n---\nflowchart LR\n  A --> B').ast.direction).toBe('LR');
+    // A frontmatter with a config block, and errors still name the ORIGINAL line.
+    const v = new DSL({ autoLayout: false }).validate('---\ntitle: T\nconfig:\n  theme: dark\n---\nflowchart LR\n  A --> B\n  B -->');
+    expect(v.errors).toHaveLength(1);
+    expect(v.errors[0]).toMatch(/line 8\b/i);
+  });
+});
