@@ -16,7 +16,7 @@
 import { linkLabelPosition, type LinkLabel, type LinkModel, type Point } from '@grafloria/engine';
 import type { VNode } from '../types/vnode.types';
 import type { Theme } from '../types/theme.types';
-import { renderTextBlock } from './text-block';
+import { renderTextBlock, wrapText } from './text-block';
 import { THEME_VARS } from '../themes/theme-vars';
 import { getLabelTemplate, htmlLabelVNode, type LabelTemplateContext } from './edge-templates';
 
@@ -29,6 +29,8 @@ const isCssVar = (paint: string | undefined): paint is string => typeof paint ==
 /** Default box for an HTML / template label (a `foreignObject` needs a size). */
 export const DEFAULT_HTML_LABEL_WIDTH = 120;
 export const DEFAULT_HTML_LABEL_HEIGHT = 28;
+/** renderTextBlock's line height, as a multiple of the font size. */
+const TEXT_LINE_HEIGHT = 1.2;
 
 /** Extra, per-frame context — none of it belongs on the persisted model. */
 export interface LabelRenderContext {
@@ -210,9 +212,9 @@ export class LabelRenderer {
 
     // Add background if specified
     if (background) {
-      // Estimate text dimensions for background
-      const textWidth = this.estimateTextWidth(label.text, fontSize);
-      const textHeight = fontSize;
+      // Estimate text dimensions for background — the block's own lines, so a
+      // wrapped label's chip holds every line, not one line its full length.
+      const { width: textWidth, height: textHeight } = this.textBlockSize(label, fontSize);
 
       const bgRect: VNode = {
         type: 'rect',
@@ -263,10 +265,20 @@ export class LabelRenderer {
     }
     const fontSize = label.style?.fontSize ?? this.defaultFontSize;
     const padding = label.style?.padding ?? this.defaultPadding;
-    return {
-      width: this.estimateTextWidth(label.text, fontSize) + padding * 2,
-      height: fontSize + padding * 2,
-    };
+    const text = this.textBlockSize(label, fontSize);
+    return { width: text.width + padding * 2, height: text.height + padding * 2 };
+  }
+
+  /**
+   * The text block's size: its widest line and its lines at the text block's
+   * 1.2 line height — the lines renderTextBlock draws (wrapped at `maxWidth`
+   * when `textWrap`, else at hard breaks only). One line keeps the historical
+   * height of one font size.
+   */
+  private textBlockSize(label: LinkLabel, fontSize: number): { width: number; height: number } {
+    const lines = wrapText(label.text, label.textWrap ? label.maxWidth : undefined, fontSize);
+    const width = Math.max(...lines.map((line) => this.estimateTextWidth(line, fontSize)));
+    return { width, height: lines.length === 1 ? fontSize : lines.length * fontSize * TEXT_LINE_HEIGHT };
   }
 
   /** Resolve `rotation: 'auto' | number` against the path, honouring keepUpright. */
@@ -339,6 +351,12 @@ export class LabelRenderer {
       color: isCssVar(color) ? undefined : color,
       className: 'link-label-text',
     });
+    // Each line centred on its own baseline step, as one line is, so the block
+    // sits centred on the anchor — and on its chip — instead of riding a third
+    // of a line high.
+    for (const line of block.children ?? []) {
+      if (line && typeof line === 'object') (line as VNode).props = { ...(line as VNode).props, dominantBaseline: 'middle' };
+    }
     // The theme's variable rides an inline style — the one place `var()` is legal.
     if (isCssVar(color)) {
       const props = block.props as Record<string, unknown>;
