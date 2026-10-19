@@ -61,6 +61,13 @@ describe('Mermaid import — the brief fences draw every character', () => {
     expect(r.diagram.getLinks().find((l) => l.targetNodeId === 'E')!.getMetadata('label')).toBe('returns Promise<void>');
   });
 
+  it('a label written again on an EDGE line is read the same way (Mermaid: last write wins)', () => {
+    const r = importDiagramText('flowchart LR\n  C[old]\n  D[old]\n  C[Context&lt;T&gt;] --> D\n  E --> D["<b>a</b> &lt; b"]');
+    expect(r.errors).toEqual([]);
+    expect(r.diagram.getNode('C')!.getLabel()).toBe('Context<T>');
+    expect(r.diagram.getNode('D')!.getLabel()).toBe('a < b');
+  });
+
   it('…and survive an export and a re-import (written as #lt; / #gt;, which Mermaid draws as < and >)', () => {
     const first = importDiagramText(FENCE + '\n  E --> F[use &lt;b&gt; for bold]').diagram;
     const body = exportDiagramText(first, { lossless: false });

@@ -566,7 +566,9 @@ export class ASTTransformer {
       // the label "Second". An explicit label riding INSIDE an edge line must
       // update an existing node just like a repeated node definition does —
       // a bare reference (`a --> b`, no label) must NOT reset it to the id.
-      sourceNode.setLabel(astEdge.sourceLabel);
+      // Read the way a node definition reads it (tags, `<br/>`, entities): a raw
+      // write left `Context&lt;T&gt;` on the box.
+      this.applyRichLabel(sourceNode, astEdge.sourceLabel);
     }
     if (!sourceNode) {
       // Create implicit node for source using shape/label from edge definition
@@ -590,7 +592,7 @@ export class ASTTransformer {
     let targetNode = diagram.getNode(astEdge.target);
     if (targetNode && astEdge.targetLabel) {
       // Same last-write-wins rule as the source side above.
-      targetNode.setLabel(astEdge.targetLabel);
+      this.applyRichLabel(targetNode, astEdge.targetLabel);
     }
     if (!targetNode) {
       // Create implicit node for target using shape/label from edge definition
