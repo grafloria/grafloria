@@ -162,6 +162,14 @@ export interface LinkStyle {
    */
   curvature?: number;
   /**
+   * How a smooth link with waypoints bends through them. `'catmull-rom'`
+   * (default) passes through every waypoint. `'basis'` is Mermaid's curve (d3's
+   * curveBasis): it passes NEAR its waypoints, never overshoots a short leg into
+   * a loop, and meets each end straight along its last leg, so the arrowhead
+   * sits square. Imported Mermaid routes use `'basis'`.
+   */
+  spline?: 'catmull-rom' | 'basis';
+  /**
    * Minimum port-anchor stub (px): the route
    * leaves the source and enters the target perpendicular to the port side for
    * at least this length before the first bend — GUARANTEED, not best-effort

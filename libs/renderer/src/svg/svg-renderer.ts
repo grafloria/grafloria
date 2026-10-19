@@ -7423,7 +7423,7 @@ export class SVGRenderer implements IRenderer {
     //
     // ANY node the curve reaches, not just the link's own two: the whole reason
     // this route has corners is that it was steered around something.
-    const samples = this.sampleCatmullRom(routePoints, 8);
+    const samples = this.sampleSpline(routePoints, style, 8);
     const mustClear = this.splineClearanceNodes(samples, avoidNodes);
     if (mustClear.length === 0 || this.penetrationLength(samples, mustClear) <= 2) {
       return samples;
@@ -7480,8 +7480,8 @@ export class SVGRenderer implements IRenderer {
         // corners instead. A detouring route was bought clearance from
         // obstacles; the spline must not spend it. Must stay in step with
         // paintedHitPolyline, or the hit shape and the drawn shape disagree.
-        const spline = this.catmullRomPath(points);
-        const samples = this.sampleCatmullRom(points, 8);
+        const spline = this.splinePath(points, style);
+        const samples = this.sampleSpline(points, style, 8);
         const avoid = this.splineClearanceNodes(samples, avoidNodes ?? []);
         if (avoid.length === 0 || this.penetrationLength(samples, avoid) <= 2) {
           return spline;
@@ -8575,7 +8575,7 @@ export class SVGRenderer implements IRenderer {
 
     // Smooth/bezier with manual waypoints: keep the curved identity
     if ((pathType === 'smooth' || pathType === 'bezier') && points.length > 2) {
-      return this.catmullRomPath(points);
+      return this.splinePath(points, style);
     }
 
     // Default: straight lines between points
@@ -10245,6 +10245,84 @@ export class SVGRenderer implements IRenderer {
       if (node) nodes.push(node);
     }
     return nodes;
+  }
+
+  /** The curve a multi-point smooth link draws through its route — its `style.spline`. */
+  private splinePath(points: Array<{ x: number; y: number }>, style?: Partial<LinkStyle>): string {
+    return style?.spline === 'basis' ? this.basisPath(points) : this.catmullRomPath(points);
+  }
+
+  /** {@link splinePath} as a polyline, for hit shapes and clearance checks. */
+  private sampleSpline(
+    points: Array<{ x: number; y: number }>,
+    style: Partial<LinkStyle> | undefined,
+    stepsPerSegment = 8
+  ): Array<{ x: number; y: number }> {
+    return style?.spline === 'basis' ? this.sampleBasis(points, stepsPerSegment) : this.sampleCatmullRom(points, stepsPerSegment);
+  }
+
+  /**
+   * Mermaid's curve (d3's curveBasis) as segments: a uniform cubic B-spline that
+   * starts and ends ON the route's end points, straight along its first and last
+   * legs, and between them stays inside the polygon of its points — so a short
+   * leg beside a long one can never throw it past an end into a loop, as a
+   * curve through every point (Catmull-Rom) does.
+   */
+  private basisSegments(points: Array<{ x: number; y: number }>): Array<{
+    to: { x: number; y: number };
+    c1?: { x: number; y: number };
+    c2?: { x: number; y: number };
+  }> {
+    const n = points.length;
+    if (n < 3) return points.slice(1).map((to) => ({ to }));
+    const mix = (a: { x: number; y: number }, wa: number, b: { x: number; y: number }, wb: number, c?: { x: number; y: number }, wc = 0) => ({
+      x: (a.x * wa + b.x * wb + (c ? c.x * wc : 0)) / (wa + wb + wc),
+      y: (a.y * wa + b.y * wb + (c ? c.y * wc : 0)) / (wa + wb + wc),
+    });
+    const out: Array<{ to: { x: number; y: number }; c1?: { x: number; y: number }; c2?: { x: number; y: number } }> = [
+      { to: mix(points[0], 5, points[1], 1) },
+    ];
+    for (let i = 2; i <= n; i++) {
+      const a = points[i - 2];
+      const b = points[i - 1];
+      const p = points[i] ?? b;
+      out.push({ c1: mix(a, 2, b, 1), c2: mix(a, 1, b, 2), to: mix(a, 1, b, 4, p, 1) });
+    }
+    out.push({ to: points[n - 1] });
+    return out;
+  }
+
+  private basisPath(points: Array<{ x: number; y: number }>): string {
+    if (points.length === 0) return '';
+    const fmt = (v: number) => +v.toFixed(2);
+    let d = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
+    for (const seg of this.basisSegments(points)) {
+      d += seg.c1 && seg.c2
+        ? ` C ${fmt(seg.c1.x)} ${fmt(seg.c1.y)}, ${fmt(seg.c2.x)} ${fmt(seg.c2.y)}, ${fmt(seg.to.x)} ${fmt(seg.to.y)}`
+        : ` L ${fmt(seg.to.x)} ${fmt(seg.to.y)}`;
+    }
+    return d;
+  }
+
+  private sampleBasis(points: Array<{ x: number; y: number }>, stepsPerSegment = 8): Array<{ x: number; y: number }> {
+    if (points.length < 3) return points;
+    const out: Array<{ x: number; y: number }> = [points[0]];
+    for (const seg of this.basisSegments(points)) {
+      const from = out[out.length - 1];
+      if (!seg.c1 || !seg.c2) {
+        out.push(seg.to);
+        continue;
+      }
+      for (let s = 1; s <= stepsPerSegment; s++) {
+        const t = s / stepsPerSegment;
+        const mt = 1 - t;
+        out.push({
+          x: mt * mt * mt * from.x + 3 * mt * mt * t * seg.c1.x + 3 * mt * t * t * seg.c2.x + t * t * t * seg.to.x,
+          y: mt * mt * mt * from.y + 3 * mt * mt * t * seg.c1.y + 3 * mt * t * t * seg.c2.y + t * t * t * seg.to.y,
+        });
+      }
+    }
+    return out;
   }
 
   /**
