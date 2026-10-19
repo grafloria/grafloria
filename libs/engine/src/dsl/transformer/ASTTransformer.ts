@@ -15,6 +15,7 @@ import {
   fitNodeToLabel,
   repointLinkEnd,
   importEdgeLabelBox,
+  importEdgeLabelProps,
   layoutForImport,
 } from '../mermaid/import-layout';
 import { readMermaidLabel } from '../mermaid/rich-label';
@@ -659,7 +660,8 @@ export class ASTTransformer {
       // `labels[]` array — so every Mermaid edge label (`-->|yes|`) parsed
       // correctly, was stored on the link, and then never appeared. That left
       // branch edges looking like unexplained stray lines.
-      if (!link.labels?.length) link.addLabel({ text, slot: 'center' });
+      // Drawn as Mermaid draws it: node-size text, wrapped at Mermaid's width.
+      if (!link.labels?.length) link.addLabel({ text, slot: 'center', ...importEdgeLabelProps() });
     }
 
     // Store link type information

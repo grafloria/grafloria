@@ -6,7 +6,7 @@
 // same picture. The picture itself is checked with the renderer's numbers in
 // libs/renderer/src/svg/mermaid-import-layout.spec.ts.
 import { importDiagramText, exportDiagramText } from '../../serialization/TextFormat';
-import { estimateLabelWidth, IMPORT_EDGE_FONT, IMPORT_EDGE_PAD, wrapLabelLines, fitNodeToLabel } from './import-layout';
+import { estimateLabelWidth, edgeLabelBox, IMPORT_EDGE_FONT, wrapLabelLines, fitNodeToLabel } from './import-layout';
 import { NodeModel } from '../../models/NodeModel';
 import { DiagramModel } from '../../models/DiagramModel';
 
@@ -16,13 +16,28 @@ const LR = `flowchart LR
     Order --> Delivered`;
 
 describe('imported Mermaid layout', () => {
-  it('the gap between two ranks is at least the widest label on an edge between them', () => {
+  it('the gap between two ranks holds the widest label on an edge between them — wrapped, as Mermaid wraps it', () => {
     const d = importDiagramText(LR).diagram;
     const offer = d.getNode('Offer')!;
     const order = d.getNode('Order')!;
     const gap = order.position.x - (offer.position.x + offer.size.width);
-    const label = estimateLabelWidth('Convert To Order of every line', IMPORT_EDGE_FONT) + 2 * IMPORT_EDGE_PAD;
-    expect(gap).toBeGreaterThan(label);
+    const text = 'Convert To Order of every line';
+    expect(wrapLabelLines(text, 200, IMPORT_EDGE_FONT)).toEqual(['Convert To Order of', 'every line']);
+    expect(gap).toBeGreaterThan(edgeLabelBox(text).w);
+    // …and no wider than it needs: one long line would push the ranks apart.
+    expect(gap).toBeLessThan(estimateLabelWidth(text, IMPORT_EDGE_FONT));
+  });
+
+  it("an edge label draws at the node text's size, wrapped at 200 px; the export says nothing about it", () => {
+    const d = importDiagramText(LR).diagram;
+    for (const link of d.getLinks().filter((l) => l.labels.length)) {
+      expect(link.labels[0]).toMatchObject({ style: { fontSize: 14 }, textWrap: true, maxWidth: 200 });
+    }
+    expect(exportDiagramText(d, { lossless: false })).not.toMatch(/linkStyle/);
+    // An author's own size is theirs, and travels.
+    const sized = importDiagramText(`${LR}\n    linkStyle 0 font-size:20px`).diagram;
+    expect(sized.getLinks()[0].labels[0].style?.fontSize).toBe(20);
+    expect(exportDiagramText(sized, { lossless: false })).toMatch(/linkStyle 0 .*font-size:\s*20px/);
   });
 
   it('every edge between laid-out boxes carries its route: waypoints, and its label where room was made', () => {
@@ -30,6 +45,7 @@ describe('imported Mermaid layout', () => {
     for (const link of d.getLinks()) {
       expect(link.getMetadata('importRoute')).toBe(true);
       expect(link.getMetadata('hasManualWaypoints')).toBe(true);
+      expect(link.style.spline).toBe('basis'); // drawn as Mermaid draws a route
       expect(link.points.length).toBeGreaterThanOrEqual(2);
     }
     const labelled = d.getLinks().find((l) => l.labels[0]?.text === 'convert')!;
@@ -162,6 +178,9 @@ describe('imported Mermaid layout', () => {
     flow.getNode('Inquiry')!.setPosition(0, 400);
     expect(labelled.labels[0].slot).toBe('center'); // back at its own slot on the re-routed line
     expect(labelled.labels[0].position).toBe(0.5);
+
+    // …and the curve: the route drew as a basis curve; the link's own spline comes back.
+    expect(labelled.style.spline).toBeUndefined();
 
     const state = importDiagramText('stateDiagram-v2\n  A --> B: go').diagram;
     const go = state.getLinks()[0];

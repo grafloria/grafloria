@@ -32,10 +32,8 @@ import { significantLines, unquote } from './lines';
 import { type RankEdge } from './layout';
 import {
   applyImportRoute,
-  estimateLabelWidth,
+  edgeLabelBox,
   fitNodeToLabel,
-  IMPORT_EDGE_FONT,
-  IMPORT_EDGE_PAD,
   layoutForImport,
   repointLinkEnd,
   type ImportRoute,
@@ -529,7 +527,7 @@ function layoutStateModel(
         from,
         to,
         ...(direct && t.label
-          ? { label: { w: estimateLabelWidth(t.label, IMPORT_EDGE_FONT) + 2 * IMPORT_EDGE_PAD, h: IMPORT_EDGE_FONT + 2 * IMPORT_EDGE_PAD } }
+          ? { label: edgeLabelBox(t.label) }
           : {}),
       });
     });

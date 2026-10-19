@@ -264,3 +264,94 @@ describe('imported Mermaid: edges leave the side facing the next rank', () => {
     expect(byEntry.map((l) => l.id)).toEqual(bySource.map((l) => l.id));
   });
 });
+
+/** The line as drawn: its `d` (M, L and C commands), each cubic sampled 16 times. */
+function drawnLine(d: string): Array<{ x: number; y: number }> {
+  const out: Array<{ x: number; y: number }> = [];
+  for (const [, cmd, args] of d.matchAll(/([MLC])([^MLC]*)/g)) {
+    const n = (args.match(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g) ?? []).map(Number);
+    if (cmd !== 'C') {
+      for (let i = 0; i + 1 < n.length; i += 2) out.push({ x: n[i], y: n[i + 1] });
+      continue;
+    }
+    for (let i = 0; i + 5 < n.length; i += 6) {
+      const p = out[out.length - 1];
+      const [ax, ay, bx, by, x, y] = n.slice(i, i + 6);
+      for (let s = 1; s <= 16; s++) {
+        const t = s / 16;
+        const u = 1 - t;
+        out.push({
+          x: u * u * u * p.x + 3 * u * u * t * ax + 3 * u * t * t * bx + t * t * t * x,
+          y: u * u * u * p.y + 3 * u * u * t * ay + 3 * u * t * t * by + t * t * t * y,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** How far a line's heading turns over its last `span` units, in degrees. */
+function endTurn(line: Array<{ x: number; y: number }>, span: number): number {
+  let total = 0;
+  let walked = 0;
+  let heading: number | null = null;
+  for (let i = line.length - 1; i > 0 && walked < span; i--) {
+    const dx = line[i].x - line[i - 1].x;
+    const dy = line[i].y - line[i - 1].y;
+    const step = Math.hypot(dx, dy);
+    if (step < 1e-6) continue;
+    walked += step;
+    const a = Math.atan2(dy, dx);
+    if (heading !== null) {
+      let turn = Math.abs(a - heading);
+      if (turn > Math.PI) turn = 2 * Math.PI - turn;
+      total += turn;
+    }
+    heading = a;
+  }
+  return (total * 180) / Math.PI;
+}
+
+describe('imported Mermaid: no edge end hooks back past its arrowhead', () => {
+  // A smooth line through a route pulls the stretch beside each end toward the
+  // point before it; a lead shorter than that pull ran the curve past the box
+  // and curled it back into its own arrowhead (38 ends in 15 of a reader's 32
+  // fences). Measured on the drawn path over its last 20 units — about the
+  // 14 px a reader sees at the zoom such a figure fits at.
+  it.each(Object.entries(FENCES))('%s', (_name, text) => {
+    load(text);
+    const { container } = mounted[mounted.length - 1];
+    const paths = Array.from(container.querySelectorAll('g.link-group path.diagram-link'));
+    expect(paths.length).toBeGreaterThan(0);
+    for (const path of paths) {
+      const line = drawnLine(path.getAttribute('d') ?? '');
+      const id = path.closest('g.link-group')?.getAttribute('data-link-id');
+      const worst = Math.round(Math.max(endTurn(line, 20), endTurn([...line].reverse(), 20)));
+      expect({ id, hooks: worst > 120 }).toEqual({ id, hooks: false });
+    }
+  });
+});
+
+describe('imported Mermaid: an edge label draws as Mermaid draws it', () => {
+  it('at the node text size, wrapped at 200 px — so the ranks stay close and the figure keeps its size', () => {
+    const d = load(`flowchart LR
+      Offer -->|Convert To Order of every line, as accepted| Order
+      Order -->|deliver| Delivered`);
+    const long = d.getLinks().find((l) => labelText(l)?.startsWith('Convert'))!;
+    const label = long.labels[0];
+    expect(label).toMatchObject({ style: { fontSize: 14 }, textWrap: true, maxWidth: 200 });
+    const lines = wrapText(label.text, 200, 14);
+    expect(lines.length).toBeGreaterThan(1);
+    // The gap between the two ranks holds the WRAPPED label, and is narrower than one long line.
+    const [offer, order] = ['Offer', 'Order'].map((id) => d.getNode(id)!);
+    const gap = order.position.x - (offer.position.x + offer.size.width);
+    expect(gap).toBeGreaterThanOrEqual(labels.labelBox(label).width);
+    expect(gap).toBeLessThan(label.text.length * 14 * 0.6);
+  });
+
+  it('a state transition label too', () => {
+    const d = load(`stateDiagram-v2
+      Approved --> Awarded: Consider the award as submitted to the supplier`);
+    expect(d.getLinks()[0].labels[0]).toMatchObject({ style: { fontSize: 14 }, textWrap: true, maxWidth: 200 });
+  });
+});

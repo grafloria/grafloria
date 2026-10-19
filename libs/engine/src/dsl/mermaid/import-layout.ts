@@ -25,6 +25,7 @@ import * as dagreNs from '@dagrejs/dagre';
 import type { DiagramModel } from '../../models/DiagramModel';
 import type { NodeModel } from '../../models/NodeModel';
 import type { LinkModel } from '../../models/LinkModel';
+import type { LinkLabel } from '../../types/model.types';
 import { ensureSideAnchorPort } from '../../ports/side-anchor';
 import { dropImportRoute, type ImportRouteOriginal } from '../../models/import-route';
 
@@ -36,18 +37,49 @@ const dagre: typeof dagreNs = (dagreNs as unknown as { default?: typeof dagreNs 
 // A box sized here must hold its label THERE, so these are the renderer's own
 // numbers (libs/renderer/src/svg/text-block.ts and LabelRenderer.ts): node
 // labels at the theme's md size, 1.2 line height, an average glyph of 0.6 em;
-// edge labels at 12 px with 4 px of padding. A renderer spec
-// (mermaid-import-fit.spec.ts) fails if the two ever disagree.
+// edge labels with LabelRenderer's 4 px of padding. A renderer spec
+// (libs/renderer/src/svg/mermaid-import-layout.spec.ts) fails if the two ever disagree.
 
 /** Node label font size (the default theme's `typography.fontSize.md`). */
 export const IMPORT_NODE_FONT = 14;
 /** Node label line height, as a multiple of the font size. */
 export const IMPORT_LINE_HEIGHT = 1.2;
-/** Edge label font size and padding (LabelRenderer's defaults). */
-export const IMPORT_EDGE_FONT = 12;
+/**
+ * Edge label font size: Mermaid draws an edge label at its node text's size, so
+ * an import does too (the renderer's own default for a label is 12 px).
+ */
+export const IMPORT_EDGE_FONT = IMPORT_NODE_FONT;
+/** Edge label padding (LabelRenderer's default). */
 export const IMPORT_EDGE_PAD = 4;
+/** LabelRenderer's font size for a label that names none. */
+const RENDERER_EDGE_FONT = 12;
 /** Mermaid's wrapping width: a label wider than this wraps, then the box grows taller. */
 export const IMPORT_WRAP_WIDTH = 200;
+
+/**
+ * What an imported edge label carries so it draws as Mermaid draws it: at the
+ * node text's size, wrapped at Mermaid's width instead of one long line that
+ * widens the gap between ranks and shrinks the whole figure to fit.
+ */
+export function importEdgeLabelProps(): Pick<LinkLabel, 'style' | 'textWrap' | 'maxWidth'> {
+  return { style: { fontSize: IMPORT_EDGE_FONT }, textWrap: true, maxWidth: IMPORT_WRAP_WIDTH };
+}
+
+/**
+ * The box the renderer draws for an edge label (LabelRenderer.labelBox): its
+ * lines — wrapped at `maxWidth`, else at hard breaks only — at 1.2 line height.
+ */
+export function edgeLabelBox(
+  text: string,
+  fontSize = IMPORT_EDGE_FONT,
+  padding = IMPORT_EDGE_PAD,
+  maxWidth: number | undefined = IMPORT_WRAP_WIDTH
+): Box {
+  const lines = maxWidth ? wrapLabelLines(text, maxWidth, fontSize) : text.split('\n');
+  const w = Math.max(...lines.map((line) => estimateLabelWidth(line, fontSize)));
+  const h = lines.length === 1 ? fontSize : lines.length * fontSize * IMPORT_LINE_HEIGHT;
+  return { w: w + 2 * padding, h: h + 2 * padding };
+}
 
 /** The renderer's width estimate: an average glyph is ~0.6 em. */
 export function estimateLabelWidth(text: string, fontSize: number): number {
@@ -187,12 +219,19 @@ export function fitNodeToLabel(node: NodeModel): void {
 /** The box the renderer draws for a link's label (LabelRenderer.labelBox), or undefined for none. */
 export function importEdgeLabelBox(link: LinkModel): Box | undefined {
   const label = link.labels?.[0];
-  const text = label?.text ?? (link.getMetadata('label') as string | undefined);
-  if (!text) return undefined;
-  const style = (label?.style ?? {}) as { fontSize?: number; padding?: number };
-  const fontSize = style.fontSize ?? IMPORT_EDGE_FONT;
-  const padding = style.padding ?? IMPORT_EDGE_PAD;
-  return { w: estimateLabelWidth(text, fontSize) + 2 * padding, h: fontSize + 2 * padding };
+  if (label?.text) {
+    const style = (label.style ?? {}) as { fontSize?: number; padding?: number };
+    return edgeLabelBox(
+      label.text,
+      style.fontSize ?? RENDERER_EDGE_FONT,
+      style.padding ?? IMPORT_EDGE_PAD,
+      label.textWrap ? label.maxWidth : undefined
+    );
+  }
+  // Kept only as metadata (the state builder's): the route adds it as an
+  // imported label (applyImportRoute).
+  const text = link.getMetadata('label') as string | undefined;
+  return text ? edgeLabelBox(text) : undefined;
 }
 
 // ── dagre ────────────────────────────────────────────────────────────────────
@@ -262,10 +301,19 @@ export function layoutForImport(
 
   const parents = options.parents ?? new Map<string, string>();
   const g = new dagre.graphlib.Graph({ multigraph: true, directed: true, compound: parents.size > 0 });
+  // dagre nests clusters by stretching EVERY edge to (2 × depth + 1) ranks, so
+  // two boxes in a subgraph stood three rank gaps apart (150 px where Mermaid
+  // has 50). The gap is divided back by that factor.
+  let depth = 0;
+  for (const id of parents.keys()) {
+    let d = 0;
+    for (let p = parents.get(id); p !== undefined; p = parents.get(p)) d++;
+    depth = Math.max(depth, d);
+  }
   g.setGraph({
     rankdir: dagreRankdir(options.direction),
     nodesep: options.nodeSpacing ?? 50,
-    ranksep: options.rankSpacing ?? 50,
+    ranksep: (options.rankSpacing ?? 50) / (2 * depth + 1),
     edgesep: 20,
     marginx: 0,
     marginy: 0,
@@ -627,6 +675,7 @@ export function applyImportRoute(
   if (!link.getMetadata('importOriginal')) {
     const original: ImportRouteOriginal = {
       ports: { source: link.sourcePortId, target: link.targetPortId },
+      spline: link.style?.spline ?? null,
       ...(link.labels?.length
         ? { labels: link.labels.map((l) => ({ ...(l.slot ? { slot: l.slot } : {}), position: l.position })) }
         : route.label
@@ -649,7 +698,12 @@ export function applyImportRoute(
   const lead = (p: { x: number; y: number }, side: Side, next: { x: number; y: number }) => {
     const n = NORMAL[side];
     const room = Math.abs((next.x - p.x) * n.x + (next.y - p.y) * n.y);
-    const short = Math.min(10, room / 4);
+    const across = Math.abs((next.x - p.x) * n.y - (next.y - p.y) * n.x);
+    // A smooth line through the points pulls the stretch beside an end toward
+    // the point before it by a sixth of the way there. A lead shorter than that
+    // lets the curve run past the box and hook back into it, arrowhead and all
+    // (a 10 px lead on a 100 px leg did) — so a quarter of the leg, at least.
+    const short = Math.min(room * 0.8, Math.max(10, Math.max(room, across) / 4));
     if (short < 4) return [];
     for (let d = short; d <= room * 0.8; d += 8) {
       const q = { x: p.x + n.x * d, y: p.y + n.y * d };
@@ -666,6 +720,9 @@ export function applyImportRoute(
   ];
 
   link.setPoints(points);
+  // Drawn as Mermaid draws a route: a basis curve near its bends, which never
+  // overshoots the short lead at an end into a hook (see LinkStyle.spline).
+  link.updateStyle({ spline: 'basis' });
   link.setMetadata('hasManualWaypoints', true);
   link.setMetadata('layoutAnchored', true);
   link.setMetadata('importRoute', true);
@@ -684,7 +741,7 @@ export function applyImportRoute(
       // renderer's legacy path at the middle, nudged 10 px up — not where the
       // layout made room. A real label, placed, takes over (the legacy one
       // steps aside when `labels` is not empty).
-      link.addLabel({ text, position });
+      link.addLabel({ text, position, ...importEdgeLabelProps() });
     }
   }
 }

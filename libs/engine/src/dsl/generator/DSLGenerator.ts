@@ -12,6 +12,7 @@ import { DiagramAnalyzer, DiagramAnalysis } from './DiagramAnalyzer';
 import { NodeShape, LinkType } from '../types/ASTNode';
 import { GroupModel } from '../../models/GroupModel';
 import { isSideAnchorPort } from '../../ports/side-anchor';
+import { IMPORT_EDGE_FONT } from '../mermaid/import-layout';
 
 export interface GeneratorOptions {
   /**
@@ -391,7 +392,9 @@ export class DSLGenerator {
       const labelStyle = link.labels?.[0]?.style as Record<string, unknown> | undefined;
       if (labelStyle?.['color']) own['color'] = labelStyle['color'];
       if (labelStyle?.['fontWeight']) own['fontWeight'] = labelStyle['fontWeight'];
-      if (labelStyle?.['fontSize']) own['fontSize'] = labelStyle['fontSize'];
+      // The node text's size is how an import draws Mermaid's own default
+      // (import-layout.ts), so it reads back the same without a linkStyle.
+      if (labelStyle?.['fontSize'] && labelStyle['fontSize'] !== IMPORT_EDGE_FONT) own['fontSize'] = labelStyle['fontSize'];
       const props = this.formatStyleProperties(own);
       const step = link.pathType === 'orthogonal' ? 'interpolate stepBefore ' : '';
       if (props || step) lines.push(`  linkStyle ${i} ${step}${props}`.trimEnd());
