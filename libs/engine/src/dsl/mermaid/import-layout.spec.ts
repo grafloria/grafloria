@@ -96,4 +96,34 @@ describe('imported Mermaid layout', () => {
       estimateLabelWidth('GoodsReleasedForShipmentToTheCustomer', 14) + 16
     );
   });
+
+  it('a state note sits on the side the author named, beside its own state, on nothing else', () => {
+    const d = importDiagramText(`stateDiagram-v2
+    [*] --> Draft
+    Draft --> Sent: send
+    Sent --> Archived: archive
+    note right of Draft : Only the owner edits a draft
+    note left of Sent
+        A sent record is read only
+    end note`).diagram;
+    const notes = d.getNodes().filter((n) => n.getMetadata('stateNote') === true);
+    expect(notes).toHaveLength(2);
+    const box = (n: NodeModel) => ({ x: n.position.x, y: n.position.y, w: n.size.width, h: n.size.height });
+    const overlap = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) =>
+      Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    for (const note of notes) {
+      const target = d.getNode(String(note.getMetadata('noteTarget')))!;
+      const right = String(note.getMetadata('notePosition')).startsWith('right');
+      if (right) expect(note.position.x).toBeGreaterThanOrEqual(target.position.x + target.size.width);
+      else expect(note.position.x + note.size.width).toBeLessThanOrEqual(target.position.x);
+      // level with its state
+      expect(note.position.y + note.size.height).toBeGreaterThan(target.position.y);
+      expect(note.position.y).toBeLessThan(target.position.y + target.size.height);
+      for (const other of d.getNodes()) if (other !== note) expect([note.id, other.id, overlap(box(note), box(other))]).toEqual([note.id, other.id, 0]);
+      // its line joins the two sides that face each other
+      const line = d.getLinks().find((l) => l.getMetadata('noteLink') === true && l.sourceNodeId === note.id)!;
+      expect(note.getPort(line.sourcePortId)?.side).toBe(right ? 'left' : 'right');
+      expect(target.getPort(line.targetPortId)?.side).toBe(right ? 'right' : 'left');
+    }
+  });
 });

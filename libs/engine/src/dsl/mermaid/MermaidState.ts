@@ -37,8 +37,10 @@ import {
   IMPORT_EDGE_FONT,
   IMPORT_EDGE_PAD,
   layoutForImport,
+  repointLinkEnd,
   type ImportRoute,
 } from './import-layout';
+import { ensureSideAnchorPort } from '../../ports/side-anchor';
 import {
   addStateNotes,
   applyStateClass,
@@ -435,6 +437,55 @@ interface ScopeArrangement {
   height: number;
 }
 
+/** Gap between a state and a note beside it. */
+const NOTE_GAP = 24;
+
+/**
+ * A state with its notes, as one box: `left of` notes to its left, `right of`
+ * ones to its right, `over` ones above — each centred on the state. Answers the
+ * box's size and where each member sits inside it.
+ */
+function notedBox(
+  state: NodeModel,
+  notes: readonly NodeModel[]
+): { size: { width: number; height: number }; at: Array<[NodeModel, { x: number; y: number }]> } {
+  const side = (n: NodeModel): 'left' | 'right' | 'over' => {
+    const where = String(n.getMetadata('notePosition') ?? 'right of');
+    return where.startsWith('left') ? 'left' : where === 'over' ? 'over' : 'right';
+  };
+  const left = notes.filter((n) => side(n) === 'left');
+  const right = notes.filter((n) => side(n) === 'right');
+  const over = notes.filter((n) => side(n) === 'over');
+  const rowW = (ns: readonly NodeModel[]) => ns.reduce((w, n) => w + n.size.width + NOTE_GAP, 0);
+  const overH = over.reduce((h, n) => Math.max(h, n.size.height), 0);
+  const overW = over.reduce((w, n) => w + n.size.width, 0) + Math.max(0, over.length - 1) * NOTE_GAP;
+  const leftW = rowW(left);
+  const rowH = Math.max(state.size.height, ...left.map((n) => n.size.height), ...right.map((n) => n.size.height));
+  const midW = Math.max(state.size.width, overW);
+  const width = leftW + midW + rowW(right);
+  const top = over.length ? overH + NOTE_GAP : 0;
+  const height = top + rowH;
+  const at: Array<[NodeModel, { x: number; y: number }]> = [];
+  const stateX = leftW + (midW - state.size.width) / 2;
+  at.push([state, { x: stateX, y: top + (rowH - state.size.height) / 2 }]);
+  let x = 0;
+  for (const n of left) {
+    at.push([n, { x, y: top + (rowH - n.size.height) / 2 }]);
+    x += n.size.width + NOTE_GAP;
+  }
+  x = leftW + midW + NOTE_GAP;
+  for (const n of right) {
+    at.push([n, { x, y: top + (rowH - n.size.height) / 2 }]);
+    x += n.size.width + NOTE_GAP;
+  }
+  x = leftW + (midW - overW) / 2;
+  for (const n of over) {
+    at.push([n, { x, y: overH - n.size.height }]);
+    x += n.size.width + NOTE_GAP;
+  }
+  return { size: { width, height }, at };
+}
+
 /**
  * Lay every state out by flow, sizing composites to contain their children and
  * banding concurrent regions. Mutates the NodeModels' position/size in place.
@@ -442,7 +493,8 @@ interface ScopeArrangement {
 function layoutStateModel(
   model: MermaidStateModel,
   nodes: Map<string, NodeModel>,
-  start: { x: number; y: number }
+  start: { x: number; y: number },
+  notesOf: ReadonlyMap<string, NodeModel[]> = new Map()
 ): Array<{ index: number; route: ImportRoute; direction: string }> {
   const byId = new Map(model.states.map((s) => [s.id, s]));
   const childrenOf = (scope: string | undefined): MermaidStateNode[] =>
@@ -496,8 +548,9 @@ function layoutStateModel(
     if (cached) return cached;
     let size: { width: number; height: number };
     if (!state.composite) {
-      const node = nodes.get(state.id)!;
-      size = { width: node.size.width, height: node.size.height };
+      // A state and its notes take ONE place in the layout (notedBox), so a
+      // note always has room beside its state and never lands on anything else.
+      size = notedBox(nodes.get(state.id)!, notesOf.get(state.id) ?? []).size;
     } else if (state.concurrent) {
       // BANDING: measure each region, give every band the width of the widest
       // (so the compartments align, as Mermaid draws them), stack them.
@@ -568,8 +621,12 @@ function layoutStateModel(
   // Top-down: convert local placements to world coordinates and commit.
   const commit = (state: MermaidStateNode, x: number, y: number): void => {
     const node = nodes.get(state.id)!;
+    if (!state.composite) {
+      const { at } = notedBox(node, notesOf.get(state.id) ?? []);
+      for (const [placed, offset] of at) placed.setPosition(x + offset.x, y + offset.y);
+      return;
+    }
     node.setPosition(x, y);
-    if (!state.composite) return;
     const size = measured.get(state.id)!;
     node.setSize(size.width, size.height);
     if (state.concurrent) {
@@ -670,7 +727,32 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
   // against the real geometry (a link wired to the placeholder grid keeps the
   // wrong sides). Composites are sized to contain their children; concurrent
   // regions band. See layoutStateModel.
-  const routes = layoutStateModel(model, nodes, { x: 80, y: 60 });
+  // Notes: a note node beside its state, joined by a dashed, arrowless line.
+  // Made BEFORE the layout, which keeps each beside its state (notedBox).
+  addStateNotes(diagram, model, nodes);
+  const notesOf = new Map<string, NodeModel[]>();
+  for (const node of diagram.getNodes()) {
+    if (node.getMetadata('stateNote') !== true) continue;
+    const target = String(node.getMetadata('noteTarget'));
+    notesOf.set(target, [...(notesOf.get(target) ?? []), node]);
+  }
+  const routes = layoutStateModel(model, nodes, { x: 80, y: 60 }, notesOf);
+  // Each note's line joins the two sides that face each other.
+  for (const link of diagram.getLinks()) {
+    if (link.getMetadata('noteLink') !== true) continue;
+    const note = diagram.getNode(link.sourceNodeId ?? '');
+    const state = diagram.getNode(link.targetNodeId ?? '');
+    if (!note || !state) continue;
+    const dx = note.position.x + note.size.width / 2 - (state.position.x + state.size.width / 2);
+    const dy = note.position.y + note.size.height / 2 - (state.position.y + state.size.height / 2);
+    const [noteSide, stateSide] =
+      Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? ['left', 'right'] : ['right', 'left']) : dy > 0 ? ['top', 'bottom'] : ['bottom', 'top'];
+    const np = ensureSideAnchorPort(note, `${noteSide}@50%`);
+    const sp = ensureSideAnchorPort(state, `${stateSide}@50%`);
+    if (np) repointLinkEnd(diagram, link, 'source', note, np);
+    if (sp) repointLinkEnd(diagram, link, 'target', state, sp);
+    link.setPoints([]);
+  }
 
   // Composite states become groups whose members are their scoped children.
   // Every group is created BEFORE membership is wired, because a nested
@@ -700,11 +782,6 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
       if (diagram.getNode(child.id)) group.addMember(child.id, diagram);
     }
   }
-
-  // Notes: a note node beside its state, joined by a dashed, arrowless line.
-  // Created before the transitions, so a layout step that runs after them
-  // finds them in place. Placement is the layout's (they start at the origin).
-  addStateNotes(diagram, model, nodes);
 
   const linkOf = new Map<number, LinkModel>();
   model.transitions.forEach((transition, index) => {
