@@ -100,6 +100,9 @@ jobs:
       # word drawn, no label under a box or another label, no "…", label
       # contrast 4.5:1. A real manual drew 13 of 32 diagrams with text lost.
       - run: node demos/e2e/mermaid-reader-run.mjs
+      # …and the same fences drawn on a SERVER (importDiagramText, then
+      # renderToStaticSVG, nothing measured), as a publish-time renderer does.
+      - run: node demos/e2e/mermaid-reader-run.mjs --server
       - run: node demos/e2e/save-load-run.mjs
       # The dashboard covenant: 30 board scenarios driven by a real mouse. This
       # file called itself "the gate" for months while nothing — not CI, not nx,
