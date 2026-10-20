@@ -1,0 +1,1 @@
+import{v as i}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const r=async()=>{const[s,t,n,a]=i(),e=n.value?s.value?.handle.widget(n.value):void 0;e&&(e.pin(),await a(),await t(e.pinned?"pinned (keeps its cells; drags onto it refused)":"unpinned"))};export{r as s_7mNZxRP9oo4};

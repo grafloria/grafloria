@@ -1,0 +1,1 @@
+import{m as n}from"./ready-C4_3DsUA.js";import{x as g}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const i=async e=>{const r=e.getEngine();r.setInteractionConfig({enableGroupDrag:!0});const t=await r.addGroup({name:"Container"});t.setFrame({x:400,y:150,width:320,height:260}),t.constrainChildren=!0,e.renderNow(),n()};export{g as _hW,i as s_9qjpBYqXAqk};

@@ -131918,11 +131918,10 @@ function fitNodeToLabel(node) {
   const mermaid = mermaidBox(node, shape, shape === "rect" && !!config.cornerRadius, text);
   const room = measureNow ? Math.ceil(text.w * 1.04 + 2) : Math.ceil(text.w);
   const holds = outerForContent(shape, { w: room, h: lines.length * fontSize * IMPORT_LINE_HEIGHT + 1 });
-  const w = Math.ceil(Math.max(mermaid.w, holds.w));
   const h = Math.ceil(Math.max(mermaid.h, holds.h));
+  const w = Math.ceil(Math.max(mermaid.w, holds.w, shape === "stadium" ? room + h : 0));
   if (w !== node.size.width || h !== node.size.height) node.setSize(w, h, node.size.depth ?? 0);
-  if (measureNow) node.setMetadata(MEASURED_LABEL_FLAG, lines);
-  else if (node.getMetadata(MEASURED_LABEL_FLAG) !== void 0) node.deleteMetadata(MEASURED_LABEL_FLAG);
+  node.setMetadata(MEASURED_LABEL_FLAG, lines);
 }
 function importEdgeLabelBox(link) {
   const label = link.labels?.[0];
@@ -132171,6 +132170,15 @@ function anchorPoint(node, side, pct) {
       return { x: x + t * w, y: y + h };
   }
 }
+function clampTo(v, limit) {
+  return Math.max(-Math.max(0, limit), Math.min(Math.max(0, limit), v));
+}
+function chipHalfSize(text) {
+  const lines = wrapLabelLines(text, IMPORT_WRAP_WIDTH, IMPORT_EDGE_FONT);
+  const widest = Math.max(...lines.map((l) => Math.min(textWidth(l, IMPORT_EDGE_FONT), estimateLabelWidth(l, IMPORT_EDGE_FONT))));
+  const height = lines.length === 1 ? IMPORT_EDGE_FONT : lines.length * IMPORT_EDGE_FONT * IMPORT_LINE_HEIGHT;
+  return { x: widest / 2 + IMPORT_EDGE_PAD - 2, y: height / 2 + IMPORT_EDGE_PAD - 2 };
+}
 function pointAlong(points, t) {
   let total = 0;
   for (let i = 0; i < points.length - 1; i++) total += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
@@ -132249,8 +132257,12 @@ function applyImportRoute(link, diagram, route, direction) {
     const curve = sampleBasis(points, 8);
     const position = fractionAlong(curve, route.label);
     const at = pointAlong(curve, position);
-    const offset = { x: route.label.x - at.x, y: route.label.y - at.y };
     const text = link.labels?.[0]?.text ?? link.getMetadata("label");
+    const chip = text ? chipHalfSize(text) : { x: 0, y: 0 };
+    const offset = {
+      x: clampTo(route.label.x - at.x, chip.x),
+      y: clampTo(route.label.y - at.y, chip.y)
+    };
     if (link.labels?.length) {
       const [first, ...rest] = link.labels;
       const { slot: _slot, ...placed } = first;
@@ -182735,6 +182747,7 @@ var _SVGRenderer = class _SVGRenderer {
         ...this.lodAllows("labels", lod) ? (() => {
           const labelVNodes = [];
           const chipsOnly = !!link.labels && link.labels.length > 0 && link.labels.every((l) => l.slot === "start" || l.slot === "end");
+          const labelPath = link.style?.spline === "basis" && points.length > 2 ? sampleBasis(points, 8) : points;
           if (link.labels && link.labels.length > 0) {
             link.labels.forEach((label2) => {
               const placed = this.onLongestRun(link, label2, points);
@@ -182743,7 +182756,7 @@ var _SVGRenderer = class _SVGRenderer {
                 offset,
                 theme: this.theme,
                 cssMode: this.config.useCSSMode,
-                path: points
+                path: labelPath
               });
               if (labelVNode) {
                 labelVNodes.push(labelVNode);
@@ -193417,6 +193430,23 @@ function textKitFor(diagramType) {
 }
 
 // libs/renderer/src/instance/content-bounds.ts
+function pointAlong2(pts, t) {
+  if (pts.length < 2) return null;
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) total += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+  let remaining = total * Math.max(0, Math.min(1, t));
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const len2 = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len2 > 0 && (remaining <= len2 || i === pts.length - 2)) {
+      const u = Math.min(1, remaining / len2);
+      return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+    }
+    remaining -= len2;
+  }
+  return { ...pts[pts.length - 1] };
+}
 var LABELS = new LabelRenderer();
 function contentBounds(model, theme) {
   const nodes = model.getNodes().filter((n3) => n3.state?.visible !== false);
@@ -193440,8 +193470,9 @@ function contentBounds(model, theme) {
     }
   }
   for (const link of model.getLinks()) {
+    const curve = link.style?.spline === "basis" && (link.points?.length ?? 0) > 2 ? sampleBasis(link.points, 8) : null;
     for (const label of link.labels ?? []) {
-      const at = link.getPointAtPosition?.(linkLabelPosition(label));
+      const at = curve ? pointAlong2(curve, linkLabelPosition(label)) : link.getPointAtPosition?.(linkLabelPosition(label));
       if (!at) continue;
       const { width, height } = LABELS.labelBox(label, link, theme);
       const x = at.x + (label.offset?.x ?? 0);

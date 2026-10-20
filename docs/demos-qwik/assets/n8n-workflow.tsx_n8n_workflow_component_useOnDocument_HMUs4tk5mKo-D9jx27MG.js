@@ -1,0 +1,1 @@
+import{v as r}from"./core.min-DSxUtzo6.js";import{x as a}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const m=o=>{const[t]=r();return t.value?.onKeydown(o)};export{a as _hW,m as s_HMUs4tk5mKo};

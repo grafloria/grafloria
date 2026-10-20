@@ -1,0 +1,1 @@
+import{v as n}from"./core.min-DSxUtzo6.js";import{x as a}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const g=({track:e})=>{const[s,t]=n(),i=e(()=>JSON.stringify(t.highlighterConfig??!1)),o=e(()=>s.value);o&&o.setHighlighterConfig(JSON.parse(i))};export{a as _hW,g as s_Y9Gh102o9Bk};
