@@ -31,6 +31,11 @@
  *        [--report file.json]  each render's numbers (zoom, smallest text on screen, Mermaid's, problems)
  *        [--face "font stack"] draw Grafloria in another face (to tell layout from font)
  *        [--fit 16]            the margin fitView leaves (the reader's 16; Mermaid pads 8)
+ *        [--server]            the SERVER path instead of the live canvas: importDiagramText, then
+ *                              renderToStaticSVG with no measure, sized to its label-inclusive bounds
+ *                              plus the margin and shown at most column-wide (as a publish-time renderer)
+ *        [--mermaid file.js]   another Mermaid build (Atloria pins 11.12.2)
+ *        [--mermaid-face page] draw Mermaid in the page's font, as a reader embedding it does
  *
  * The default corpus (mermaid-reader-fences.json) is shaped like a business
  * manual's fences — flowchart LR and stateDiagram-v2, branching lifecycles,
@@ -60,6 +65,8 @@ const SHOTS = arg('--shots', null);
 const REPORT = arg('--report', null);
 const FACE = arg('--face', null);
 const FIT = Number(arg('--fit', '16'));
+const SERVER = argv.includes('--server');
+const MERMAID_FACE = arg('--mermaid-face', null);
 const corpus = JSON.parse(readFileSync(corpusFile, 'utf8'));
 
 // The surface a reader imports: parse, mount read-only, the two themes.
@@ -67,9 +74,10 @@ const ENTRY = join(tmpdir(), 'mermaid-reader-entry.js');
 const BUNDLE = join(tmpdir(), 'mermaid-reader-grafloria.js');
 writeFileSync(
   ENTRY,
-  `import { importDiagramText } from '@grafloria/engine';
-import { createDiagram, LIGHT_THEME, DARK_THEME } from '@grafloria/renderer';
-window.GF = { importDiagramText, createDiagram, LIGHT_THEME, DARK_THEME };
+  `import { importDiagramText, runDeterministic } from '@grafloria/engine';
+import { createDiagram, renderToStaticSVG, LIGHT_THEME, DARK_THEME } from '@grafloria/renderer';
+import { contentBounds } from ${JSON.stringify(join(REPO, 'libs/renderer/src/instance/content-bounds.ts'))};
+window.GF = { importDiagramText, runDeterministic, createDiagram, renderToStaticSVG, contentBounds, LIGHT_THEME, DARK_THEME };
 `
 );
 await build({
@@ -100,7 +108,7 @@ const PAGE = `<!doctype html><meta charset="utf-8">
 <script src="/mermaid.min.js"></script>
 <script type="module">mermaid.initialize({ startOnLoad: false }); import '/grafloria.js'; window.__ready = true;</script>`;
 
-const MERMAID_UMD = join(REPO, 'node_modules/mermaid/dist/mermaid.min.js');
+const MERMAID_UMD = resolve(arg('--mermaid', join(REPO, 'node_modules/mermaid/dist/mermaid.min.js')));
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: WIDTH + 40, height: 1000 } });
 await page.route('http://reader/**', (route) => {
@@ -121,7 +129,7 @@ for (const fence of corpus) {
     await page.goto('http://reader/');
     await page.waitForFunction(() => window.__ready && window.GF);
     const r = await page.evaluate(
-      async ({ source, theme, width, face, fit }) => {
+      async ({ source, theme, width, face, fit, server, mermaidFace }) => {
         document.body.className = theme;
         const host = document.getElementById('host');
         // The size a word is drawn at on screen: its font size × the scale of
@@ -139,6 +147,9 @@ for (const fence of corpus) {
         let mermaidPx;
         let mermaidBlind = false;
         try {
+          // Mermaid in the page's font, as a reader embedding it is (or its own default face).
+          const pageFont = getComputedStyle(document.body).fontFamily;
+          mermaid.initialize(mermaidFace === 'page' ? { startOnLoad: false, fontFamily: pageFont, themeVariables: { fontFamily: pageFont } } : { startOnLoad: false });
           const out = await mermaid.render('mm' + Math.random().toString(36).slice(2), source);
           const holder = document.getElementById('mermaid');
           holder.style.width = width + 'px';
@@ -164,6 +175,28 @@ for (const fence of corpus) {
         host.style.height = '400px';
         const base = theme === 'dark' ? GF.DARK_THEME : GF.LIGHT_THEME;
         const look = face ? { ...base, typography: { ...base.typography, fontFamily: { ...base.typography.fontFamily, default: face } } } : base;
+        let svg, model, zoom;
+        if (server) {
+          // THE SERVER PATH: no canvas, nothing measured — the import estimates,
+          // the SVG is made from the model and sized to what it draws, labels included.
+          const made = GF.runDeterministic(() => {
+            const d = GF.importDiagramText(source).diagram;
+            const b = GF.contentBounds(d, look);
+            const w = Math.ceil(b.width + 2 * fit);
+            const h = Math.ceil(b.height + 2 * fit);
+            const out = GF.renderToStaticSVG({ nodes: d.getNodes(), edges: d.getLinks(), groups: d.getGroups(), theme: look, width: w, height: h, zoom: 1, viewport: { x: b.x - fit, y: b.y - fit }, standalone: true, instanceId: 'gf-ssr', lod: 'document' });
+            return { d, out, w };
+          });
+          host.style.height = 'auto';
+          host.innerHTML = `<style>${made.out.css}</style>` + made.out.svg;
+          svg = host.querySelector('svg');
+          svg.setAttribute('width', made.w);
+          svg.removeAttribute('height');
+          svg.style.cssText = `display:block;max-width:100%;height:auto;width:${made.w}px`;
+          model = made.d;
+          await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+          zoom = svg.getBoundingClientRect().width / made.w;
+        } else {
         const inst = GF.createDiagram(host, { readonly: true, lod: 'document', theme: look });
         inst.loadText(source);
         // Height from the DRAWN figure's aspect ratio, as a reader sizes it:
@@ -184,8 +217,10 @@ for (const fence of corpus) {
         inst.fitView(fit);
         inst.renderNow();
         await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
-        const svg = host.querySelector('svg');
-        const model = inst.getEngine().getDiagram();
+        svg = host.querySelector('svg');
+        model = inst.getEngine().getDiagram();
+        zoom = inst.viewport.getZoom();
+        }
         const box = (el) => { const b = el.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; };
         const overlap = (a, b) =>
           Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) - 1) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) - 1);
@@ -332,7 +367,7 @@ for (const fence of corpus) {
         }
         return {
           problems,
-          zoom: +inst.viewport.getZoom().toFixed(2),
+          zoom: +zoom.toFixed(2),
           nodes: nodeGroups.length,
           edges: linkGroups.length,
           grafloriaPx,
@@ -340,7 +375,7 @@ for (const fence of corpus) {
           px: grafloriaPx === undefined ? '' : ` · text ${grafloriaPx.toFixed(1)}px` + (mermaidPx === undefined ? '' : ` (Mermaid ${mermaidPx.toFixed(1)}px)`),
         };
       },
-      { source: fence.source, theme, width: WIDTH, face: FACE, fit: FIT }
+      { source: fence.source, theme, width: WIDTH, face: FACE, fit: FIT, server: SERVER, mermaidFace: MERMAID_FACE }
     );
     const id = `${fence.id} (${theme})`;
     report.push({ id: fence.id, theme, width: WIDTH, refused: r.refused ?? null, zoom: r.zoom ?? null, grafloriaPx: r.grafloriaPx ?? null, mermaidPx: r.mermaidPx ?? null, problems: [...new Set([...(r.problems ?? []), ...errors])] });
