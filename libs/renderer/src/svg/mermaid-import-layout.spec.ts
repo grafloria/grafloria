@@ -165,9 +165,11 @@ describe('imported Mermaid: every word the author wrote is visible', () => {
       const shape = getShape((node.getMetadata('shape') as { type?: string } | undefined)?.type ?? 'rect');
       const inner = getInnerRect(shape, node.size.width, node.size.height);
       // The renderer shrinks the font only for a word too wide for its box: never here.
-      expect({ label, font: fitFontSize(label, inner.w, 14) }).toEqual({ label, font: 14 });
-      const lines = wrapText(label, inner.w, 14).length;
-      expect({ label, fits: lines <= Math.floor(inner.h / (14 * 1.2)) }).toEqual({ label, fits: true });
+      // Imported labels draw at Mermaid's 16 px.
+      expect(node.style.fontSize).toBe(16);
+      expect({ label, font: fitFontSize(label, inner.w, 16) }).toEqual({ label, font: 16 });
+      const lines = wrapText(label, inner.w, 16).length;
+      expect({ label, fits: lines <= Math.floor(inner.h / (16 * 1.2)) }).toEqual({ label, fits: true });
     }
   });
 
@@ -190,15 +192,15 @@ describe('imported Mermaid: every word the author wrote is visible', () => {
   });
 });
 
-describe('imported Mermaid: boxes grow to hold their text', () => {
+describe("imported Mermaid: boxes are Mermaid's, and hold their text", () => {
   it('wraps at 200 px, then grows taller — never an ellipsis', () => {
     const d = load(`flowchart LR
       A[Short] --> B[A label of a dozen or so words that is far too long for one line of the box]
       B --> C[A label twice as long again, a label of a couple of dozen words that has to wrap onto many lines of the box before it fits]`);
     const [a, b, c] = ['A', 'B', 'C'].map((id) => d.getNode(id)!);
-    expect(a.size).toMatchObject({ width: 120, height: 80 }); // the default stays the floor
-    expect(b.size.width).toBeLessThanOrEqual(200 + 16);
-    expect(c.size.width).toBeLessThanOrEqual(200 + 16);
+    expect(a.size).toMatchObject({ width: Math.ceil('Short'.length * 16 * 0.6 + 60), height: 54 }); // Mermaid's [Short]
+    expect(b.size.width).toBeLessThanOrEqual(200 + 60);
+    expect(c.size.width).toBeLessThanOrEqual(200 + 60);
     expect(c.size.height).toBeGreaterThan(b.size.height); // more lines, a taller box
   });
 
@@ -207,7 +209,7 @@ describe('imported Mermaid: boxes grow to hold their text', () => {
       Draft --> GoodsReleasedForShipmentToTheCustomer: release`);
     const node = d.getNode('GoodsReleasedForShipmentToTheCustomer')!;
     const inner = getInnerRect(getShape('rect'), node.size.width, node.size.height);
-    expect(fitFontSize('GoodsReleasedForShipmentToTheCustomer', inner.w, 14)).toBe(14);
+    expect(fitFontSize('GoodsReleasedForShipmentToTheCustomer', inner.w, 16)).toBe(16);
   });
 });
 
@@ -339,19 +341,19 @@ describe('imported Mermaid: an edge label draws as Mermaid draws it', () => {
       Order -->|deliver| Delivered`);
     const long = d.getLinks().find((l) => labelText(l)?.startsWith('Convert'))!;
     const label = long.labels[0];
-    expect(label).toMatchObject({ style: { fontSize: 14 }, textWrap: true, maxWidth: 200 });
-    const lines = wrapText(label.text, 200, 14);
+    expect(label).toMatchObject({ style: { fontSize: 16 }, textWrap: true, maxWidth: 200 });
+    const lines = wrapText(label.text, 200, 16);
     expect(lines.length).toBeGreaterThan(1);
     // The gap between the two ranks holds the WRAPPED label, and is narrower than one long line.
     const [offer, order] = ['Offer', 'Order'].map((id) => d.getNode(id)!);
     const gap = order.position.x - (offer.position.x + offer.size.width);
     expect(gap).toBeGreaterThanOrEqual(labels.labelBox(label).width);
-    expect(gap).toBeLessThan(label.text.length * 14 * 0.6);
+    expect(gap).toBeLessThan(label.text.length * 16 * 0.6);
   });
 
   it('a state transition label too', () => {
     const d = load(`stateDiagram-v2
       Approved --> Awarded: Consider the award as submitted to the supplier`);
-    expect(d.getLinks()[0].labels[0]).toMatchObject({ style: { fontSize: 14 }, textWrap: true, maxWidth: 200 });
+    expect(d.getLinks()[0].labels[0]).toMatchObject({ style: { fontSize: 16 }, textWrap: true, maxWidth: 200 });
   });
 });

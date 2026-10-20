@@ -53,6 +53,11 @@ export interface TextBlockOptions {
   emitFontSize?: boolean;
   /** Set pointer-events: none (node labels don't intercept the mouse). */
   nonInteractive?: boolean;
+  /**
+   * How wide a line draws, measured (svg/text-measure.ts). Omitted: the 0.6 em
+   * estimate. Only a diagram an import sized to measured text passes one.
+   */
+  measure?: (text: string) => number;
 }
 
 /** Average-glyph width estimate. See the module header for the rationale. */
@@ -69,7 +74,12 @@ export function estimateTextWidth(text: string, fontSize: number): number {
  * no hyphen is kept whole (clipped, not broken) — the historical LabelRenderer
  * behavior for genuinely unbreakable runs.
  */
-export function wrapText(text: string, maxWidth: number | undefined, fontSize: number): string[] {
+export function wrapText(
+  text: string,
+  maxWidth: number | undefined,
+  fontSize: number,
+  measure: (text: string) => number = (t) => estimateTextWidth(t, fontSize)
+): string[] {
   const wrap = typeof maxWidth === 'number' && isFinite(maxWidth) && maxWidth > 0;
   const lines: string[] = [];
   for (const paragraph of text.split('\n')) {
@@ -80,7 +90,7 @@ export function wrapText(text: string, maxWidth: number | undefined, fontSize: n
     const words = paragraph
       .split(/\s+/)
       .filter((w) => w.length > 0)
-      .flatMap((w) => breakOversizedWord(w, maxWidth as number, fontSize));
+      .flatMap((w) => breakOversizedWord(w, maxWidth as number, measure));
     if (words.length === 0) {
       lines.push('');
       continue;
@@ -88,7 +98,7 @@ export function wrapText(text: string, maxWidth: number | undefined, fontSize: n
     let current = '';
     for (const word of words) {
       const test = current ? `${current} ${word}` : word;
-      if (estimateTextWidth(test, fontSize) > (maxWidth as number) && current) {
+      if (measure(test) > (maxWidth as number) && current) {
         lines.push(current);
         current = word;
       } else {
@@ -108,15 +118,15 @@ export function wrapText(text: string, maxWidth: number | undefined, fontSize: n
  * ordinary words; a piece already ends in '-', so no artificial hyphen is
  * introduced.
  */
-function breakOversizedWord(word: string, maxWidth: number, fontSize: number): string[] {
-  if (estimateTextWidth(word, fontSize) <= maxWidth || !word.includes('-')) return [word];
+function breakOversizedWord(word: string, maxWidth: number, measure: (text: string) => number): string[] {
+  if (measure(word) <= maxWidth || !word.includes('-')) return [word];
   // "a-b-c" → ["a-", "b-", "c"], then greedily merge while they fit.
   const segments = word.split(/(?<=-)/);
   const pieces: string[] = [];
   let current = '';
   for (const seg of segments) {
     const test = current + seg;
-    if (current && estimateTextWidth(test, fontSize) > maxWidth) {
+    if (current && measure(test) > maxWidth) {
       pieces.push(current);
       current = seg;
     } else {
@@ -136,14 +146,14 @@ function truncateLines(
   lines: string[],
   maxLines: number | undefined,
   maxWidth: number | undefined,
-  fontSize: number
+  measure: (text: string) => number
 ): string[] {
   if (!maxLines || maxLines < 1 || lines.length <= maxLines) return lines;
   const kept = lines.slice(0, maxLines);
   let last = kept[maxLines - 1] ?? '';
   const fits = (s: string) =>
     !(typeof maxWidth === 'number' && isFinite(maxWidth) && maxWidth > 0) ||
-    estimateTextWidth(s + ELLIPSIS, fontSize) <= maxWidth;
+    measure(s + ELLIPSIS) <= maxWidth;
   while (last.length > 0 && !fits(last)) {
     last = last.slice(0, -1).replace(/\s+$/, '');
   }
@@ -183,8 +193,9 @@ export function renderTextBlock(opts: TextBlockOptions): VNode {
   const lineHeightPx = fontSize * (opts.lineHeight ?? DEFAULT_LINE_HEIGHT);
   const emitFontSize = opts.emitFontSize !== false;
 
-  const wrapped = wrapText(opts.text, opts.maxWidth, fontSize);
-  const lines = truncateLines(wrapped, opts.maxLines, opts.maxWidth, fontSize);
+  const measure = opts.measure ?? ((t: string) => estimateTextWidth(t, fontSize));
+  const wrapped = wrapText(opts.text, opts.maxWidth, fontSize, measure);
+  const lines = truncateLines(wrapped, opts.maxLines, opts.maxWidth, measure);
 
   const baseProps: Record<string, unknown> = {
     x: opts.x,

@@ -11,6 +11,7 @@ import {
 } from '@grafloria/engine';
 import { applyEdges, applyNodes, type EdgeWarning } from './model-input';
 import { textKitFor } from './text-kits';
+import { canvasTextMeasure } from '../svg/text-measure';
 
 /** Hooks a canvas binding gives `loadTextInto` around the reconcile. */
 export interface LoadTextHooks {
@@ -60,7 +61,9 @@ export function loadTextInto(
   if (typeof text !== 'string' || stripGrafloriaSidecar(text).trim() === '') {
     refuse('the text is empty — there is no diagram in it. (To clear the canvas, call setNodes([]) and setEdges([]).)');
   }
-  const result = importDiagramText(text, options);
+  // A Mermaid import sizes its boxes to its words MEASURED in the page, as
+  // Mermaid does (the canvas, where there is one; svg/text-measure.ts).
+  const result = importDiagramText(text, { measureText: canvasTextMeasure(), ...options });
   if (result.unsupported) {
     refuse(
       `"${result.unsupported}" diagrams cannot be drawn on the canvas. ` +

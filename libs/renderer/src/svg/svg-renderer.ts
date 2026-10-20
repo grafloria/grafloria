@@ -186,6 +186,7 @@ import {
 // Node label engine: shared, link-agnostic text-block core (wrap / multi-line /
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock, wrapText } from './text-block';
+import { labelMeasureFor } from './text-measure';
 
 /** A 'text' note: words on the canvas with no box of their own. */
 function isTextNote(node: NodeModel): boolean {
@@ -435,8 +436,20 @@ function hoistVarPaintsDeep(vnode: VNode): VNode {
  * point the existing ellipsis behaviour takes over.
  */
 const MIN_LABEL_FONT_PX = 8;
-export function fitFontSize(text: string, maxWidth: number, base: number): number {
+export function fitFontSize(
+  text: string,
+  maxWidth: number,
+  base: number,
+  measureAt?: (text: string, size: number) => number
+): number {
   if (!text || !isFinite(maxWidth) || maxWidth <= 0) return base;
+  if (measureAt) {
+    // A measured diagram (svg/text-measure.ts): the widest token as it draws.
+    let widest = 0;
+    for (const token of text.split(/[\s-]+/)) if (token) widest = Math.max(widest, measureAt(token, base));
+    if (widest <= maxWidth) return base;
+    return Math.max(MIN_LABEL_FONT_PX, Math.floor((base * maxWidth) / widest));
+  }
   // Longest token AFTER the breaks wrapText can actually make (spaces, hyphens).
   let longest = 0;
   for (const token of text.split(/[\s-]+/)) longest = Math.max(longest, token.length);
@@ -3659,7 +3672,7 @@ export class SVGRenderer implements IRenderer {
       const position = linkLabelPosition(label);
       const anchor = link.getPointAtPosition(position) ?? points[0];
       const normal = link.getNormalAt(position) ?? { x: 0, y: -1 };
-      const box = this.labelRenderer.labelBox(label);
+      const box = this.labelRenderer.labelBox(label, link);
       return {
         id: label.id,
         anchor,
@@ -5984,7 +5997,15 @@ export class SVGRenderer implements IRenderer {
     // path sheared it ("Decisior", "nnec"). Scale the font down just enough for
     // the widest unbreakable token to fit, with a legibility floor.
     const baseFont = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
-    const fontSize = fitFontSize(label, inner.w, baseFont);
+    // A diagram an import sized to MEASURED text wraps with the same measure, in
+    // the face and weight the label draws in; any other keeps the estimate.
+    const measureAt = labelMeasureFor(node.diagram, {
+      size: baseFont,
+      family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
+      weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
+    });
+    const fontSize = fitFontSize(label, inner.w, baseFont, measureAt);
+    const measure = measureAt ? (t: string) => measureAt(t, fontSize) : undefined;
     const shrunk = fontSize < baseFont;
     const lineHeight = fontSize * 1.2;
     const clipId = `node-clip-${node.id}`;
@@ -6007,7 +6028,7 @@ export class SVGRenderer implements IRenderer {
     const subFont = sublabel ? fitFontSize(sublabel.text, inner.w, sublabel.fontSize ?? Math.round(fontSize * 0.85)) : 0;
     const subLineHeight = subFont * 1.2;
     const GAP = sublabel ? 3 : 0;
-    const titleLines = Math.max(1, Math.min(wrapText(label, inner.w, fontSize).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
+    const titleLines = Math.max(1, Math.min(wrapText(label, inner.w, fontSize, measure).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
     const subLines = sublabel ? Math.max(1, Math.min(wrapText(sublabel.text, inner.w, subFont).length, Math.floor((inner.h - titleLines * lineHeight - GAP) / subLineHeight))) : 0;
     const titleH = titleLines * lineHeight;
     const blockH = titleH + (sublabel ? GAP + subLines * subLineHeight : 0);
@@ -6022,6 +6043,7 @@ export class SVGRenderer implements IRenderer {
       valign: 'middle',
       fontSize,
       lineHeight: 1.2,
+      measure,
       maxLines: sublabel ? titleLines : Math.max(1, Math.floor(inner.h / lineHeight)),
       clipId,
       nonInteractive: true,
@@ -6269,7 +6291,12 @@ export class SVGRenderer implements IRenderer {
     const baseFont = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
     // One line: it shrinks to the band's width rather than wrapping out of it.
     const maxWidth = Math.max(1, width - 16);
-    const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont), Math.max(8, Math.floor(band / 1.3)));
+    const measureAt = labelMeasureFor(node.diagram, {
+      size: baseFont,
+      family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
+      weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
+    });
+    const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont, measureAt), Math.max(8, Math.floor(band / 1.3)));
     const shrunk = fontSize < baseFont;
     const css = this.config.useCSSMode;
     const text = renderTextBlock({

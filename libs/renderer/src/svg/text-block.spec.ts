@@ -8,6 +8,7 @@
 import { renderTextBlock, wrapText, estimateTextWidth } from './text-block';
 import { SVGRenderer } from './svg-renderer';
 import { DiagramEngine, NodeModel } from '@grafloria/engine';
+import { labelMeasureFor } from './text-measure';
 
 describe('text-block engine (Card 2)', () => {
   describe('wrapText', () => {
@@ -192,3 +193,24 @@ function findByKey(vnode: any, key: string): any {
   }
   return undefined;
 }
+
+// A diagram a Mermaid import sized to MEASURED text wraps by the same measure
+// (svg/text-measure.ts); everything else keeps the 0.6 em estimate.
+describe('text-block: a measured wrap', () => {
+  const narrow = (t: string) => t.length * 5; // a face narrower than the estimate
+
+  it('breaks where the measure says, not where the estimate would', () => {
+    expect(wrapText('aaa bbb ccc', 50, 16)).toEqual(['aaa', 'bbb', 'ccc']); // estimate: 9.6 a glyph
+    expect(wrapText('aaa bbb ccc', 50, 16, narrow)).toEqual(['aaa bbb', 'ccc']);
+    const block = renderTextBlock({ text: 'aaa bbb ccc', x: 0, y: 0, maxWidth: 50, fontSize: 16, measure: narrow });
+    expect((block.children ?? []).map((t: any) => t.props.textContent)).toEqual(['aaa bbb', 'ccc']);
+  });
+
+  it('a diagram that was not measured gets no measure: it draws as it always has', () => {
+    const plain = { getMetadata: () => undefined };
+    expect(labelMeasureFor(plain, { size: 16 })).toBeUndefined();
+    // Measured, but no canvas here (jsdom): the estimate, rather than a guess.
+    const measured = { getMetadata: (key: string) => (key === 'measuredText' ? true : undefined) };
+    expect(labelMeasureFor(measured, { size: 16 })).toBeUndefined();
+  });
+});

@@ -17,6 +17,7 @@ import { linkLabelPosition, type LinkLabel, type LinkModel, type Point } from '@
 import type { VNode } from '../types/vnode.types';
 import type { Theme } from '../types/theme.types';
 import { renderTextBlock, wrapText } from './text-block';
+import { labelMeasureFor } from './text-measure';
 import { THEME_VARS } from '../themes/theme-vars';
 import { getLabelTemplate, htmlLabelVNode, type LabelTemplateContext } from './edge-templates';
 
@@ -206,6 +207,8 @@ export class LabelRenderer {
     const background = rawBackground === 'none' ? undefined : rawBackground;
     const padding = label.style?.padding ?? this.defaultPadding;
     const borderRadius = label.style?.borderRadius ?? 3;
+    // A diagram an import sized to MEASURED text measures its labels the same way.
+    const measure = this.measureFor(label, link, fontSize, theme);
 
     // Build children array
     const children: VNode[] = [];
@@ -214,7 +217,7 @@ export class LabelRenderer {
     if (background) {
       // Estimate text dimensions for background — the block's own lines, so a
       // wrapped label's chip holds every line, not one line its full length.
-      const { width: textWidth, height: textHeight } = this.textBlockSize(label, fontSize);
+      const { width: textWidth, height: textHeight } = this.textBlockSize(label, fontSize, measure);
 
       const bgRect: VNode = {
         type: 'rect',
@@ -235,7 +238,7 @@ export class LabelRenderer {
     }
 
     // Build text element
-    const textVNode = this.renderText(label, fontSize, fontFamily, color);
+    const textVNode = this.renderText(label, fontSize, fontFamily, color, measure);
     children.push(textVNode);
 
     // Return group container
@@ -256,7 +259,7 @@ export class LabelRenderer {
    * against; HTML/template labels declare their own, and text labels are
    * measured with the same estimator the background rect already uses.
    */
-  labelBox(label: LinkLabel): { width: number; height: number } {
+  labelBox(label: LinkLabel, link?: Pick<LinkModel, 'diagram'>): { width: number; height: number } {
     if (label.html !== undefined || label.template) {
       return {
         width: label.width ?? DEFAULT_HTML_LABEL_WIDTH,
@@ -265,8 +268,23 @@ export class LabelRenderer {
     }
     const fontSize = label.style?.fontSize ?? this.defaultFontSize;
     const padding = label.style?.padding ?? this.defaultPadding;
-    const text = this.textBlockSize(label, fontSize);
+    const text = this.textBlockSize(label, fontSize, link ? this.measureFor(label, link, fontSize) : undefined);
     return { width: text.width + padding * 2, height: text.height + padding * 2 };
+  }
+
+  /** The canvas measure for a label of a MEASURED diagram (svg/text-measure.ts), else none. */
+  private measureFor(
+    label: LinkLabel,
+    link: Pick<LinkModel, 'diagram'>,
+    fontSize: number,
+    theme?: Theme
+  ): ((text: string) => number) | undefined {
+    const measureAt = labelMeasureFor(link.diagram, {
+      size: fontSize,
+      family: label.style?.fontFamily ?? (theme?.typography?.fontFamily?.default as string | undefined),
+      ...(label.style?.fontWeight !== undefined ? { weight: label.style.fontWeight } : {}),
+    });
+    return measureAt ? (t) => measureAt(t) : undefined;
   }
 
   /**
@@ -275,9 +293,13 @@ export class LabelRenderer {
    * when `textWrap`, else at hard breaks only). One line keeps the historical
    * height of one font size.
    */
-  private textBlockSize(label: LinkLabel, fontSize: number): { width: number; height: number } {
-    const lines = wrapText(label.text, label.textWrap ? label.maxWidth : undefined, fontSize);
-    const width = Math.max(...lines.map((line) => this.estimateTextWidth(line, fontSize)));
+  private textBlockSize(
+    label: LinkLabel,
+    fontSize: number,
+    measure: (text: string) => number = (t) => this.estimateTextWidth(t, fontSize)
+  ): { width: number; height: number } {
+    const lines = wrapText(label.text, label.textWrap ? label.maxWidth : undefined, fontSize, measure);
+    const width = Math.max(...lines.map((line) => measure(line)));
     return { width, height: lines.length === 1 ? fontSize : lines.length * fontSize * TEXT_LINE_HEIGHT };
   }
 
@@ -334,13 +356,15 @@ export class LabelRenderer {
     label: LinkLabel,
     fontSize: number,
     fontFamily: string | undefined,
-    color: string
+    color: string,
+    measure?: (text: string) => number
   ): VNode {
     const block = renderTextBlock({
       text: label.text,
       x: 0,
       y: 0,
       maxWidth: label.textWrap ? label.maxWidth : undefined,
+      measure,
       align: label.textAnchor ?? 'middle',
       valign: label.textBaseline ?? 'middle',
       fontSize,
