@@ -166,15 +166,20 @@ for (const fence of corpus) {
         const look = face ? { ...base, typography: { ...base.typography, fontFamily: { ...base.typography.fontFamily, default: face } } } : base;
         const inst = GF.createDiagram(host, { readonly: true, lod: 'document', theme: look });
         inst.loadText(source);
-        // Height from the DRAWN figure's aspect ratio, as a reader sizes it: the
+        // Height from the DRAWN figure's aspect ratio, as a reader sizes it:
+        // everything the canvas draws, labels included (getContentBounds) — the
         // canvas measured the words in the page, so the parsed-only model (which
         // estimates) has another shape. The canvas follows its container.
-        let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
-        for (const n of inst.getModel().getNodes()) {
-          minx = Math.min(minx, n.position.x); miny = Math.min(miny, n.position.y);
-          maxx = Math.max(maxx, n.position.x + n.size.width); maxy = Math.max(maxy, n.position.y + n.size.height);
-        }
-        host.style.height = Math.max(140, Math.min(900, Math.round((width * (maxy - miny + 80)) / (maxx - minx + 80)))) + 'px';
+        const drawn = inst.getContentBounds?.() ?? (() => {
+          // A build without getContentBounds: its boxes.
+          let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+          for (const n of inst.getModel().getNodes()) {
+            minx = Math.min(minx, n.position.x); miny = Math.min(miny, n.position.y);
+            maxx = Math.max(maxx, n.position.x + n.size.width); maxy = Math.max(maxy, n.position.y + n.size.height);
+          }
+          return { width: maxx - minx, height: maxy - miny };
+        })();
+        host.style.height = Math.max(140, Math.min(900, Math.round((width * (drawn.height + 80)) / (drawn.width + 80)))) + 'px';
         await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
         inst.fitView(fit);
         inst.renderNow();
