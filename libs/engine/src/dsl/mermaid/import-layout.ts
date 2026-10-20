@@ -66,11 +66,13 @@ export const IMPORT_WRAP_WIDTH = 200;
  */
 export const MEASURED_TEXT_FLAG = 'measuredText';
 /**
- * Node metadata: this box was sized to text MEASURED in a page — its value is the
- * lines the box was sized for (a saved document keeps them). A renderer that
- * cannot measure (a server) draws those lines as they are: re-wrapped by an
- * estimate, a measured one-line box went onto two lines and was cut short
- * ("Awaiting…"), or a line packed one word more than its box holds.
+ * Node metadata an import leaves on every box it sized: the lines it was sized
+ * for — measured in a page, or estimated on a server (a saved document keeps
+ * them). A renderer that cannot measure (a server) draws those lines as they
+ * are. Re-wrapped by a narrower estimate, a measured one-line box went onto two
+ * lines and was cut short ("Awaiting…"), and a server's own box of capitals
+ * took one word more per line than it holds ("PAYMENT RECEIVED AND VERIFIED"
+ * drew as "AYMENT RECEIVED ANC").
  */
 export const MEASURED_LABEL_FLAG = 'labelMeasured';
 
@@ -307,12 +309,15 @@ export function fitNodeToLabel(node: NodeModel): void {
   // as floor(inner height / line height).
   const room = measureNow ? Math.ceil(text.w * 1.04 + 2) : Math.ceil(text.w);
   const holds = outerForContent(shape, { w: room, h: lines.length * fontSize * IMPORT_LINE_HEIGHT + 1 });
-  const w = Math.ceil(Math.max(mermaid.w, holds.w));
   const h = Math.ceil(Math.max(mermaid.h, holds.h));
+  // A stadium's text room narrows as it grows taller (its ends are half its
+  // height each): sized for the text's own height, then given Mermaid's taller
+  // box, it no longer held one line ("QQQQ MMMM" drew as "QQQQ…").
+  const w = Math.ceil(Math.max(mermaid.w, holds.w, shape === 'stadium' ? room + h : 0));
   if (w !== node.size.width || h !== node.size.height) node.setSize(w, h, node.size.depth ?? 0);
   // Sized to measured text: a renderer that cannot measure draws these lines.
-  if (measureNow) node.setMetadata(MEASURED_LABEL_FLAG, lines);
-  else if (node.getMetadata(MEASURED_LABEL_FLAG) !== undefined) node.deleteMetadata(MEASURED_LABEL_FLAG);
+  // The lines this box holds: a renderer that cannot measure draws exactly these.
+  node.setMetadata(MEASURED_LABEL_FLAG, lines);
 }
 
 /** The box the renderer draws for a link's label (LabelRenderer.labelBox), or undefined for none. */
@@ -709,6 +714,23 @@ function anchorPoint(node: NodeModel, side: Side, pct: number): { x: number; y: 
 }
 
 /** Arc-length fraction of the point on `points` nearest to `p`. */
+/** `v`, held within ±`limit` (never past 0 when the limit is). */
+function clampTo(v: number, limit: number): number {
+  return Math.max(-Math.max(0, limit), Math.min(Math.max(0, limit), v));
+}
+
+/**
+ * Half the chip a label draws in, 2 px in: its lines at the import's font (the
+ * narrower of the line-width estimate and the 0.6 em the renderer's chip uses),
+ * its padding, its height at the text block's line height.
+ */
+function chipHalfSize(text: string): { x: number; y: number } {
+  const lines = wrapLabelLines(text, IMPORT_WRAP_WIDTH, IMPORT_EDGE_FONT);
+  const widest = Math.max(...lines.map((l) => Math.min(textWidth(l, IMPORT_EDGE_FONT), estimateLabelWidth(l, IMPORT_EDGE_FONT))));
+  const height = lines.length === 1 ? IMPORT_EDGE_FONT : lines.length * IMPORT_EDGE_FONT * IMPORT_LINE_HEIGHT;
+  return { x: widest / 2 + IMPORT_EDGE_PAD - 2, y: height / 2 + IMPORT_EDGE_PAD - 2 };
+}
+
 /** The point `t` of the way along a polyline, by length (LabelRenderer's alongPolyline). */
 function pointAlong(points: ReadonlyArray<{ x: number; y: number }>, t: number): { x: number; y: number } {
   let total = 0;
@@ -834,8 +856,16 @@ export function applyImportRoute(
     const curve = sampleBasis(points, 8);
     const position = fractionAlong(curve, route.label);
     const at = pointAlong(curve, position);
-    const offset = { x: route.label.x - at.x, y: route.label.y - at.y };
     const text = link.labels?.[0]?.text ?? (link.getMetadata('label') as string | undefined);
+    // …but ON its line, as Mermaid's labels are: where the curve passes outside
+    // the chip (a fan's outer edges bow away from the room dagre kept), the chip
+    // steps just far enough toward it to cover it. Its half-size here is the
+    // smaller of the estimates, so the drawn chip covers the curve too.
+    const chip = text ? chipHalfSize(text) : { x: 0, y: 0 };
+    const offset = {
+      x: clampTo(route.label.x - at.x, chip.x),
+      y: clampTo(route.label.y - at.y, chip.y),
+    };
     if (link.labels?.length) {
       // A named slot wins over a position (linkLabelPosition), so the slot goes.
       const [first, ...rest] = link.labels;

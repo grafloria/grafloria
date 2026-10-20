@@ -234,6 +234,21 @@ describe('imported Mermaid layout', () => {
     expect(valid.points[0].y).toBeCloseTo(offer.position.y);
   });
 
+  it("a stadium keeps room for its text at its final height (Mermaid's is taller than the text needs)", () => {
+    for (const measureText of [undefined, (text: string, font: { size: number }) => text.length * font.size * 0.62]) {
+      const d = importDiagramText('flowchart LR\n  A([QQQQ MMMM]) --> B([Done])', { measureText }).diagram;
+      for (const id of ['A', 'B']) {
+        const n = d.getNode(id)!;
+        const lines = n.getMetadata('labelMeasured') as string[];
+        expect(lines).toHaveLength(1);
+        // Its text room is its width less its two half-height ends.
+        const room = n.size.width - n.size.height;
+        const text = measureText ? measureText(lines[0], { size: 16 }) : importTextWidth(lines[0], 16);
+        expect({ id, holds: room >= text }).toEqual({ id, holds: true });
+      }
+    }
+  });
+
   it('taking a route back restores the label too: its slot, or no added label at all', () => {
     const flow = importDiagramText(LR).diagram;
     const labelled = flow.getLinks().find((l) => l.labels[0]?.text === 'convert')!;
