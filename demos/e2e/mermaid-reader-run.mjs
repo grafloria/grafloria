@@ -16,6 +16,9 @@
  *     under nodes, so such a label is clipped);
  *   - no node label cut with "…", clipped by its box, or shrunk to fit a box too narrow for a word;
  *   - edge-label text at a contrast of at least 4.5:1 against its box;
+ *   - every box and every edge label inside the figure, none cut by its edge;
+ *   - no line drawn OVER another edge's label (Mermaid paints every label
+ *     above every line; a line passing under a label's chip is hidden by it);
  *   - no edge end that hooks back: a line overshooting its arrowhead and
  *     curling into it turns more than 120° within its first or last 14 px;
  *   - text as big on screen as Mermaid's: the smallest text (its font size ×
@@ -232,6 +235,43 @@ for (const fence of corpus) {
         for (let i = 0; i < labelBoxes.length; i++)
           for (let j = i + 1; j < labelBoxes.length; j++)
             if (overlap(labelBoxes[i].b, labelBoxes[j].b) > 4) problems.push(`labels overlap: "${labelBoxes[i].text}" / "${labelBoxes[j].text}"`);
+
+        // Nothing cut by the figure's own edge: a label hanging past every box
+        // was sliced by the fit ("deliver all active orders" → "ver all active orders").
+        const frame = box(host);
+        const outside = (b) => b.x < frame.x - 1 || b.y < frame.y - 1 || b.x + b.w > frame.x + frame.w + 1 || b.y + b.h > frame.y + frame.h + 1;
+        for (const l of labelBoxes) if (outside(l.b)) problems.push(`label cut by the frame: "${l.text}"`);
+        for (const g of nodeGroups) if (outside(box(g.querySelector('.diagram-node') ?? g))) problems.push(`box cut by the frame: "${g.textContent.trim()}"`);
+
+        // No line drawn over another edge's label: sampled every ~3 px on screen,
+        // a run of samples inside another label's chip (2 px in) is a crossing —
+        // and it shows only when the line paints AFTER the label (SVG paints in
+        // document order); a line under the chip is hidden, as in Mermaid.
+        const chips = labelGroups.map((g) => ({ el: g, link: g.closest('g.link-group')?.getAttribute('data-link-id'), text: g.textContent.trim(), b: box(g.querySelector('rect.link-label-bg') ?? g) }));
+        for (const g of linksWithPath) {
+          const id = g.getAttribute('data-link-id');
+          const path = g.querySelector('path.diagram-link');
+          const m = path.getScreenCTM();
+          const length = path.getTotalLength();
+          if (!m || !length) continue;
+          const step = 3 / Math.hypot(m.a, m.b);
+          for (const chip of chips) {
+            if (chip.link === id) continue;
+            if (!(chip.el.compareDocumentPosition(path) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+            let run = 0;
+            for (let at = 0; at <= length; at += step) {
+              const q = path.getPointAtLength(at);
+              const x = m.a * q.x + m.c * q.y + m.e;
+              const y = m.b * q.x + m.d * q.y + m.f;
+              const inside = x > chip.b.x + 2 && x < chip.b.x + chip.b.w - 2 && y > chip.b.y + 2 && y < chip.b.y + chip.b.h - 2;
+              run = inside ? run + 1 : 0;
+              if (run >= 3) {
+                problems.push(`a line is drawn over the label "${chip.text}"`);
+                break;
+              }
+            }
+          }
+        }
 
         // Edge-label contrast (WCAG), from the painted colours.
         const lum = (c) => {
