@@ -43,24 +43,42 @@ describe('labelsOverLines', () => {
 });
 
 describe('the renderer paints an import\'s labels over its lines — without a canvas too', () => {
-  it('a server render of imported routes (no measured flag) orders a crossing line first', async () => {
-    const { importDiagramText, runDeterministic } = await import('@grafloria/engine');
+  // A crossing that is certain: B's line runs straight through A's label, and
+  // A comes first in the model. An import (its routes) paints B first; a native
+  // diagram paints as written. A server's fresh model has no measured flag.
+  async function serverOrder(imported: boolean): Promise<string[]> {
+    const { DiagramModel, NodeModel, PortModel, LinkModel: Link } = await import('@grafloria/engine');
     const { renderToStaticSVG } = await import('../ssr/render-to-static');
-    const order = runDeterministic(() => {
-      const d = importDiagramText(`flowchart LR
-        Offer -->|Valid Offer| Valid[Valid offer]
-        Offer -->|Alternative Offer| Alternative[Alternative offer]
-        Offer -->|Revision| Revision
-        Offer -->|Rejected Offer| Rejected[Rejected offer]
-        Offer -->|Cancel RFQ| Cancelled[Cancelled RFQ]
-        Offer -->|Regretted To Offer| Regretted[Regretted offer]`).diagram;
-      expect(d.getMetadata('measuredText')).toBeUndefined(); // a server: nothing measured
-      const svg = renderToStaticSVG({ nodes: d.getNodes() as never, edges: d.getLinks() as never, width: 900, height: 600, fitView: true, lod: 'document' }).svg;
-      const ids = [...svg.matchAll(/class="link-group[^"]*"[^>]*data-link-id="([^"]+)"|data-link-id="([^"]+)"[^>]*class="link-group/g)].map((m) => m[1] ?? m[2]);
-      return { ids, model: d.getLinks().map((l) => l.id) };
-    });
-    expect(new Set(order.ids)).toEqual(new Set(order.model));
-    // A fan crosses its neighbours' labels: some line was moved before a label it crosses.
-    expect(order.ids).not.toEqual(order.model);
+    const d = new DiagramModel();
+    const box = (id: string, x: number, y: number) => {
+      const n = new NodeModel({ id, type: 'rect', position: { x, y }, size: { width: 60, height: 40 } });
+      n.addPort(new PortModel({ id: `${id}-p`, type: 'bi', side: 'right' }));
+      d.addNode(n);
+    };
+    box('a1', 0, 100); box('a2', 400, 100); box('b1', 230, -100); box('b2', 230, 300);
+    const link = (id: string, from: string, to: string, pts: Array<{ x: number; y: number }>, label?: string) => {
+      const l = new Link(`${from}-p`, `${to}-p`);
+      (l as unknown as { id: string }).id = id;
+      l.setPoints(pts);
+      l.setMetadata('hasManualWaypoints', true);
+      if (imported) l.setMetadata('importRoute', true);
+      if (label) l.addLabel({ text: label, position: 0.5 });
+      d.addLink(l);
+    };
+    link('A', 'a1', 'a2', [{ x: 60, y: 120 }, { x: 200, y: 120 }, { x: 400, y: 120 }], 'a label on A');
+    // A's label sits mid-way along its drawn line, at x ≈ 260; B runs down through it.
+    link('B', 'b1', 'b2', [{ x: 260, y: -60 }, { x: 260, y: 120 }, { x: 260, y: 300 }]);
+    const { LIGHT_THEME } = await import('../themes');
+    // A theme, as a server passes one: a label without one draws no chip.
+    const svg = renderToStaticSVG({ nodes: d.getNodes() as never, edges: d.getLinks() as never, theme: LIGHT_THEME, width: 900, height: 700, fitView: true, lod: 'document' }).svg;
+    return [...svg.matchAll(/class="link-group[^"]*"[^>]*data-link-id="([^"]+)"|data-link-id="([^"]+)"[^>]*class="link-group/g)].map((m) => m[1] ?? m[2]);
+  }
+
+  it("an import's crossing line paints before the label it crosses", async () => {
+    expect(await serverOrder(true)).toEqual(['B', 'A']);
+  });
+
+  it('a native diagram paints as written', async () => {
+    expect(await serverOrder(false)).toEqual(['A', 'B']);
   });
 });

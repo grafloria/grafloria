@@ -17,6 +17,8 @@
  *   - no node label cut with "…", clipped by its box, or shrunk to fit a box too narrow for a word;
  *   - edge-label text at a contrast of at least 4.5:1 against its box;
  *   - every box and every edge label inside the figure, none cut by its edge;
+ *   - every edge label ON its own line: its chip within 4 drawing units of it
+ *     (Mermaid's labels sit on their curves; a fan's outer labels drifted off);
  *   - no line drawn OVER another edge's label (Mermaid paints every label
  *     above every line; a line passing under a label's chip is hidden by it);
  *   - no edge end that hooks back: a line overshooting its arrowhead and
@@ -311,6 +313,28 @@ for (const fence of corpus) {
               }
             }
           }
+        }
+
+        // Every edge label on its own line: the chip within 4 drawing units of it.
+        for (const g of linksWithPath) {
+          const lab = g.querySelector('g.link-label-group');
+          if (!lab || !lab.textContent.trim()) continue;
+          const chipBox = box(lab.querySelector('rect.link-label-bg') ?? lab);
+          const path = g.querySelector('path.diagram-link');
+          const m = path.getScreenCTM();
+          const length = path.getTotalLength();
+          if (!m || !length) continue;
+          const scale = Math.hypot(m.a, m.b);
+          let nearest = Infinity;
+          for (let at = 0; at <= length; at += Math.max(1, length / 300)) {
+            const q = path.getPointAtLength(at);
+            const x = m.a * q.x + m.c * q.y + m.e;
+            const y = m.b * q.x + m.d * q.y + m.f;
+            const dx = Math.max(chipBox.x - x, 0, x - (chipBox.x + chipBox.w));
+            const dy = Math.max(chipBox.y - y, 0, y - (chipBox.y + chipBox.h));
+            nearest = Math.min(nearest, Math.hypot(dx, dy));
+          }
+          if (nearest / scale > 4) problems.push(`label "${lab.textContent.trim()}" ${Math.round(nearest / scale)} units off its line`);
         }
 
         // Edge-label contrast (WCAG), from the painted colours.

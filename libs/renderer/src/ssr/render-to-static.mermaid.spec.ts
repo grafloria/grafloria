@@ -79,3 +79,92 @@ describe('a Mermaid import rendered on a server (no canvas)', () => {
     expect(Array.from(label.querySelectorAll('tspan')).map((t) => t.textContent)).toEqual(lines);
   });
 });
+
+/** Each node label's DRAWN lines (its tspans, or its one line) and its clip width. */
+function drawnLines(svg: string): Array<{ lines: string[]; clip: number }> {
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  return Array.from(doc.querySelectorAll('text.diagram-label')).map((t) => {
+    const id = t.getAttribute('clip-path')?.match(/#([^)]+)/)?.[1];
+    const rect = id ? doc.getElementById(id)?.querySelector('rect') : null;
+    const spans = Array.from(t.querySelectorAll('tspan')).map((s) => s.textContent ?? '');
+    return { lines: spans.length ? spans : [(t.textContent ?? '').trim()], clip: Number(rect?.getAttribute('width') ?? Infinity) };
+  });
+}
+
+describe('a server render: wrapped labels heavy in capitals and wide letters', () => {
+  // The box was sized line by line for any UI face; the renderer re-wrapped it by
+  // the narrower 0.6 em estimate, packed one word more per line than the box
+  // held, and the clip cut both ends: "PAYMENT RECEIVED AND VERIFIED" drew as
+  // "AYMENT RECEIVED ANC" (Atloria's round-three probe).
+  it.each([
+    ['flowchart', 'flowchart LR\n  A[WAITING FOR WAREHOUSE MANAGER] --> B[REQUEST FOR QUOTATION RFQ SENT]\n  B --> C[MMMMMMMM WWWWWWWW]\n  C --> D([QQQQ MMMM])\n  D --> E[Maximum Wait Window Was Missed]'],
+    ['state diagram', 'stateDiagram-v2\n  state "ORDER CONFIRMED BY CUSTOMER" as Confirmed\n  state "PAYMENT RECEIVED AND VERIFIED" as Paid\n  [*] --> Confirmed\n  Confirmed --> Paid\n  Paid --> [*]'],
+  ])('%s: every drawn line fits its box as the widest face draws it', (_name, src) => {
+    const d = importDiagramText(src).diagram;
+    // Every box the import sized keeps its lines, measured or not.
+    for (const n of d.getNodes()) if (String(n.getLabel?.() ?? '').trim() && !String(n.type).startsWith('state:start')) {
+      expect({ id: n.id, lines: Array.isArray(n.getMetadata('labelMeasured')) }).toEqual({ id: n.id, lines: true });
+    }
+    const labels = runDeterministic(() => drawnLines(serverSvg(d)));
+    expect(labels.length).toBeGreaterThan(0);
+    for (const { lines, clip } of labels) {
+      for (const line of lines) {
+        expect(line).not.toContain('…');
+        const needs = glyphTextWidth(line, { size: 16 }) * WIDEST_FACE;
+        expect({ line, holds: clip >= needs }).toEqual({ line, holds: true });
+      }
+    }
+  });
+});
+
+describe("a server render: an imported label rides its own curve", () => {
+  // Labels were placed along the drawn basis curve but drawn along the points
+  // between its bends: a fan's outer labels sat beside their curves (13 px).
+  it('every label chip of a fan touches its own drawn line', () => {
+    const svg = runDeterministic(() =>
+      serverSvg(
+        importDiagramText(`flowchart LR
+          Offer -->|Valid Offer| Valid[Valid offer]
+          Offer -->|Alternative Offer| Alternative[Alternative offer]
+          Offer -->|Revision| Revision
+          Offer -->|Rejected Offer| Rejected[Rejected offer]
+          Offer -->|Cancel RFQ| Cancelled[Cancelled RFQ]
+          Offer -->|Regretted To Offer| Regretted[Regretted offer]`).diagram
+      )
+    );
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    const groups = Array.from(doc.querySelectorAll('g.link-group')).filter((g) => g.querySelector('g.link-label-group'));
+    expect(groups.length).toBe(6);
+    for (const g of groups) {
+      const line = drawnPath(g.querySelector('path.diagram-link')!.getAttribute('d') ?? '');
+      const lab = g.querySelector('g.link-label-group')!;
+      const [tx, ty] = (lab.getAttribute('transform') ?? '').match(/-?[\d.]+/g)!.map(Number);
+      const r = lab.querySelector('rect')!;
+      const box = { x: tx + Number(r.getAttribute('x')), y: ty + Number(r.getAttribute('y')), w: Number(r.getAttribute('width')), h: Number(r.getAttribute('height')) };
+      const gap = Math.min(...line.map((p) => Math.hypot(Math.max(box.x - p.x, 0, p.x - box.x - box.w), Math.max(box.y - p.y, 0, p.y - box.y - box.h))));
+      expect({ label: lab.textContent, onItsLine: gap <= 4 }).toEqual({ label: lab.textContent, onItsLine: true });
+    }
+  });
+});
+
+/** A drawn `d` (M, L, C) as points, each cubic sampled 16 times. */
+function drawnPath(d: string): Array<{ x: number; y: number }> {
+  const out: Array<{ x: number; y: number }> = [];
+  for (const [, cmd, args] of d.matchAll(/([MLC])([^MLC]*)/g)) {
+    const n = (args.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+    if (cmd !== 'C') {
+      for (let i = 0; i + 1 < n.length; i += 2) out.push({ x: n[i], y: n[i + 1] });
+      continue;
+    }
+    for (let i = 0; i + 5 < n.length; i += 6) {
+      const p = out[out.length - 1];
+      const [ax, ay, bx, by, x, y] = n.slice(i, i + 6);
+      for (let s = 1; s <= 16; s++) {
+        const t = s / 16;
+        const u = 1 - t;
+        out.push({ x: u * u * u * p.x + 3 * u * u * t * ax + 3 * u * t * t * bx + t * t * t * x, y: u * u * u * p.y + 3 * u * u * t * ay + 3 * u * t * t * by + t * t * t * y });
+      }
+    }
+  }
+  return out;
+}

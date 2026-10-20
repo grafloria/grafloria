@@ -58,3 +58,10 @@ describe('DiagramInstance.getContentBounds', () => {
     container.remove();
   });
 });
+
+describe('contentBounds is public API', () => {
+  it('is exported from the package root, for a server sizing renderToStaticSVG', async () => {
+    const root = await import('../index');
+    expect(root.contentBounds).toBe(contentBounds);
+  });
+});

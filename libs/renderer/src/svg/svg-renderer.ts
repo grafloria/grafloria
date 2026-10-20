@@ -8054,6 +8054,11 @@ export class SVGRenderer implements IRenderer {
               const chipsOnly =
                 !!link.labels && link.labels.length > 0 && link.labels.every((l) => l.slot === 'start' || l.slot === 'end');
 
+              // A line drawn as a basis curve (an import's: LinkStyle.spline)
+              // passes NEAR its points, not through them; its labels were placed
+              // along that curve, so they ride it — not the points between.
+              const labelPath = link.style?.spline === 'basis' && points.length > 2 ? sampleBasis(points, 8) : points;
+
               // Render labels from link.labels array
               if (link.labels && link.labels.length > 0) {
                 link.labels.forEach(label => {
@@ -8070,7 +8075,7 @@ export class SVGRenderer implements IRenderer {
                     offset,
                     theme: this.theme,
                     cssMode: this.config.useCSSMode,
-                    path: points,
+                    path: labelPath,
                   });
                   if (labelVNode) {
                     labelVNodes.push(labelVNode);

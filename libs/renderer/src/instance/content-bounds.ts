@@ -1,11 +1,30 @@
 // World bounds of what the canvas draws — the one definition `fitView()` (live)
 // and `renderToStaticSVG({ fitView: true })` (server) both fit to. DOM-free.
 
-import { linkLabelPosition, type DiagramModel, type NodeModel } from '@grafloria/engine';
+import { linkLabelPosition, sampleBasis, type DiagramModel, type NodeModel } from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
 import { groupFrameRects } from '../svg/group-frame-bounds';
 import { LabelRenderer } from '../svg/LabelRenderer';
 import type { Theme } from '../types/theme.types';
+
+/** The point `t` of the way along a polyline, by length (as LabelRenderer places a label). */
+function pointAlong(pts: ReadonlyArray<{ x: number; y: number }>, t: number): { x: number; y: number } | null {
+  if (pts.length < 2) return null;
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) total += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+  let remaining = total * Math.max(0, Math.min(1, t));
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > 0 && (remaining <= len || i === pts.length - 2)) {
+      const u = Math.min(1, remaining / len);
+      return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+    }
+    remaining -= len;
+  }
+  return { ...pts[pts.length - 1] };
+}
 
 /** Label boxes are the renderer's own (LabelRenderer.labelBox); it keeps no state. */
 const LABELS = new LabelRenderer();
@@ -49,8 +68,10 @@ export function contentBounds(model: DiagramModel, theme?: Theme): Rectangle | n
   // alone sliced it at the viewport edge ("deliver all active orders" drew as
   // "ver all active orders"). Each chip where its line puts it.
   for (const link of model.getLinks()) {
+    // A basis-curve line's labels ride the curve (as the renderer places them).
+    const curve = link.style?.spline === 'basis' && (link.points?.length ?? 0) > 2 ? sampleBasis(link.points, 8) : null;
     for (const label of link.labels ?? []) {
-      const at = link.getPointAtPosition?.(linkLabelPosition(label));
+      const at = curve ? pointAlong(curve, linkLabelPosition(label)) : link.getPointAtPosition?.(linkLabelPosition(label));
       if (!at) continue;
       const { width, height } = LABELS.labelBox(label, link, theme);
       const x = at.x + (label.offset?.x ?? 0);
