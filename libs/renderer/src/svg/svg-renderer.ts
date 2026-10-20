@@ -187,6 +187,8 @@ import {
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock, wrapText } from './text-block';
 import { labelMeasureFor } from './text-measure';
+import { basisSegments, sampleBasis, MEASURED_TEXT_FLAG } from '@grafloria/engine';
+import { labelsOverLines } from './label-paint-order';
 
 /** A 'text' note: words on the canvas with no box of their own. */
 function isTextNote(node: NodeModel): boolean {
@@ -3128,7 +3130,12 @@ export class SVGRenderer implements IRenderer {
     // with the geometry final and before any line is styled.
     this.computeFrameCrossings(sortedLinks);
 
-    const children = sortedLinks.map(link => this.renderLink(link, lod));
+    const rendered = sortedLinks.map(link => this.renderLink(link, lod));
+    // A measured Mermaid import paints its labels over the lines, as Mermaid
+    // does: a line that crosses another link's label paints first (see
+    // label-paint-order.ts). Any other diagram paints in its own order.
+    const children =
+      sortedLinks[0]?.diagram?.getMetadata(MEASURED_TEXT_FLAG) === true ? labelsOverLines(sortedLinks, rendered) : rendered;
     this.frameOverlay = [];
     if (this.frameCrossings.size > 0) {
       for (const vnode of children) {
@@ -10285,45 +10292,14 @@ export class SVGRenderer implements IRenderer {
     style: Partial<LinkStyle> | undefined,
     stepsPerSegment = 8
   ): Array<{ x: number; y: number }> {
-    return style?.spline === 'basis' ? this.sampleBasis(points, stepsPerSegment) : this.sampleCatmullRom(points, stepsPerSegment);
-  }
-
-  /**
-   * Mermaid's curve (d3's curveBasis) as segments: a uniform cubic B-spline that
-   * starts and ends ON the route's end points, straight along its first and last
-   * legs, and between them stays inside the polygon of its points — so a short
-   * leg beside a long one can never throw it past an end into a loop, as a
-   * curve through every point (Catmull-Rom) does.
-   */
-  private basisSegments(points: Array<{ x: number; y: number }>): Array<{
-    to: { x: number; y: number };
-    c1?: { x: number; y: number };
-    c2?: { x: number; y: number };
-  }> {
-    const n = points.length;
-    if (n < 3) return points.slice(1).map((to) => ({ to }));
-    const mix = (a: { x: number; y: number }, wa: number, b: { x: number; y: number }, wb: number, c?: { x: number; y: number }, wc = 0) => ({
-      x: (a.x * wa + b.x * wb + (c ? c.x * wc : 0)) / (wa + wb + wc),
-      y: (a.y * wa + b.y * wb + (c ? c.y * wc : 0)) / (wa + wb + wc),
-    });
-    const out: Array<{ to: { x: number; y: number }; c1?: { x: number; y: number }; c2?: { x: number; y: number } }> = [
-      { to: mix(points[0], 5, points[1], 1) },
-    ];
-    for (let i = 2; i <= n; i++) {
-      const a = points[i - 2];
-      const b = points[i - 1];
-      const p = points[i] ?? b;
-      out.push({ c1: mix(a, 2, b, 1), c2: mix(a, 1, b, 2), to: mix(a, 1, b, 4, p, 1) });
-    }
-    out.push({ to: points[n - 1] });
-    return out;
+    return style?.spline === 'basis' ? sampleBasis(points, stepsPerSegment) : this.sampleCatmullRom(points, stepsPerSegment);
   }
 
   private basisPath(points: Array<{ x: number; y: number }>): string {
     if (points.length === 0) return '';
     const fmt = (v: number) => +v.toFixed(2);
     let d = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
-    for (const seg of this.basisSegments(points)) {
+    for (const seg of basisSegments(points)) {
       d += seg.c1 && seg.c2
         ? ` C ${fmt(seg.c1.x)} ${fmt(seg.c1.y)}, ${fmt(seg.c2.x)} ${fmt(seg.c2.y)}, ${fmt(seg.to.x)} ${fmt(seg.to.y)}`
         : ` L ${fmt(seg.to.x)} ${fmt(seg.to.y)}`;
@@ -10331,26 +10307,7 @@ export class SVGRenderer implements IRenderer {
     return d;
   }
 
-  private sampleBasis(points: Array<{ x: number; y: number }>, stepsPerSegment = 8): Array<{ x: number; y: number }> {
-    if (points.length < 3) return points;
-    const out: Array<{ x: number; y: number }> = [points[0]];
-    for (const seg of this.basisSegments(points)) {
-      const from = out[out.length - 1];
-      if (!seg.c1 || !seg.c2) {
-        out.push(seg.to);
-        continue;
-      }
-      for (let s = 1; s <= stepsPerSegment; s++) {
-        const t = s / stepsPerSegment;
-        const mt = 1 - t;
-        out.push({
-          x: mt * mt * mt * from.x + 3 * mt * mt * t * seg.c1.x + 3 * mt * t * t * seg.c2.x + t * t * t * seg.to.x,
-          y: mt * mt * mt * from.y + 3 * mt * mt * t * seg.c1.y + 3 * mt * t * t * seg.c2.y + t * t * t * seg.to.y,
-        });
-      }
-    }
-    return out;
-  }
+
 
   /**
    * Smooth cubic spline (Catmull-Rom) through every route point — used so a
