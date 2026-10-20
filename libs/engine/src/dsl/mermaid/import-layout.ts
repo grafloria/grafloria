@@ -66,11 +66,11 @@ export const IMPORT_WRAP_WIDTH = 200;
  */
 export const MEASURED_TEXT_FLAG = 'measuredText';
 /**
- * Node metadata: this box was sized to text MEASURED in a page. A renderer that
- * cannot measure (a server) wraps its label by {@link glyphTextWidth}, which
- * tracks real faces closely, instead of the 0.6 em estimate — which runs ~20%
- * wide on lowercase text and would wrap a measured one-line box onto two lines
- * and cut it short ("Awaiting…").
+ * Node metadata: this box was sized to text MEASURED in a page — its value is the
+ * lines the box was sized for (a saved document keeps them). A renderer that
+ * cannot measure (a server) draws those lines as they are: re-wrapped by an
+ * estimate, a measured one-line box went onto two lines and was cut short
+ * ("Awaiting…"), or a line packed one word more than its box holds.
  */
 export const MEASURED_LABEL_FLAG = 'labelMeasured';
 
@@ -310,8 +310,8 @@ export function fitNodeToLabel(node: NodeModel): void {
   const w = Math.ceil(Math.max(mermaid.w, holds.w));
   const h = Math.ceil(Math.max(mermaid.h, holds.h));
   if (w !== node.size.width || h !== node.size.height) node.setSize(w, h, node.size.depth ?? 0);
-  // Sized to measured text: a renderer that cannot measure wraps it by glyphs.
-  if (measureNow) node.setMetadata(MEASURED_LABEL_FLAG, true);
+  // Sized to measured text: a renderer that cannot measure draws these lines.
+  if (measureNow) node.setMetadata(MEASURED_LABEL_FLAG, lines);
   else if (node.getMetadata(MEASURED_LABEL_FLAG) !== undefined) node.deleteMetadata(MEASURED_LABEL_FLAG);
 }
 
