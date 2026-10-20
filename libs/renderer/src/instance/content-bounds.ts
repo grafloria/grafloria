@@ -5,6 +5,7 @@ import { linkLabelPosition, type DiagramModel, type NodeModel } from '@grafloria
 import type { Rectangle } from '../types/geometry.types';
 import { groupFrameRects } from '../svg/group-frame-bounds';
 import { LabelRenderer } from '../svg/LabelRenderer';
+import type { Theme } from '../types/theme.types';
 
 /** Label boxes are the renderer's own (LabelRenderer.labelBox); it keeps no state. */
 const LABELS = new LabelRenderer();
@@ -14,7 +15,7 @@ const LABELS = new LabelRenderer();
  * link waypoint and edge label, every group frame with its caption — or null
  * when there is nothing to fit.
  */
-export function contentBounds(model: DiagramModel): Rectangle | null {
+export function contentBounds(model: DiagramModel, theme?: Theme): Rectangle | null {
   const nodes = model.getNodes().filter((n: NodeModel) => n.state?.visible !== false);
   if (nodes.length === 0 && groupFrameRects(model).length === 0) return null;
 
@@ -51,7 +52,7 @@ export function contentBounds(model: DiagramModel): Rectangle | null {
     for (const label of link.labels ?? []) {
       const at = link.getPointAtPosition?.(linkLabelPosition(label));
       if (!at) continue;
-      const { width, height } = LABELS.labelBox(label, link);
+      const { width, height } = LABELS.labelBox(label, link, theme);
       const x = at.x + (label.offset?.x ?? 0);
       const y = at.y + (label.offset?.y ?? 0);
       left = Math.min(left, x - width / 2);

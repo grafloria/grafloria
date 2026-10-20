@@ -38,3 +38,23 @@ describe('contentBounds', () => {
     expect(contentBounds(model)).toEqual({ x: 0, y: 0, width: 60, height: 240 });
   });
 });
+
+describe('DiagramInstance.getContentBounds', () => {
+  it('is what fitView fits — boxes and the label hanging past them', async () => {
+    const { createDiagram } = await import('./create-diagram');
+    const container = document.createElement('div');
+    container.getBoundingClientRect = () => ({ left: 0, top: 0, x: 0, y: 0, width: 400, height: 300, right: 400, bottom: 300, toJSON: () => ({}) }) as DOMRect;
+    document.body.appendChild(container);
+    const instance = createDiagram(container, {
+      nodes: [
+        { id: 'a', position: { x: 0, y: 0 }, size: { width: 60, height: 40 } },
+        { id: 'b', position: { x: 0, y: 200 }, size: { width: 60, height: 40 } },
+      ],
+    });
+    const model = instance.getModel();
+    expect(instance.getContentBounds()).toEqual(contentBounds(model));
+    expect(instance.getContentBounds()).toMatchObject({ x: 0, y: 0, width: 60, height: 240 });
+    instance.dispose();
+    container.remove();
+  });
+});

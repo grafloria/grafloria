@@ -447,6 +447,15 @@ export interface DiagramInstance {
   /** Frame all content. */
   fitView(padding?: number): void;
 
+  /**
+   * World bounds of everything the canvas draws — boxes, lines, edge labels,
+   * group frames: what `fitView` fits. A host sizing a FIGURE (a diagram in a
+   * page, fitted to its column) takes its height from this aspect ratio, after
+   * `loadText` — a Mermaid import measures its words in the page, so the model
+   * parsed on its own has another shape. Null when there is nothing to draw.
+   */
+  getContentBounds(): Rectangle | null;
+
   /** Queue a repaint (coalesced into one frame). */
   render(): void;
   /** Repaint synchronously — use when you must measure right after a change. */
@@ -1833,7 +1842,7 @@ export function createDiagram(
   }
 
   function fitView(padding = 40): void {
-    const bounds = contentBounds(model);
+    const bounds = contentBounds(model, renderer.getTheme());
     // maxZoom 1: fitting means "show me everything", never "magnify a small
     // graph until it fills the wall". Zooming out to fit is still unbounded
     // (down to the controller's minZoom). Hosts wanting magnification can call
@@ -1949,6 +1958,7 @@ export function createDiagram(
     animations: renderer.getAnimationService(),
 
     fitView,
+    getContentBounds: () => contentBounds(model, renderer.getTheme()),
 
     render: () => scheduler.schedule(),
     renderNow: () => {

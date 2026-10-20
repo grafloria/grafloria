@@ -3679,7 +3679,7 @@ export class SVGRenderer implements IRenderer {
       const position = linkLabelPosition(label);
       const anchor = link.getPointAtPosition(position) ?? points[0];
       const normal = link.getNormalAt(position) ?? { x: 0, y: -1 };
-      const box = this.labelRenderer.labelBox(label, link);
+      const box = this.labelRenderer.labelBox(label, link, this.theme);
       return {
         id: label.id,
         anchor,

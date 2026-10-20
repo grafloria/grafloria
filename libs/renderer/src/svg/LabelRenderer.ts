@@ -259,7 +259,7 @@ export class LabelRenderer {
    * against; HTML/template labels declare their own, and text labels are
    * measured with the same estimator the background rect already uses.
    */
-  labelBox(label: LinkLabel, link?: Pick<LinkModel, 'diagram'>): { width: number; height: number } {
+  labelBox(label: LinkLabel, link?: Pick<LinkModel, 'diagram'>, theme?: Theme): { width: number; height: number } {
     if (label.html !== undefined || label.template) {
       return {
         width: label.width ?? DEFAULT_HTML_LABEL_WIDTH,
@@ -268,7 +268,8 @@ export class LabelRenderer {
     }
     const fontSize = label.style?.fontSize ?? this.defaultFontSize;
     const padding = label.style?.padding ?? this.defaultPadding;
-    const text = this.textBlockSize(label, fontSize, link ? this.measureFor(label, link, fontSize) : undefined);
+    // The theme's face, as renderLabel draws it: a measured label wraps by it.
+    const text = this.textBlockSize(label, fontSize, link ? this.measureFor(label, link, fontSize, theme) : undefined);
     return { width: text.width + padding * 2, height: text.height + padding * 2 };
   }
 
