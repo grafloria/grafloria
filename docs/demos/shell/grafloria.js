@@ -99456,10 +99456,23 @@ var THEME_VARS = {
   "link.highlighted.stroke": { cssVar: "--grafloria-link-highlighted-stroke", read: (t) => t.colors.link.highlighted },
   "link.highlighted.strokeWidth": { cssVar: "--grafloria-link-highlighted-stroke-width", read: () => 3, unit: "px" },
   "link.hovered.stroke": { cssVar: "--grafloria-link-hovered-stroke", read: (t) => t.colors.link.hovered },
+  // ---- Link labels ------------------------------------------------------
+  // The text on a line and the chip it sits on. Written into the SVG as
+  // `var(…)` (see LabelRenderer), so a server-rendered picture takes these from
+  // whichever theme block the page carries. The chip is the canvas surface, the
+  // text the theme's ink — the pair every theme already keeps at AA contrast.
+  "linkLabel.color": { cssVar: "--grafloria-link-label-color", read: (t) => t.colors.text.primary },
+  "linkLabel.background": { cssVar: "--grafloria-link-label-background", read: (t) => t.colors.background.surface },
   // ---- Labels -----------------------------------------------------------
   "label.fontFamily": { cssVar: "--grafloria-label-font-family", read: (t) => t.typography.fontFamily.default },
   "label.fontSize": { cssVar: "--grafloria-label-font-size", read: (t) => t.typography.fontSize.md, unit: "px" },
   "label.color": { cssVar: "--grafloria-label-color", read: (t) => t.colors.text.primary },
+  // The quieter second line of a node (its subtitle) and a zone's caption.
+  "label.muted": { cssVar: "--grafloria-label-muted", read: (t) => t.colors.text.secondary },
+  // ---- Group frames -----------------------------------------------------
+  // A subgraph / group frame's wash and title band. Its border is the node
+  // border (`node.stroke`) and its caption the label ink (`label.color`).
+  "group.fill": { cssVar: "--grafloria-group-fill", read: (t) => t.colors.background.surface },
   // ---- Ports ------------------------------------------------------------
   "port.fill": { cssVar: "--grafloria-port-fill", read: (t) => t.colors.background.surface },
   "port.strokeWidth": { cssVar: "--grafloria-port-stroke-width", read: (t) => t.ports.strokeWidth, unit: "px" },
@@ -99573,6 +99586,13 @@ var BASE_STYLE_RULES = [
       stroke: themeVar("node.stroke"),
       "stroke-width": themeVar("node.strokeWidth")
     }
+  },
+  // A solid glyph in the diagram's INK (`shape.ink`): a state diagram's start dot,
+  // its bullseye, a fork/join bar. The label colour is the theme's ink, and every
+  // theme keeps it readable on its own canvas.
+  {
+    selector: ".diagram-node.node-ink",
+    decls: { fill: themeVar("label.color"), stroke: themeVar("label.color") }
   },
   {
     selector: ".diagram-node.error",
@@ -100618,8 +100638,13 @@ function shapeMetadataStyle(node) {
     opacity: shape["opacity"]
   });
 }
-function shapeKindStyle(node) {
+function shapeKindStyle(node, theme, options) {
   const shape = node.getMetadata?.("shape");
+  if (shape?.ink) {
+    if (!options.includeThemeBase) return { shadow: false };
+    const ink = theme.colors.text.primary;
+    return { fill: ink, stroke: ink, shadow: false };
+  }
   if (shape?.type !== "text") return {};
   return { fill: "transparent", stroke: "none", strokeWidth: 0, shadow: false };
 }
@@ -100631,7 +100656,7 @@ function belowStateNodeStyle(node, theme, options) {
   return {
     ...options.includeThemeBase ? nodeThemeBase(theme) : void 0,
     ...nodeTypeDefaults(theme, node.type),
-    ...shapeKindStyle(node),
+    ...shapeKindStyle(node, theme, options),
     ...resolveStyleClasses(node.style?.styleClass),
     // element-inline: the entity's own props, from BOTH places they can live.
     // The typed `node.style` wins over the legacy `metadata.shape` paints.
@@ -102610,7 +102635,10 @@ var ALL_LOD_FEATURES = [
   "link-detail",
   "gradients"
 ];
-function createDefaultLODConfig() {
+var SMALL_DIAGRAM_NODES = 200;
+function createDefaultLODConfig(options = {}) {
+  const small = Math.max(0, options.smallDiagramNodes ?? 0);
+  const floor = small > 0 ? { minNodes: small } : {};
   return {
     tiers: [
       {
@@ -102659,6 +102687,7 @@ function createDefaultLODConfig() {
         // afford it.
         name: "sketch",
         minZoom: 0.2,
+        ...floor,
         features: /* @__PURE__ */ new Set([
           "borders",
           // The shape of the graph IS the content at this zoom. Keep it.
@@ -102668,6 +102697,7 @@ function createDefaultLODConfig() {
       },
       {
         name: "low",
+        ...floor,
         // Floor tier: every zoom is >= -Infinity, so this always matches last. Below
         // 0.2 a node is under 24px wide and an edge is a hairline — the routing
         // detour around a node body is now genuinely sub-pixel, and this is where
@@ -102677,6 +102707,11 @@ function createDefaultLODConfig() {
         minZoom: Number.NEGATIVE_INFINITY
       }
     ]
+  };
+}
+function createDocumentLODConfig() {
+  return {
+    tiers: [{ name: "high", minZoom: Number.NEGATIVE_INFINITY, features: new Set(ALL_LOD_FEATURES) }]
   };
 }
 
@@ -110666,6 +110701,39 @@ function beginIncrementalCapture(diagram) {
   return new IncrementalCapture(diagram);
 }
 
+// libs/engine/src/models/import-route.ts
+function dropImportRoute(link, diagram) {
+  diagram.noteImportRoute(link.id, false);
+  if (link.getMetadata("importRoute") !== true) return;
+  link.setMetadata("importRoute", false);
+  link.setMetadata("hasManualWaypoints", false);
+  link.setMetadata("layoutAnchored", false);
+  link.setPoints([]);
+  const original = link.getMetadata("importOriginal");
+  for (const end of ["source", "target"]) {
+    const portId = original?.ports?.[end];
+    const node = diagram.getNode((end === "source" ? link.sourceNodeId : link.targetNodeId) ?? "");
+    const current = end === "source" ? link.sourcePortId : link.targetPortId;
+    if (!portId || !node?.getPort(portId) || current === portId) continue;
+    if (current) diagram.getPortById(current)?.removeConnection(link.id);
+    if (end === "source") link.setSourcePort(portId, node.id);
+    else link.setTargetPort(portId, node.id);
+    node.getPort(portId).addConnection(link.id, end);
+  }
+  if (original?.added) {
+    link.setLabels([]);
+  } else if (original?.labels && link.labels?.length) {
+    link.setLabels(
+      link.labels.map((label, i) => {
+        const was = original.labels?.[i];
+        if (!was) return label;
+        const { slot: _slot, ...rest } = label;
+        return { ...rest, ...was.slot ? { slot: was.slot } : {}, position: was.position ?? 0.5 };
+      })
+    );
+  }
+}
+
 // libs/engine/src/models/DiagramModel.ts
 var DEFAULT_PORT_SNAP_RADIUS = 24;
 var PORT_OFFSET_PAD = 64;
@@ -110676,6 +110744,8 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     this.name = "Untitled Diagram";
     this.nodes = /* @__PURE__ */ new Map();
     this.links = /* @__PURE__ */ new Map();
+    /** Links that hold an import's route (import-route.ts), so a move looks no further than these. */
+    this.importRouted = /* @__PURE__ */ new Set();
     this.groups = /* @__PURE__ */ new Map();
     // Phase 1.6c
     /** Freehand ink strokes. See StrokeModel for why these are not nodes. */
@@ -111026,9 +111096,11 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     node.on("change:rotation", updateSpatialIndex);
     node.on("change:scale", updateSpatialIndex);
     node.on("change:position", () => {
+      this.dropImportRoutes(node.id);
       this.emitOrQueue("node:moved", { nodeId: node.id, position: node.position });
     });
     node.on("change:size", () => {
+      this.dropImportRoutes(node.id);
       this.emitOrQueue("node:resized", { nodeId: node.id, size: node.size });
     });
     node.on("change", () => {
@@ -111039,10 +111111,37 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
         if (desc === node) continue;
         desc.markDirty("incremental");
         this.nodeSpatialIndex.update(desc);
+        this.dropImportRoutes(desc.id);
         this.emitOrQueue("node:moved", { nodeId: desc.id, position: desc.getWorldPosition() });
         this.emitOrQueue("node:changed", desc);
       }
     });
+  }
+  /**
+   * A ROUTE A MERMAID IMPORT LAID OUT belongs to the boxes as the import placed
+   * them (dsl/mermaid/import-layout.ts: its bends are the gaps the layout made,
+   * its label sits where the layout made room). Once either end moves or
+   * resizes, those bends are wrong, so the link goes back to being routed like
+   * any other — a user's own bends (`hasManualWaypoints` without `importRoute`)
+   * are never touched.
+   */
+  dropImportRoutes(nodeId) {
+    if (this.importRouted.size === 0) return;
+    const node = this.nodes.get(nodeId);
+    if (!node) return;
+    for (const port of node.getPorts()) {
+      for (const linkId of [...port.currentConnections]) {
+        if (!this.importRouted.has(linkId)) continue;
+        this.importRouted.delete(linkId);
+        const link = this.links.get(linkId);
+        if (link) dropImportRoute(link, this);
+      }
+    }
+  }
+  /** Called when a link gains (or loses) an import's route — import-layout.ts, import-route.ts. */
+  noteImportRoute(linkId, on = true) {
+    if (on && this.links.has(linkId)) this.importRouted.add(linkId);
+    else this.importRouted.delete(linkId);
   }
   /**
    * Remove node from diagram — AND every link attached to it.
@@ -111286,6 +111385,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     this.getPortById(link.sourcePortId)?.restoreConnection(link.id, "source");
     this.getPortById(link.targetPortId)?.restoreConnection(link.id, "target");
     this.links.set(link.id, link);
+    if (link.getMetadata("importRoute") === true) this.importRouted.add(link.id);
     this.trackChange("links", null, link);
     this.emitOrQueue("link:added", link);
     this.linkSpatialIndex.add(link);
@@ -111305,6 +111405,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
       this.getPortById(link.sourcePortId)?.removeConnection(link.id);
       this.getPortById(link.targetPortId)?.removeConnection(link.id);
       this.links.delete(linkId);
+      this.importRouted.delete(linkId);
       this.linkSpatialIndex.remove(linkId);
       this.trackChange("links", link, null);
       this.emitOrQueue("link:removed", link);
@@ -111354,6 +111455,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
       this.getPortById(link.targetPortId)?.removeConnection(link.id);
     }
     this.links.clear();
+    this.importRouted.clear();
     this.linkSpatialIndex.clear();
     this.emitOrQueue("links:cleared");
   }
@@ -112331,10 +112433,14 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    *
    * Driven by the declarative {@link LODConfig}. Picks the
    * tier whose `minZoom` the zoom crosses — tiers are pre-sorted highest-first,
-   * so the first match wins. With the default config this is exactly:
+   * so the first match wins. With the default config:
    *   zoom >= 1.0        -> 'high'
    *   0.5 <= zoom < 1.0  -> 'medium'
-   *   zoom <  0.5        -> 'low'
+   *   0.2 <= zoom < 0.5  -> 'sketch'
+   *   zoom <  0.2        -> 'low'
+   * A diagram skips the tiers whose `minNodes` it does not reach — with
+   * `createDefaultLODConfig({ smallDiagramNodes: 200 })`, one under 200 nodes
+   * never goes below 'medium'.
    *
    * (See {@link createDefaultLODConfig} for why the medium/low breakpoint is 0.5.)
    *
@@ -112343,11 +112449,16 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    */
   getLODLevel(zoom) {
     const tiers = this._lodTiersDesc;
+    const count2 = this.nodes.size;
+    let coarsestActive;
     for (const tier of tiers) {
+      if ((tier.minNodes ?? 0) > count2) continue;
       if (zoom >= tier.minZoom) {
         return tier.name;
       }
+      coarsestActive = tier;
     }
+    if (coarsestActive) return coarsestActive.name;
     return tiers.length > 0 ? tiers[tiers.length - 1].name : "low";
   }
   /**
@@ -112366,6 +112477,16 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
   // =========================================================================
   // LOD configuration API (wave2/rendering)
   // =========================================================================
+  /**
+   * The tiers this diagram may use at its CURRENT size, richest first — every
+   * tier whose `minNodes` (if any) the node count reaches. What a renderer's
+   * quality governor may step through: a small diagram's governor must not step
+   * down into a shedding tier its zoom could never select.
+   */
+  getActiveLODTiers() {
+    const count2 = this.nodes.size;
+    return this._lodTiersDesc.filter((tier) => (tier.minNodes ?? 0) <= count2);
+  }
   /** Get the current Level-of-Detail policy. */
   getLODConfig() {
     return this._lodConfig;
@@ -112876,6 +112997,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     }
     this.nodes.clear();
     this.links.clear();
+    this.importRouted.clear();
     this.groups.clear();
     this.strokes.clear();
     this.portIndex.clear();
@@ -131620,6 +131742,437 @@ function widestLine(lines, font, measure2) {
   return w;
 }
 
+// libs/engine/src/dsl/mermaid/import-layout.ts
+var dagreNs3 = __toESM(require_dagre(), 1);
+var dagre3 = dagreNs3.default ?? dagreNs3;
+var IMPORT_NODE_FONT = 14;
+var IMPORT_LINE_HEIGHT = 1.2;
+var IMPORT_EDGE_FONT = 12;
+var IMPORT_EDGE_PAD = 4;
+var IMPORT_WRAP_WIDTH = 200;
+function estimateLabelWidth(text, fontSize) {
+  return text.length * fontSize * 0.6;
+}
+function wrapLabelLines(text, maxWidth, fontSize) {
+  const lines = [];
+  for (const paragraph of text.split("\n")) {
+    const words = paragraph.split(/\s+/).filter((w) => w.length > 0).flatMap((w) => breakAtHyphens(w, maxWidth, fontSize));
+    if (words.length === 0) {
+      lines.push("");
+      continue;
+    }
+    let current = "";
+    for (const word of words) {
+      const test = current ? `${current} ${word}` : word;
+      if (estimateLabelWidth(test, fontSize) > maxWidth && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = test;
+      }
+    }
+    if (current) lines.push(current);
+  }
+  return lines.length > 0 ? lines : [text];
+}
+function breakAtHyphens(word, maxWidth, fontSize) {
+  if (estimateLabelWidth(word, fontSize) <= maxWidth || !word.includes("-")) return [word];
+  const pieces = [];
+  let current = "";
+  for (const seg of word.split(/(?<=-)/)) {
+    const test = current + seg;
+    if (current && estimateLabelWidth(test, fontSize) > maxWidth) {
+      pieces.push(current);
+      current = seg;
+    } else {
+      current = test;
+    }
+  }
+  if (current) pieces.push(current);
+  return pieces;
+}
+function importInnerBox(shape, w, h) {
+  switch (shape) {
+    case "circle": {
+      const d = Math.min(w, h);
+      return { w: 0.6 * d, h: 0.6 * d };
+    }
+    case "ellipse":
+      return { w: 0.6 * w, h: 0.6 * h };
+    case "diamond":
+      return { w: 0.5 * w, h: 0.5 * h };
+    case "stadium":
+      return { w: Math.max(0, w - h), h: 0.7 * h };
+    default: {
+      const pad = Math.max(0, Math.min(8, w / 2 - 1, h / 2 - 1));
+      return { w: w - 2 * pad, h: h - 2 * pad };
+    }
+  }
+}
+function outerForContent(shape, content) {
+  switch (shape) {
+    case "circle": {
+      const d = Math.max(content.w, content.h) / 0.6;
+      return { w: d, h: d };
+    }
+    case "ellipse":
+      return { w: content.w / 0.6, h: content.h / 0.6 };
+    case "diamond":
+      return { w: content.w / 0.5, h: content.h / 0.5 };
+    case "stadium": {
+      const h = content.h / 0.7;
+      return { w: content.w + h, h };
+    }
+    default:
+      return { w: content.w + 16, h: content.h + 16 };
+  }
+}
+function fitNodeToLabel(node) {
+  const label = String(node.getLabel?.() ?? "");
+  if (!label.trim()) return;
+  const shape = String(node.getMetadata("shape")?.type ?? "rect");
+  const fontSize = node.style?.fontSize ?? IMPORT_NODE_FONT;
+  const lineHeight = fontSize * IMPORT_LINE_HEIGHT;
+  const { width, height } = node.size;
+  const inner = importInnerBox(shape, width, height);
+  const paragraphs = label.split("\n");
+  const oneLine = Math.max(...paragraphs.map((p) => estimateLabelWidth(p, fontSize)));
+  const longestWord = Math.max(
+    0,
+    ...label.split(/[\s-]+/).map((word) => estimateLabelWidth(word, fontSize))
+  );
+  let textWidth = inner.w;
+  if (oneLine > inner.w) textWidth = Math.max(inner.w, Math.min(oneLine, IMPORT_WRAP_WIDTH));
+  textWidth = Math.max(textWidth, longestWord);
+  const lines = wrapLabelLines(label, textWidth, fontSize).length;
+  const textHeight = Math.max(inner.h, lines * lineHeight + 1);
+  if (textWidth <= inner.w && textHeight <= inner.h) return;
+  const outer = outerForContent(shape, { w: textWidth, h: textHeight });
+  const w = Math.ceil(Math.max(width, outer.w));
+  const h = Math.ceil(Math.max(height, outer.h));
+  if (w !== width || h !== height) node.setSize(w, h, node.size.depth ?? 0);
+}
+function importEdgeLabelBox(link) {
+  const label = link.labels?.[0];
+  const text = label?.text ?? link.getMetadata("label");
+  if (!text) return void 0;
+  const style = label?.style ?? {};
+  const fontSize = style.fontSize ?? IMPORT_EDGE_FONT;
+  const padding = style.padding ?? IMPORT_EDGE_PAD;
+  return { w: estimateLabelWidth(text, fontSize) + 2 * padding, h: fontSize + 2 * padding };
+}
+function layoutForImport(nodes, edges, options = {}) {
+  const positions = /* @__PURE__ */ new Map();
+  const ranks = /* @__PURE__ */ new Map();
+  const routes = /* @__PURE__ */ new Map();
+  if (nodes.length === 0) return { positions, ranks, routes, width: 0, height: 0 };
+  const parents = options.parents ?? /* @__PURE__ */ new Map();
+  const g = new dagre3.graphlib.Graph({ multigraph: true, directed: true, compound: parents.size > 0 });
+  g.setGraph({
+    rankdir: dagreRankdir(options.direction),
+    nodesep: options.nodeSpacing ?? 50,
+    ranksep: options.rankSpacing ?? 50,
+    edgesep: 20,
+    marginx: 0,
+    marginy: 0
+  });
+  const ids = /* @__PURE__ */ new Set();
+  for (const node of nodes) {
+    ids.add(node.id);
+    g.setNode(node.id, { width: node.width, height: node.height });
+  }
+  for (const id of [...ids]) {
+    let child = id;
+    for (let parent = parents.get(child); parent !== void 0; parent = parents.get(child)) {
+      if (!g.hasNode(parent)) g.setNode(parent, {});
+      g.setParent(child, parent);
+      child = parent;
+    }
+  }
+  for (const edge of edges) {
+    if (!ids.has(edge.from) || !ids.has(edge.to)) continue;
+    g.setEdge(
+      edge.from,
+      edge.to,
+      edge.label ? { width: edge.label.w, height: edge.label.h, labelpos: "c" } : { width: 0, height: 0 },
+      edge.key
+    );
+  }
+  dagre3.layout(g);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const grow = (x, y) => {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  };
+  for (const node of nodes) {
+    const n3 = g.node(node.id);
+    grow(n3.x - n3.width / 2, n3.y - n3.height / 2);
+    grow(n3.x + n3.width / 2, n3.y + n3.height / 2);
+  }
+  for (const e of g.edges()) {
+    const edge = g.edge(e);
+    for (const p of edge.points ?? []) grow(p.x, p.y);
+    if (edge.x !== void 0 && edge.y !== void 0 && edge.width) {
+      grow(edge.x - edge.width / 2, edge.y - (edge.height ?? 0) / 2);
+      grow(edge.x + edge.width / 2, edge.y + (edge.height ?? 0) / 2);
+    }
+  }
+  const dx = -minX;
+  const dy = -minY;
+  for (const node of nodes) {
+    const n3 = g.node(node.id);
+    positions.set(node.id, { x: n3.x - n3.width / 2 + dx, y: n3.y - n3.height / 2 + dy });
+    ranks.set(node.id, n3.rank ?? 0);
+  }
+  for (const e of g.edges()) {
+    const edge = g.edge(e);
+    if (!e.name) continue;
+    routes.set(e.name, {
+      points: (edge.points ?? []).map((p) => ({ x: p.x + dx, y: p.y + dy })),
+      ...edge.width && edge.x !== void 0 && edge.y !== void 0 ? { label: { x: edge.x + dx, y: edge.y + dy } } : {}
+    });
+  }
+  return { positions, ranks, routes, width: maxX - minX, height: maxY - minY };
+}
+function dagreRankdir(direction) {
+  switch (String(direction ?? "TB").toUpperCase()) {
+    case "BT":
+      return "BT";
+    case "LR":
+      return "LR";
+    case "RL":
+      return "RL";
+    default:
+      return "TB";
+  }
+}
+function clearImportRoute(link, diagram) {
+  dropImportRoute(link, diagram);
+}
+function repointLinkEnd(diagram, link, end, node, portId) {
+  const current = end === "source" ? link.sourcePortId : link.targetPortId;
+  if (current === portId) return;
+  if (current) diagram.getPortById(current)?.removeConnection(link.id);
+  if (end === "source") link.setSourcePort(portId, node.id);
+  else link.setTargetPort(portId, node.id);
+  node.getPort(portId)?.addConnection(link.id, end);
+}
+var CURVED = /* @__PURE__ */ new Set(["circle", "ellipse", "diamond", "stadium", "hexagon"]);
+function sideAnchor(node, p) {
+  const { x, y } = node.position;
+  const { width: w, height: h } = node.size;
+  const distances = [
+    ["left", Math.abs(p.x - x)],
+    ["right", Math.abs(p.x - (x + w))],
+    ["top", Math.abs(p.y - y)],
+    ["bottom", Math.abs(p.y - (y + h))]
+  ];
+  const side = distances.reduce((best, d) => d[1] < best[1] ? d : best)[0];
+  const shape = String(node.getMetadata("shape")?.type ?? "rect");
+  if (CURVED.has(shape)) return { side, pct: 50 };
+  const along = side === "left" || side === "right" ? (p.y - y) / h : (p.x - x) / w;
+  return { side, pct: Math.round(Math.max(0.15, Math.min(0.85, along)) * 100) };
+}
+var NORMAL = {
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 },
+  top: { x: 0, y: -1 },
+  bottom: { x: 0, y: 1 }
+};
+function flowSides(direction) {
+  switch (String(direction ?? "TB").toUpperCase()) {
+    case "LR":
+      return { out: "right", in: "left" };
+    case "RL":
+      return { out: "left", in: "right" };
+    case "BT":
+      return { out: "top", in: "bottom" };
+    case "TB":
+    case "TD":
+      return { out: "bottom", in: "top" };
+    default:
+      return void 0;
+  }
+}
+function aimedPct(node, side, toward) {
+  const { x, y } = node.position;
+  const { width: w, height: h } = node.size;
+  const shape = String(node.getMetadata("shape")?.type ?? "rect");
+  if (CURVED.has(shape)) return 50;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const dx = toward.x - cx;
+  const dy = toward.y - cy;
+  let along;
+  if (side === "left" || side === "right") {
+    const reach = side === "right" ? w / 2 : -w / 2;
+    if (dx === 0 || Math.sign(dx) !== Math.sign(reach)) return 50;
+    along = (cy + dy * reach / dx - y) / h;
+  } else {
+    const reach = side === "bottom" ? h / 2 : -h / 2;
+    if (dy === 0 || Math.sign(dy) !== Math.sign(reach)) return 50;
+    along = (cx + dx * reach / dy - x) / w;
+  }
+  return Math.round(Math.max(0.15, Math.min(0.85, along)) * 100);
+}
+function encloses(outer, inner) {
+  const cx = inner.position.x + inner.size.width / 2;
+  const cy = inner.position.y + inner.size.height / 2;
+  return cx > outer.position.x && cx < outer.position.x + outer.size.width && cy > outer.position.y && cy < outer.position.y + outer.size.height;
+}
+function cutsAny(a, b, boxes) {
+  const CLEAR = 8;
+  for (const n3 of boxes) {
+    const x0 = n3.position.x - CLEAR;
+    const y0 = n3.position.y - CLEAR;
+    const x1 = n3.position.x + n3.size.width + CLEAR;
+    const y1 = n3.position.y + n3.size.height + CLEAR;
+    for (let i = 0; i <= 24; i++) {
+      const x = a.x + (b.x - a.x) * i / 24;
+      const y = a.y + (b.y - a.y) * i / 24;
+      if (x > x0 && x < x1 && y > y0 && y < y1) return true;
+    }
+  }
+  return false;
+}
+function pickAnchor(node, toward, flowSide, dagreSide, obstacles) {
+  const sides = [];
+  for (const side of [flowSide, dagreSide, "right", "bottom", "left", "top"]) {
+    if (side && !sides.includes(side)) sides.push(side);
+  }
+  const candidates = [];
+  for (const side of sides) {
+    candidates.push({ side, pct: aimedPct(node, side, toward) });
+    if (side === flowSide || side === dagreSide) for (const pct of [50, 15, 85]) candidates.push({ side, pct });
+  }
+  for (const c of candidates) {
+    const p = anchorPoint(node, c.side, c.pct);
+    const n3 = NORMAL[c.side];
+    if ((toward.x - p.x) * n3.x + (toward.y - p.y) * n3.y < 0) continue;
+    if (!cutsAny(p, toward, obstacles)) return c;
+  }
+  return candidates[0];
+}
+function goesWithFlow(source, target, out) {
+  const s = source.position;
+  const t = target.position;
+  switch (out) {
+    case "right":
+      return t.x >= s.x + source.size.width;
+    case "left":
+      return t.x + target.size.width <= s.x;
+    case "bottom":
+      return t.y >= s.y + source.size.height;
+    default:
+      return t.y + target.size.height <= s.y;
+  }
+}
+function anchorPoint(node, side, pct) {
+  const { x, y } = node.position;
+  const { width: w, height: h } = node.size;
+  const t = pct / 100;
+  switch (side) {
+    case "left":
+      return { x, y: y + t * h };
+    case "right":
+      return { x: x + w, y: y + t * h };
+    case "top":
+      return { x: x + t * w, y };
+    default:
+      return { x: x + t * w, y: y + h };
+  }
+}
+function fractionAlong(points, p) {
+  let total = 0;
+  const lengths = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const len2 = Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+    lengths.push(len2);
+    total += len2;
+  }
+  if (total <= 0) return 0.5;
+  let best = { d: Infinity, at: total / 2 };
+  let walked = 0;
+  for (let i = 0; i < lengths.length; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const len2 = lengths[i];
+    const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (len2 * len2))) : 0;
+    const q2 = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    const d = Math.hypot(p.x - q2.x, p.y - q2.y);
+    if (d < best.d) best = { d, at: walked + t * len2 };
+    walked += len2;
+  }
+  return best.at / total;
+}
+function applyImportRoute(link, diagram, route, direction) {
+  const source = link.sourceNodeId ? diagram.getNode(link.sourceNodeId) : void 0;
+  const target = link.targetNodeId ? diagram.getNode(link.targetNodeId) : void 0;
+  if (!source || !target || route.points.length < 2) return;
+  let points = route.points.map((p) => ({ ...p }));
+  const flow = flowSides(direction);
+  const forward = !!flow && source !== target && goesWithFlow(source, target, flow.out);
+  const next = points.length > 2 ? points[1] : points[points.length - 1];
+  const prev = points.length > 2 ? points[points.length - 2] : points[0];
+  const obstacles = diagram.getNodes().filter((n3) => n3 !== source && n3 !== target && !encloses(n3, source) && !encloses(n3, target));
+  const from = pickAnchor(source, next, forward ? flow.out : void 0, sideAnchor(source, points[0]).side, obstacles);
+  const to = pickAnchor(target, prev, forward ? flow.in : void 0, sideAnchor(target, points[points.length - 1]).side, obstacles);
+  const sourcePort = ensureSideAnchorPort(source, `${from.side}@${from.pct}%`);
+  const targetPort = ensureSideAnchorPort(target, `${to.side}@${to.pct}%`);
+  if (!sourcePort || !targetPort) return;
+  if (!link.getMetadata("importOriginal")) {
+    const original = {
+      ports: { source: link.sourcePortId, target: link.targetPortId },
+      ...link.labels?.length ? { labels: link.labels.map((l) => ({ ...l.slot ? { slot: l.slot } : {}, position: l.position })) } : route.label ? { added: true } : {}
+    };
+    link.setMetadata("importOriginal", original);
+  }
+  repointLinkEnd(diagram, link, "source", source, sourcePort);
+  repointLinkEnd(diagram, link, "target", target, targetPort);
+  const start = anchorPoint(source, from.side, from.pct);
+  const end = anchorPoint(target, to.side, to.pct);
+  const interior = points.slice(1, -1);
+  const lead = (p, side, next2) => {
+    const n3 = NORMAL[side];
+    const room = Math.abs((next2.x - p.x) * n3.x + (next2.y - p.y) * n3.y);
+    const short = Math.min(10, room / 4);
+    if (short < 4) return [];
+    for (let d = short; d <= room * 0.8; d += 8) {
+      const q2 = { x: p.x + n3.x * d, y: p.y + n3.y * d };
+      if (!cutsAny(q2, next2, obstacles) && !cutsAny(p, q2, obstacles)) return [q2];
+    }
+    return [{ x: p.x + n3.x * short, y: p.y + n3.y * short }];
+  };
+  points = [
+    start,
+    ...lead(start, from.side, interior[0] ?? end),
+    ...interior,
+    ...lead(end, to.side, interior[interior.length - 1] ?? start).reverse(),
+    end
+  ];
+  link.setPoints(points);
+  link.setMetadata("hasManualWaypoints", true);
+  link.setMetadata("layoutAnchored", true);
+  link.setMetadata("importRoute", true);
+  diagram.noteImportRoute(link.id);
+  if (route.label) {
+    const position = fractionAlong(points, route.label);
+    const text = link.labels?.[0]?.text ?? link.getMetadata("label");
+    if (link.labels?.length) {
+      const [first, ...rest] = link.labels;
+      const { slot: _slot, ...placed } = first;
+      link.setLabels([{ ...placed, position }, ...rest]);
+    } else if (text) {
+      link.addLabel({ text, position });
+    }
+  }
+}
+
 // libs/engine/src/layout/architecture/architecture-layout.ts
 var K = {
   // the renderer wraps a name inside ~20 px either side; 2 more absorb the estimate's error
@@ -131649,6 +132202,7 @@ var reversedOf = (dir) => /^(RL|BT)$/i.test(dir.trim());
 var opposite = (s) => s === "left" ? "right" : s === "right" ? "left" : s === "top" ? "bottom" : "top";
 var SHAPES_NEEDING_ROOM = /* @__PURE__ */ new Set(["diamond", "rhombus", "circle", "ellipse", "hexagon", "decision", "doublecircle"]);
 function layoutArchitecture(diagram, options = {}) {
+  for (const link of diagram.getLinks()) clearImportRoute(link, diagram);
   return new ArchitectureComposer(diagram, options).run();
 }
 var ArchitectureComposer = class {
@@ -136143,8 +136697,12 @@ var Lexer = class {
         this.scanDot(start, startColumn);
         break;
       case '"':
-      case "'":
         this.scanString(char, start, startColumn);
+        break;
+      // NOT a string delimiter: Mermaid quotes with `"` only, so `[I'm here]` is
+      // the text "I'm here" (it was an unclosed quote that refused the line).
+      case "'":
+        this.addToken("UNKNOWN" /* UNKNOWN */, char, start, this.position);
         break;
       default:
         if (this.isDigit(char)) {
@@ -136251,21 +136809,53 @@ var Lexer = class {
     }
   }
   /**
-   * Scan less-than combinations: <-->
+   * Scan less-than combinations: `<-->`, `<-.->`, `<==>` — an arrow at BOTH ends —
+   * and the `<--` that opens an inline label (`A <-- text --> B`).
    */
   scanLessThan(start, startColumn) {
-    if (this.peek() === "-" && this.peekNext() === "-") {
-      this.advance();
-      this.advance();
-      if (this.peek() === ">") {
-        this.advance();
-        this.addToken("BIDIRECTIONAL" /* BIDIRECTIONAL */, "<-->", start, this.position);
-      } else {
-        this.addToken("UNKNOWN" /* UNKNOWN */, this.input.substring(start, this.position), start, this.position);
-      }
-    } else {
+    if (!this.scanMarkedLink(start)) {
       this.addToken("UNKNOWN" /* UNKNOWN */, "<", start, this.position);
     }
+  }
+  /** Does a link body (`--`, `-.`, `==`) start at the current position? */
+  atLinkBody() {
+    const next = this.peek();
+    const after = this.peekNext();
+    return next === "-" && (after === "-" || after === ".") || next === "=" && after === "=";
+  }
+  /**
+   * A link whose START marker (`<`, `o` or `x`, at `start`) was just consumed:
+   * scan its body and end, so `<-->`, `o--o` and `x-.-x` are ONE token whose text
+   * keeps the marker. Consumes nothing and returns false when no body follows.
+   */
+  scanMarkedLink(start) {
+    if (!this.atLinkBody()) return false;
+    const first = this.advance();
+    if (first === "=") this.scanEquals(start, 0);
+    else this.scanDash(start, 0);
+    return true;
+  }
+  /**
+   * After a node, `o` / `x` glued to a link body is the link's START marker
+   * (`A o--o B`, `A x--x B`), not a node: Mermaid's link token takes it first.
+   */
+  isStartMarker(value) {
+    if (value !== "o" && value !== "x" || !this.atLinkBody()) return false;
+    const previous = this.tokens[this.tokens.length - 1];
+    return !!previous && [
+      "IDENTIFIER" /* IDENTIFIER */,
+      "NUMBER" /* NUMBER */,
+      "STRING" /* STRING */,
+      "SQUARE_CLOSE" /* SQUARE_CLOSE */,
+      "SUBROUTINE_CLOSE" /* SUBROUTINE_CLOSE */,
+      "STADIUM_CLOSE" /* STADIUM_CLOSE */,
+      "CYLINDRICAL_CLOSE" /* CYLINDRICAL_CLOSE */,
+      "CIRCLE_CLOSE" /* CIRCLE_CLOSE */,
+      "ROUND_CLOSE" /* ROUND_CLOSE */,
+      "RHOMBUS_CLOSE" /* RHOMBUS_CLOSE */,
+      "HEXAGON_CLOSE" /* HEXAGON_CLOSE */,
+      "TRAPEZOID_CLOSE" /* TRAPEZOID_CLOSE */
+    ].includes(previous.type);
   }
   /**
    * Scan dash combinations: -->, ---, -.->, -.-
@@ -136276,7 +136866,8 @@ var Lexer = class {
       const terminator = this.peek();
       if (terminator === ">") {
         this.advance();
-        this.addToken("ARROW" /* ARROW */, this.input.substring(start, this.position), start, this.position);
+        const type = this.input[start] === "<" ? "BIDIRECTIONAL" /* BIDIRECTIONAL */ : "ARROW" /* ARROW */;
+        this.addToken(type, this.input.substring(start, this.position), start, this.position);
       } else if (terminator === "o") {
         this.advance();
         this.addToken("CIRCLE_EDGE" /* CIRCLE_EDGE */, this.input.substring(start, this.position), start, this.position);
@@ -136288,7 +136879,8 @@ var Lexer = class {
       }
     } else if (this.peek() === ".") {
       while (this.peek() === "." || this.peek() === "-") this.advance();
-      if (this.peek() === ">") {
+      const marker = this.peek() === ">" || this.input[this.position - 1] === "-" && (this.peek() === "o" || this.peek() === "x");
+      if (marker) {
         this.advance();
         this.addToken("DOTTED_ARROW" /* DOTTED_ARROW */, this.input.substring(start, this.position), start, this.position);
       } else {
@@ -136309,7 +136901,7 @@ var Lexer = class {
       this.advance();
       count2++;
     }
-    if (count2 >= 2 && this.peek() === ">") {
+    if (count2 >= 2 && (this.peek() === ">" || this.peek() === "o" || this.peek() === "x")) {
       this.advance();
       this.addToken("THICK_ARROW" /* THICK_ARROW */, this.input.substring(start, this.position), start, this.position);
     } else if (count2 >= 2) {
@@ -136324,9 +136916,9 @@ var Lexer = class {
   scanDot(start, startColumn) {
     if (this.peek() === "-") {
       this.advance();
-      if (this.peek() === ">") {
+      if (this.peek() === ">" || this.peek() === "o" || this.peek() === "x") {
         this.advance();
-        this.addToken("DOTTED_ARROW" /* DOTTED_ARROW */, ".->", start, this.position);
+        this.addToken("DOTTED_ARROW" /* DOTTED_ARROW */, this.input.substring(start, this.position), start, this.position);
       } else {
         this.addToken("DOTTED_LINE" /* DOTTED_LINE */, ".-", start, this.position);
       }
@@ -136383,6 +136975,7 @@ var Lexer = class {
       this.advance();
     }
     const value = this.input.substring(start, this.position);
+    if (this.isStartMarker(value) && this.scanMarkedLink(start)) return;
     const type = this.getKeywordType(value);
     this.addToken(type, value, start, this.position);
   }
@@ -136401,12 +136994,12 @@ var Lexer = class {
    * Get keyword token type
    */
   getKeywordType(value) {
+    if (value === "subgraph") return "SUBGRAPH" /* SUBGRAPH */;
+    if (value === "end") return "END" /* END */;
     const lower = value.toLowerCase();
     const keywords = {
       "flowchart": "FLOWCHART" /* FLOWCHART */,
       "graph": "GRAPH" /* GRAPH */,
-      "subgraph": "SUBGRAPH" /* SUBGRAPH */,
-      "end": "END" /* END */,
       "bpmn": "BPMN" /* BPMN */,
       "erd": "ERD" /* ERD */,
       "classDiagram": "CLASSDIAGRAM" /* CLASSDIAAGRAM */,
@@ -136474,6 +137067,31 @@ var Lexer = class {
   }
 };
 
+// libs/engine/src/dsl/types/ASTNode.ts
+function mermaidEdgeEnds(linkText) {
+  const text = linkText.trim();
+  const last = text[text.length - 1];
+  const end = last === ">" ? "arrow" : last === "o" ? "circle" : last === "x" ? "cross" : "none";
+  const opener = { arrow: "<", circle: "o", cross: "x", none: "" };
+  const start = end !== "none" && text.length > 1 && text[0] === opener[end] ? end : "none";
+  return { start, end };
+}
+function isNodeDefinition(node) {
+  return node.type === "NodeDefinition";
+}
+function isEdgeDefinition(node) {
+  return node.type === "EdgeDefinition";
+}
+function isSubgraph(node) {
+  return node.type === "Subgraph";
+}
+function isStyleNode(node) {
+  return node.type === "Style";
+}
+function isClassDef(node) {
+  return node.type === "ClassDef";
+}
+
 // libs/engine/src/dsl/parser/Parser.ts
 var ParseError = class extends Error {
   constructor(message, token, line, column) {
@@ -136496,7 +137114,7 @@ var SHAPE_OPENERS = /* @__PURE__ */ new Set([
   "TRAPEZOID_OPEN" /* TRAPEZOID_OPEN */
 ]);
 function isUnclosedQuote(token) {
-  return token.type === "UNKNOWN" /* UNKNOWN */ && (token.value.startsWith('"') || token.value.startsWith("'"));
+  return token.type === "UNKNOWN" /* UNKNOWN */ && token.value.startsWith('"');
 }
 function closingText(endType) {
   switch (endType) {
@@ -136558,6 +137176,8 @@ var V11_SHAPE_MAP = {
   "in-out": "parallelogram",
   "lean-l": "parallelogram-alt",
   "out-in": "parallelogram-alt",
+  // `>text]` — Mermaid v11 calls it `odd`.
+  odd: "asymmetric",
   // v11's text block: words on the canvas, no box.
   text: "text"
 };
@@ -136760,7 +137380,9 @@ var Parser = class {
     while (this.isLinkToken()) {
       let linkToken = this.advance();
       let label;
-      const opener = linkToken.type === "LINE" /* LINE */ && linkToken.value === "--" || linkToken.type === "DOTTED_LINE" /* DOTTED_LINE */ && linkToken.value === "-." || linkToken.type === "THICK_LINE" /* THICK_LINE */ && linkToken.value === "==";
+      const openerText = linkToken.value;
+      const opener = linkToken.type === "LINE" /* LINE */ && /^[<ox]?--$/.test(openerText) || linkToken.type === "DOTTED_LINE" /* DOTTED_LINE */ && /^[<ox]?-\.$/.test(openerText) || linkToken.type === "THICK_LINE" /* THICK_LINE */ && /^[<ox]?==$/.test(openerText);
+      let startMarker = "";
       if (opener) {
         let close = this.current;
         while (close < this.tokens.length && this.tokens[close].type !== "NEWLINE" /* NEWLINE */ && !this.isLinkTokenAt(close)) close++;
@@ -136775,9 +137397,11 @@ var Parser = class {
           label = text.trim();
           this.current = close;
           linkToken = this.advance();
+          startMarker = /^[<ox]/.test(openerText) ? openerText[0] : "";
         }
       }
       const linkType = this.getLinkType(linkToken.type);
+      const ends = mermaidEdgeEnds(startMarker + linkToken.value);
       if (label === void 0 && this.match("PIPE" /* PIPE */)) {
         label = this.parseTextUntil("PIPE" /* PIPE */);
         this.consume("PIPE" /* PIPE */, 'Expected closing "|"');
@@ -136798,6 +137422,7 @@ var Parser = class {
             source: source.id,
             target: target.id,
             linkType,
+            ends,
             label,
             sourceShape: source.shape,
             sourceLabel: source.label,
@@ -136829,12 +137454,30 @@ var Parser = class {
       }
       const key = this.advance().value;
       this.consume("COLON" /* COLON */, 'Expected ":" in node metadata');
-      const value = this.advance().value.replace(/#quot;/g, '"');
+      const value = this.readMetadataValue().replace(/#quot;/g, '"');
       if (key === "label") label = value;
       else if (key === "shape") shape = V11_SHAPE_MAP[value.toLowerCase()] ?? "rectangle";
     }
     this.consume("RHOMBUS_CLOSE" /* RHOMBUS_CLOSE */, 'Expected "}" to close node metadata');
     return { shape, label };
+  }
+  /**
+   * One value of a `@{ … }` block: a token, or a YAML `'single-quoted'` run (the
+   * lexer emits `'` as a character, since a flowchart label is not quoted by it),
+   * rejoined by source adjacency like any label.
+   */
+  readMetadataValue() {
+    const first = this.advance();
+    if (!(first.type === "UNKNOWN" /* UNKNOWN */ && first.value === "'")) return first.value;
+    let text = "";
+    let prevEnd = first.endIndex;
+    while (!this.isAtEnd() && !this.check("NEWLINE" /* NEWLINE */) && !(this.peek().type === "UNKNOWN" /* UNKNOWN */ && this.peek().value === "'")) {
+      const token = this.advance();
+      text += (token.startIndex > prevEnd ? " " : "") + token.value;
+      prevEnd = token.endIndex;
+    }
+    if (!this.isAtEnd() && this.peek().value === "'") this.advance();
+    return text;
   }
   /**
    * Parse subgraph
@@ -137141,6 +137784,15 @@ var Parser = class {
     let text = "";
     let prevEnd = -1;
     while (!this.check(endType)) {
+      if (endType === "SQUARE_CLOSE" /* SQUARE_CLOSE */ && this.check("TRAPEZOID_CLOSE" /* TRAPEZOID_CLOSE */)) {
+        const t = this.peek();
+        this.tokens.splice(
+          this.current,
+          1,
+          { ...t, type: "UNKNOWN" /* UNKNOWN */, value: t.value[0], endIndex: t.startIndex + 1 },
+          { ...t, type: "SQUARE_CLOSE" /* SQUARE_CLOSE */, value: "]", startIndex: t.startIndex + 1, column: t.column + 1 }
+        );
+      }
       if (this.isAtEnd()) throw unclosed();
       if (this.check("NEWLINE" /* NEWLINE */)) {
         if (firstBreak < 0) firstBreak = this.current;
@@ -137298,112 +137950,6 @@ var Parser = class {
   }
 };
 
-// libs/engine/src/dsl/mermaid/layout.ts
-function assignRanks2(ids, edges) {
-  const idSet = new Set(ids);
-  const out = /* @__PURE__ */ new Map();
-  for (const id of ids) out.set(id, []);
-  for (const edge of edges) {
-    if (!idSet.has(edge.from) || !idSet.has(edge.to)) continue;
-    if (edge.from === edge.to) continue;
-    out.get(edge.from).push(edge);
-  }
-  const GREY = 1;
-  const BLACK = 2;
-  const colour = /* @__PURE__ */ new Map();
-  const forward = /* @__PURE__ */ new Map();
-  for (const id of ids) forward.set(id, []);
-  for (const root of ids) {
-    if (colour.has(root)) continue;
-    const stack = [{ id: root, next: 0 }];
-    colour.set(root, GREY);
-    while (stack.length > 0) {
-      const frame = stack[stack.length - 1];
-      const outgoing = out.get(frame.id);
-      if (frame.next < outgoing.length) {
-        const edge = outgoing[frame.next++];
-        const state = colour.get(edge.to);
-        if (state === GREY) continue;
-        forward.get(frame.id).push(edge);
-        if (state === void 0) {
-          colour.set(edge.to, GREY);
-          stack.push({ id: edge.to, next: 0 });
-        }
-      } else {
-        colour.set(frame.id, BLACK);
-        stack.pop();
-      }
-    }
-  }
-  const incoming = /* @__PURE__ */ new Map();
-  for (const id of ids) incoming.set(id, 0);
-  for (const bucket of forward.values()) {
-    for (const edge of bucket) incoming.set(edge.to, incoming.get(edge.to) + 1);
-  }
-  const ranks = /* @__PURE__ */ new Map();
-  const queue = ids.filter((id) => incoming.get(id) === 0);
-  for (const id of queue) ranks.set(id, 0);
-  for (let head = 0; head < queue.length; head++) {
-    const id = queue[head];
-    const rank = ranks.get(id);
-    for (const edge of forward.get(id)) {
-      const proposed = rank + 1;
-      if ((ranks.get(edge.to) ?? -1) < proposed) ranks.set(edge.to, proposed);
-      const remaining = incoming.get(edge.to) - 1;
-      incoming.set(edge.to, remaining);
-      if (remaining === 0) queue.push(edge.to);
-    }
-  }
-  for (const id of ids) if (!ranks.has(id)) ranks.set(id, 0);
-  return ranks;
-}
-function placeByRank(nodes, ranks, options = {}) {
-  if (nodes.length === 0) return /* @__PURE__ */ new Map();
-  const direction = (options.direction ?? "TB").toUpperCase();
-  const vertical = direction !== "LR" && direction !== "RL";
-  const reversed = direction === "BT" || direction === "RL";
-  const start = options.start ?? { x: 100, y: 100 };
-  const rankGap = options.rankGap ?? 70;
-  const crossGap = options.crossGap ?? 50;
-  const along = (n3) => vertical ? n3.size.height : n3.size.width;
-  const across = (n3) => vertical ? n3.size.width : n3.size.height;
-  const bands = /* @__PURE__ */ new Map();
-  for (const node of nodes) {
-    const rank = ranks.get(node.id) ?? 0;
-    const band = bands.get(rank) ?? [];
-    band.push(node);
-    bands.set(rank, band);
-  }
-  let order = [...bands.keys()].sort((a, b) => a - b);
-  if (reversed) order = order.reverse();
-  const crossTotal = (band) => band.reduce((sum3, n3) => sum3 + across(n3), 0) + (band.length - 1) * crossGap;
-  const widest = Math.max(...order.map((r) => crossTotal(bands.get(r))));
-  const positions = /* @__PURE__ */ new Map();
-  let alongCursor = vertical ? start.y : start.x;
-  for (const rank of order) {
-    const band = bands.get(rank);
-    const bandDepth = Math.max(...band.map(along));
-    let crossCursor = (vertical ? start.x : start.y) + (widest - crossTotal(band)) / 2;
-    for (const node of band) {
-      const alongPos = alongCursor + (bandDepth - along(node)) / 2;
-      positions.set(
-        node.id,
-        vertical ? { x: crossCursor, y: alongPos } : { x: alongPos, y: crossCursor }
-      );
-      crossCursor += across(node) + crossGap;
-    }
-    alongCursor += bandDepth + rankGap;
-  }
-  return positions;
-}
-function rankLayout(nodes, edges, options = {}) {
-  return placeByRank(
-    nodes,
-    assignRanks2(nodes.map((n3) => n3.id), edges),
-    options
-  );
-}
-
 // libs/engine/src/dsl/mermaid/rich-label.ts
 var NAMED = { quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", nbsp: "\xA0" };
 function decodeLabelEntities(s) {
@@ -137411,14 +137957,17 @@ function decodeLabelEntities(s) {
 }
 var BOLD = /^(?:\*\*(.+)\*\*|__(.+)__|<b>(.+)<\/b>|<strong>(.+)<\/strong>)$/i;
 var CODE = /^(?:<code>(.+)<\/code>|`(.+)`)$/i;
+var LABEL_TAG = /<\/?(?:b|strong|i|em|u|code|span|br|sub|sup|small)(?=[\s/>])[^<>]*>/gi;
 function plain(s) {
-  return s.replace(/<[^>]+>/g, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/__(.+?)__/g, "$1").replace(/(^|[^*])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1$2").replace(/`([^`]+)`/g, "$1");
+  return decodeLabelEntities(
+    s.replace(LABEL_TAG, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/__(.+?)__/g, "$1").replace(/(^|[^*])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1$2").replace(/`([^`]+)`/g, "$1")
+  );
 }
 function readMermaidLabel(raw, splitTitle) {
   let s = raw.trim();
   if (s.length >= 2 && s.startsWith("`") && s.endsWith("`")) s = s.slice(1, -1);
   s = s.replace(/<br\s*\/?>/gi, "\n");
-  const lines = decodeLabelEntities(s).split("\n").map((l) => l.trim()).filter((l, i, all) => l !== "" || i > 0 && i < all.length - 1);
+  const lines = s.split("\n").map((l) => l.trim()).filter((l, i, all) => l !== "" || i > 0 && i < all.length - 1);
   if (splitTitle && lines.length >= 2) {
     const b = BOLD.exec(lines[0]);
     if (b) {
@@ -137488,46 +138037,71 @@ var ASTTransformer = class {
     return diagram;
   }
   /**
-   * Rank-based placement over the whole parsed graph (Phase 2.5).
+   * Placement over the whole parsed graph (Phase 2.5): Mermaid's own layout.
+   *
+   * Every box first grows to hold its label (wrap at 200 px, then taller — see
+   * fitNodeToLabel), then dagre lays the graph out with each edge label as a
+   * box of its own between the ranks, subgraph members kept together, and
+   * every edge given a route (import-layout.ts). The route goes on the link:
+   * its ports where it meets its boxes, its bends as waypoints, its label
+   * where the layout made room — so a label is never under a box or another
+   * label, and two edges between one pair never share a track.
    *
    * Only nodes THIS transform auto-positioned (`this.nodePositions`) move — a
    * guard, not a hope: anything with an explicit position (restored later by
    * the sidecar, or added by a caller) must never be rearranged by a parse.
-   * Synchronous and deterministic; see dsl/mermaid/layout.ts.
+   * Synchronous and deterministic.
    */
   applyRankPlacement(diagram, startPosition) {
     const placeable = diagram.getNodes().filter((node) => this.nodePositions.has(node.id));
     if (placeable.length === 0) return;
-    const ids = placeable.map((n3) => n3.id);
-    const idSet = new Set(ids);
-    const edges = diagram.getLinks().filter(
+    for (const node of placeable) fitNodeToLabel(node);
+    const idSet = new Set(placeable.map((n3) => n3.id));
+    const links = diagram.getLinks().filter(
       (l) => l.sourceNodeId !== void 0 && l.targetNodeId !== void 0 && idSet.has(l.sourceNodeId) && idSet.has(l.targetNodeId)
-    ).map((l) => ({ from: l.sourceNodeId, to: l.targetNodeId }));
-    const direction = diagram.getMetadata("direction") ?? "TD";
-    const ranks = assignRanks2(ids, edges);
-    const positions = placeByRank(placeable, ranks, {
-      direction,
-      start: startPosition,
-      // Bands are size-aware, so these are true GAPS — derived from the same
-      // nodeSpacing constant the chain-wrap used (150 ⇒ 75 / 50 by default).
-      rankGap: this.nodeSpacing / 2,
-      crossGap: this.nodeSpacing / 3
-    });
+    );
+    const parents = /* @__PURE__ */ new Map();
+    for (const group of diagram.getGroups()) {
+      for (const member of group.members ?? []) parents.set(member, group.id);
+    }
+    const layout = layoutForImport(
+      placeable.map((n3) => ({ id: n3.id, width: n3.size.width, height: n3.size.height })),
+      links.map((l) => ({
+        key: l.id,
+        from: l.sourceNodeId,
+        to: l.targetNodeId,
+        label: importEdgeLabelBox(l)
+      })),
+      {
+        direction: diagram.getMetadata("direction") ?? "TD",
+        parents
+      }
+    );
     for (const node of placeable) {
-      const position = positions.get(node.id);
-      if (!position) continue;
+      const at = layout.positions.get(node.id);
+      if (!at) continue;
+      const position = { x: startPosition.x + at.x, y: startPosition.y + at.y };
       node.setPosition(position.x, position.y);
       this.nodePositions.set(node.id, position);
     }
-    const contextDirection = { TD: "TB", TB: "TB", BT: "BT", LR: "LR", RL: "RL" }[direction.toUpperCase()];
+    const contextDirection = { TD: "TB", TB: "TB", BT: "BT", LR: "LR", RL: "RL" }[String(diagram.getMetadata("direction") ?? "TD").toUpperCase()];
     diagram.getLayoutManager().optimizeConnections({
       ...contextDirection ? { direction: contextDirection } : {},
-      ranks
+      ranks: layout.ranks
     });
-    for (const link of diagram.getLinks()) {
-      if (link.sourceNodeId !== void 0 && link.targetNodeId !== void 0 && idSet.has(link.sourceNodeId) && idSet.has(link.targetNodeId) && link.points.length > 0) {
-        link.setPoints([]);
+    for (const link of links) {
+      const route = layout.routes.get(link.id);
+      if (!route) {
+        if (link.points.length > 0) link.setPoints([]);
+        continue;
       }
+      const shift2 = (p) => ({ x: p.x + startPosition.x, y: p.y + startPosition.y });
+      applyImportRoute(
+        link,
+        diagram,
+        { points: route.points.map(shift2), ...route.label ? { label: shift2(route.label) } : {} },
+        diagram.getMetadata("direction") ?? "TD"
+      );
     }
   }
   /**
@@ -137711,6 +138285,7 @@ var ASTTransformer = class {
     const links = every ? diagram.getLinks() : diagram.getLinks().filter((l) => l.sourceNodeId === source && l.targetNodeId === target).slice(0, 1);
     const p = node.properties;
     for (const link of links) {
+      if (p["from"] || p["to"] || p["via"]) clearImportRoute(link, diagram);
       if (p["animation"]) {
         const anim = { type: p["animation"] };
         if (p["speed"]) anim["speed"] = p["speed"];
@@ -137722,14 +138297,14 @@ var ASTTransformer = class {
         const side = plain2(p["from"]);
         if (side) link.setMetadata("sourceSide", side);
         const port = n3 ? ensureSideAnchorPort(n3, side ? `${side}@50%` : p["from"]) : null;
-        if (port) link.setSourcePort(port, link.sourceNodeId);
+        if (port && n3) repointLinkEnd(diagram, link, "source", n3, port);
       }
       if (p["to"] && link.targetNodeId) {
         const n3 = diagram.getNode(link.targetNodeId);
         const side = plain2(p["to"]);
         if (side) link.setMetadata("targetSide", side);
         const port = n3 ? ensureSideAnchorPort(n3, side ? `${side}@50%` : p["to"]) : null;
-        if (port) link.setTargetPort(port, link.targetNodeId);
+        if (port && n3) repointLinkEnd(diagram, link, "target", n3, port);
       }
       if (p["label"] === "above" || p["label"] === "below" || p["label"] === "on") {
         link.setMetadata("labelPlacement", p["label"] === "on" ? void 0 : p["label"]);
@@ -137797,7 +138372,7 @@ var ASTTransformer = class {
   createLink(astEdge, diagram) {
     let sourceNode = diagram.getNode(astEdge.source);
     if (sourceNode && astEdge.sourceLabel) {
-      sourceNode.setLabel(astEdge.sourceLabel);
+      this.applyRichLabel(sourceNode, astEdge.sourceLabel);
     }
     if (!sourceNode) {
       const sourceShape = astEdge.sourceShape || "rectangle";
@@ -137817,7 +138392,7 @@ var ASTTransformer = class {
     }
     let targetNode = diagram.getNode(astEdge.target);
     if (targetNode && astEdge.targetLabel) {
-      targetNode.setLabel(astEdge.targetLabel);
+      this.applyRichLabel(targetNode, astEdge.targetLabel);
     }
     if (!targetNode) {
       const targetShape = astEdge.targetShape || "rectangle";
@@ -137851,7 +138426,19 @@ var ASTTransformer = class {
       this.applyStyleToLink(link, astEdge.style);
     }
     this.applyLinkTypeStyle(link, astEdge.linkType);
+    this.applyLinkEnds(link, astEdge.ends);
     return link;
+  }
+  /**
+   * The end markers of a Mermaid edge, on the link's style: `arrowHead` at the
+   * target, `arrowTail` at the source. A plain arrow head is left unset — it is
+   * the renderer's default, so `-->` stays exactly what it was.
+   */
+  applyLinkEnds(link, ends) {
+    if (!ends) return;
+    const marker = (end) => end === "circle" ? { type: "circle", size: 10, filled: true } : end === "cross" ? { type: "cross", size: 10, filled: false } : end === "none" ? { type: "none", size: 0, filled: false } : { type: "arrow", size: 10, filled: true };
+    if (ends.end !== "arrow") link.style.arrowHead = marker(ends.end);
+    if (ends.start !== "none") link.style.arrowTail = marker(ends.start);
   }
   /**
    * Create a subgraph as a real GroupModel whose members are the nodes defined
@@ -138042,8 +138629,8 @@ var ASTTransformer = class {
       "subroutine": { type: "subroutine" },
       "cylindrical": { type: "cylinder" },
       "circle": { type: "circle" },
-      "asymmetric": { type: "rect" },
-      // Mermaid's flag — no registry shape yet
+      "asymmetric": { type: "asymmetric" },
+      // `>text]` — the flag, notched on the left
       "rhombus": { type: "diamond" },
       "hexagon": { type: "hexagon" },
       "trapezoid": { type: "trapezoid" },
@@ -138897,9 +139484,13 @@ var DSLGenerator = class {
     }
     return `${nodeId}${opening}${this.escapeLabel(this.labelMarkup(label), closing)}${closing}`;
   }
-  /** A label's line breaks as `<br/>` — the form every Mermaid renderer reads. */
+  /**
+   * A label's line breaks as `<br/>` — the form every Mermaid renderer reads — and
+   * its `<` / `>` as `#lt;` / `#gt;`, so text in angle brackets (`Context<T>`) is
+   * never read back as a tag, by Mermaid or by our own label reader.
+   */
   labelMarkup(text) {
-    return String(text).replace(/\n/g, "<br/>");
+    return String(text).replace(/</g, "#lt;").replace(/>/g, "#gt;").replace(/\n/g, "<br/>");
   }
   /**
    * Quote a label whose content would break the surrounding syntax — brackets,
@@ -138908,7 +139499,7 @@ var DSLGenerator = class {
    * Plain labels pass through untouched, so existing bodies do not churn.
    */
   escapeLabel(label, closing) {
-    const needsQuoting = /[[\](){}"|<>]/.test(label) || label !== label.trim() || closing.length > 0 && label.includes(closing);
+    const needsQuoting = /[[\](){}"|<>]/.test(label) || /#\w+;/.test(label) || label !== label.trim() || closing.length > 0 && label.includes(closing);
     if (!needsQuoting) return label;
     return `"${label.replace(/"/g, "#quot;")}"`;
   }
@@ -138924,12 +139515,12 @@ var DSLGenerator = class {
     const sourceId = preserveIds ? this.sanitizeId(sourceNode.id) : this.generateShortId(sourceNode);
     const targetId = preserveIds ? this.sanitizeId(targetNode.id) : this.generateShortId(targetNode);
     const linkType = this.inferLinkType(link);
-    const linkSyntax = this.getLinkSyntax(linkType);
+    const linkSyntax = this.getLinkSyntax(linkType, link);
     const label = link.getLabel();
     if (label) {
       const text = this.labelMarkup(label);
-      const written = /["|<>]/.test(text) ? `"${text.replace(/"/g, "#quot;")}"` : text;
-      return `${sourceId} ${linkSyntax.split(">")[0]}>|${written}|${linkSyntax.split(">")[1] || ""} ${targetId}`;
+      const written = /["|<>]|#\w+;/.test(text) ? `"${text.replace(/"/g, "#quot;")}"` : text;
+      return `${sourceId} ${linkSyntax}|${written}| ${targetId}`;
     }
     return `${sourceId} ${linkSyntax} ${targetId}`;
   }
@@ -139113,21 +139704,27 @@ var DSLGenerator = class {
     return "arrow";
   }
   /**
-   * Get link syntax for link type
+   * The Mermaid link token for a link: its STROKE from the link type (solid,
+   * dotted, thick), its ENDS from the markers the link actually draws —
+   * `arrowHead` at the target, `arrowTail` at the source — so `o--o`, `<-.->` or
+   * `===` come back as written, and a marker changed on the canvas is exported
+   * too. With no marker set, the link type's own ends apply (`---` has none).
    */
-  getLinkSyntax(linkType) {
-    const syntax = {
-      "arrow": "-->",
-      "line": "---",
-      "dotted-arrow": "-.->",
-      "dotted-line": "-.-",
-      "thick-arrow": "==>",
-      "thick-line": "===",
-      "bidirectional": "<-->",
-      "circle-edge": "--o",
-      "cross-edge": "--x"
+  getLinkSyntax(linkType, link) {
+    const stroke = linkType.startsWith("dotted") ? "dotted" : linkType.startsWith("thick") ? "thick" : "solid";
+    const kindOf = (style) => {
+      if (!style?.type) return void 0;
+      if (style.type === "none" || style.type === "circle" || style.type === "cross") return style.type;
+      return "arrow";
     };
-    return syntax[linkType] || "-->";
+    const typeEnd = linkType === "line" || linkType === "dotted-line" || linkType === "thick-line" ? "none" : linkType === "circle-edge" ? "circle" : linkType === "cross-edge" ? "cross" : "arrow";
+    const end = kindOf(link?.style?.arrowHead) ?? typeEnd;
+    const start = kindOf(link?.style?.arrowTail) ?? (linkType === "bidirectional" ? "arrow" : "none");
+    const endChar = { arrow: ">", circle: "o", cross: "x", none: "" }[end];
+    const startChar = start !== "none" && start === end ? { arrow: "<", circle: "o", cross: "x" }[start] : "";
+    if (stroke === "dotted") return `${startChar}-.-${endChar}`;
+    if (stroke === "thick") return `${startChar}==${endChar || "="}`;
+    return `${startChar}--${endChar || "-"}`;
   }
   /**
    * Sanitize node ID for DSL output
@@ -139446,6 +140043,61 @@ function stripTrailingComment(raw) {
   }
   return raw;
 }
+function accessibilityAt(lines, i) {
+  const first = stripTrailingComment(lines[i]).trim();
+  const single = /^(accTitle|accDescr)\s*:\s*(.*)$/.exec(first);
+  if (single) return { key: single[1], value: single[2].trim(), last: i };
+  const block = /^accDescr\s*\{(.*)$/.exec(first);
+  if (!block) return null;
+  let body = block[1];
+  let last = i;
+  while (!body.includes("}") && last + 1 < lines.length) body += "\n" + lines[++last];
+  const inner = body.includes("}") ? body.slice(0, body.indexOf("}")) : body;
+  return { key: "accDescr", value: inner.trim().replace(/\n\s+/g, "\n"), last };
+}
+function frontmatterSpan(lines) {
+  const open = lines.findIndex((l) => l.trim() !== "");
+  if (open < 0 || lines[open].trim() !== "---") return null;
+  for (let j = open + 1; j < lines.length; j++) if (lines[j].trim() === "---") return { open, close: j };
+  return null;
+}
+function blankFrontmatter(text) {
+  const lines = text.split("\n");
+  const span = frontmatterSpan(lines.map((l) => l.replace(/\r$/, "")));
+  if (!span) return text;
+  for (let j = span.open; j <= span.close; j++) lines[j] = "";
+  return lines.join("\n");
+}
+function yamlScalar(raw) {
+  const v = raw.trim();
+  if (v.startsWith('"')) {
+    try {
+      return JSON.parse(v);
+    } catch {
+      return v.replace(/^"|"$/g, "");
+    }
+  }
+  if (v.startsWith("'")) return v.replace(/^'|'$/g, "").replace(/''/g, "'");
+  return v.replace(/\s+#.*$/, "");
+}
+function readDiagramMetadata(text) {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const meta = {};
+  const span = frontmatterSpan(lines);
+  if (span) {
+    for (let j = span.open + 1; j < span.close; j++) {
+      const title = /^title\s*:\s*(.*)$/.exec(lines[j]);
+      if (title) meta.title = yamlScalar(title[1]);
+    }
+  }
+  for (let i = span ? span.close + 1 : 0; i < lines.length; i++) {
+    const acc = accessibilityAt(lines, i);
+    if (!acc) continue;
+    meta[acc.key] = acc.value;
+    i = acc.last;
+  }
+  return meta;
+}
 function significantLines(text, header) {
   const headers = (Array.isArray(header) ? header : [header]).map((h) => h.toLowerCase());
   const out = [];
@@ -139462,6 +140114,11 @@ function significantLines(text, header) {
     if (inFrontmatter) continue;
     const text2 = stripTrailingComment(raw).trim();
     if (!text2) continue;
+    const acc = accessibilityAt(lines, i);
+    if (acc) {
+      i = acc.last;
+      continue;
+    }
     if (!headerSeen) {
       const first = text2.split(/[\s:]/)[0].toLowerCase();
       if (headers.includes(first)) {
@@ -139477,6 +140134,112 @@ function unquote(token) {
   const t = token.trim();
   if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) return t.slice(1, -1);
   return t;
+}
+
+// libs/engine/src/dsl/mermaid/layout.ts
+function assignRanks2(ids, edges) {
+  const idSet = new Set(ids);
+  const out = /* @__PURE__ */ new Map();
+  for (const id of ids) out.set(id, []);
+  for (const edge of edges) {
+    if (!idSet.has(edge.from) || !idSet.has(edge.to)) continue;
+    if (edge.from === edge.to) continue;
+    out.get(edge.from).push(edge);
+  }
+  const GREY = 1;
+  const BLACK = 2;
+  const colour = /* @__PURE__ */ new Map();
+  const forward = /* @__PURE__ */ new Map();
+  for (const id of ids) forward.set(id, []);
+  for (const root of ids) {
+    if (colour.has(root)) continue;
+    const stack = [{ id: root, next: 0 }];
+    colour.set(root, GREY);
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const outgoing = out.get(frame.id);
+      if (frame.next < outgoing.length) {
+        const edge = outgoing[frame.next++];
+        const state = colour.get(edge.to);
+        if (state === GREY) continue;
+        forward.get(frame.id).push(edge);
+        if (state === void 0) {
+          colour.set(edge.to, GREY);
+          stack.push({ id: edge.to, next: 0 });
+        }
+      } else {
+        colour.set(frame.id, BLACK);
+        stack.pop();
+      }
+    }
+  }
+  const incoming = /* @__PURE__ */ new Map();
+  for (const id of ids) incoming.set(id, 0);
+  for (const bucket of forward.values()) {
+    for (const edge of bucket) incoming.set(edge.to, incoming.get(edge.to) + 1);
+  }
+  const ranks = /* @__PURE__ */ new Map();
+  const queue = ids.filter((id) => incoming.get(id) === 0);
+  for (const id of queue) ranks.set(id, 0);
+  for (let head = 0; head < queue.length; head++) {
+    const id = queue[head];
+    const rank = ranks.get(id);
+    for (const edge of forward.get(id)) {
+      const proposed = rank + 1;
+      if ((ranks.get(edge.to) ?? -1) < proposed) ranks.set(edge.to, proposed);
+      const remaining = incoming.get(edge.to) - 1;
+      incoming.set(edge.to, remaining);
+      if (remaining === 0) queue.push(edge.to);
+    }
+  }
+  for (const id of ids) if (!ranks.has(id)) ranks.set(id, 0);
+  return ranks;
+}
+function placeByRank(nodes, ranks, options = {}) {
+  if (nodes.length === 0) return /* @__PURE__ */ new Map();
+  const direction = (options.direction ?? "TB").toUpperCase();
+  const vertical = direction !== "LR" && direction !== "RL";
+  const reversed = direction === "BT" || direction === "RL";
+  const start = options.start ?? { x: 100, y: 100 };
+  const rankGap = options.rankGap ?? 70;
+  const crossGap = options.crossGap ?? 50;
+  const along = (n3) => vertical ? n3.size.height : n3.size.width;
+  const across = (n3) => vertical ? n3.size.width : n3.size.height;
+  const bands = /* @__PURE__ */ new Map();
+  for (const node of nodes) {
+    const rank = ranks.get(node.id) ?? 0;
+    const band = bands.get(rank) ?? [];
+    band.push(node);
+    bands.set(rank, band);
+  }
+  let order = [...bands.keys()].sort((a, b) => a - b);
+  if (reversed) order = order.reverse();
+  const crossTotal = (band) => band.reduce((sum3, n3) => sum3 + across(n3), 0) + (band.length - 1) * crossGap;
+  const widest = Math.max(...order.map((r) => crossTotal(bands.get(r))));
+  const positions = /* @__PURE__ */ new Map();
+  let alongCursor = vertical ? start.y : start.x;
+  for (const rank of order) {
+    const band = bands.get(rank);
+    const bandDepth = Math.max(...band.map(along));
+    let crossCursor = (vertical ? start.x : start.y) + (widest - crossTotal(band)) / 2;
+    for (const node of band) {
+      const alongPos = alongCursor + (bandDepth - along(node)) / 2;
+      positions.set(
+        node.id,
+        vertical ? { x: crossCursor, y: alongPos } : { x: alongPos, y: crossCursor }
+      );
+      crossCursor += across(node) + crossGap;
+    }
+    alongCursor += bandDepth + rankGap;
+  }
+  return positions;
+}
+function rankLayout(nodes, edges, options = {}) {
+  return placeByRank(
+    nodes,
+    assignRanks2(nodes.map((n3) => n3.id), edges),
+    options
+  );
 }
 
 // libs/engine/src/dsl/mermaid/MermaidER.ts
@@ -140068,6 +140831,178 @@ function generateClassFromDiagram(diagram) {
   return generateMermaidClass(classModelFromDiagram(diagram));
 }
 
+// libs/engine/src/dsl/mermaid/state-notation.ts
+var STATE_BAR_LENGTH = 70;
+var STATE_BAR_THICKNESS = 8;
+var NOTE_FILL = "#fff5ad";
+var NOTE_STROKE = "#aaaa33";
+var NOTE_INK = "#1f2937";
+var NOTE_FONT = 14;
+var NOTE_TEXT_WIDTH = 190;
+var NOTE_INNER = 0.84;
+var NOTE_SLACK = 8;
+function stateFlowDirection(model, state) {
+  const byId2 = new Map(model.states.map((s) => [s.id, s]));
+  let parent = state.parent ? byId2.get(state.parent) : void 0;
+  while (parent) {
+    if (parent.direction) return parent.direction;
+    parent = parent.parent ? byId2.get(parent.parent) : void 0;
+  }
+  return model.direction ?? "TB";
+}
+function applyStateNodeLook(node, state, options) {
+  node.setMetadata("stateKind", state.kind);
+  switch (state.kind) {
+    case "start":
+      node.setMetadata("dslShape", "circle");
+      node.setMetadata("shape", { type: "circle", cornerRadius: 0, ink: true });
+      return;
+    case "end":
+      node.setMetadata("dslShape", "circle");
+      node.setMetadata("shape", { type: "final-node", cornerRadius: 0, ink: true });
+      return;
+    case "history":
+    case "deep-history":
+      node.setMetadata("dslShape", "circle");
+      node.setMetadata("shape", { type: "circle", cornerRadius: 0 });
+      return;
+    case "fork":
+    case "join": {
+      const across = options.direction === "LR" || options.direction === "RL";
+      node.setSize(across ? STATE_BAR_THICKNESS : STATE_BAR_LENGTH, across ? STATE_BAR_LENGTH : STATE_BAR_THICKNESS);
+      node.setLabel("");
+      node.setMetadata("dslShape", "rectangle");
+      node.setMetadata("shape", { type: "rect", cornerRadius: 2, ink: true });
+      return;
+    }
+    case "choice":
+      node.setMetadata("dslShape", "rhombus");
+      node.setMetadata("shape", { type: "diamond", cornerRadius: 0 });
+      return;
+    default:
+      break;
+  }
+  if (state.region) {
+    node.setMetadata("dslShape", "rectangle");
+    node.setMetadata("shape", { type: "rect", cornerRadius: 0, fill: "none" });
+    node.style.strokeDasharray = "6 4";
+    node.style.shadow = false;
+    return;
+  }
+  node.setMetadata("dslShape", "rounded-rectangle");
+  node.setMetadata("shape", { type: "rect", cornerRadius: 8 });
+  if (state.composite) {
+    node.setMetadata("labelPlacement", "header");
+    node.setMetadata("headerHeight", options.headerHeight);
+  }
+}
+function markCompositeGroup(diagram, groupId) {
+  diagram.getGroup(groupId)?.setMetadata("frameChrome", "none");
+}
+function noteSize(text) {
+  const charW = NOTE_FONT * 0.6;
+  const words = text.split(/\s+/).filter(Boolean);
+  const longest = Math.max(0, ...words.map((w) => w.length)) * charW;
+  const natural = text.length * charW;
+  const inner = Math.max(longest, Math.min(NOTE_TEXT_WIDTH, Math.max(natural, 60)));
+  let lines = 1;
+  let line = 0;
+  for (const word of words) {
+    const w = word.length * charW;
+    const next = line === 0 ? w : line + charW + w;
+    if (next > inner && line > 0) {
+      lines++;
+      line = w;
+    } else {
+      line = next;
+    }
+  }
+  return {
+    width: Math.ceil(inner / NOTE_INNER) + NOTE_SLACK,
+    height: Math.max(30, Math.ceil(lines * NOTE_FONT * 1.2 / NOTE_INNER) + NOTE_SLACK)
+  };
+}
+function addStateNotes(diagram, model, nodes) {
+  model.notes.forEach((note, i) => {
+    const target = nodes.get(note.target);
+    if (!target) return;
+    const node = new NodeModel({
+      id: `__note${i + 1}__`,
+      type: "state:note",
+      position: { x: 0, y: 0 },
+      size: noteSize(note.text)
+    });
+    node.setLabel(note.text);
+    node.setMetadata("stateNote", true);
+    node.setMetadata("noteTarget", note.target);
+    node.setMetadata("notePosition", note.position);
+    node.setMetadata("dslShape", "note");
+    node.setMetadata("shape", { type: "note", fill: NOTE_FILL, stroke: NOTE_STROKE });
+    node.style.color = NOTE_INK;
+    node.style.shadow = false;
+    diagram.addNode(node);
+    const link = diagram.createSmartLink(node, target, "direct");
+    if (!link) return;
+    link.setMetadata("noteLink", true);
+    link.style.strokeDasharray = "4 4";
+    link.style.arrowHead = { type: "none" };
+  });
+}
+var CLASSDEF_RE = /^classDef\s+([A-Za-z0-9_-]+(?:\s*,\s*[A-Za-z0-9_-]+)*)\s+(.+?);?$/;
+var CLASS_RE = /^class\s+(.+?)\s+([A-Za-z0-9_-]+);?$/;
+function parseDeclarations(text) {
+  const out = {};
+  for (const part of text.split(/[,;]/)) {
+    const colon = part.indexOf(":");
+    if (colon <= 0) continue;
+    const key = part.slice(0, colon).trim();
+    const value = part.slice(colon + 1).trim();
+    if (key && value) out[key] = value;
+  }
+  return out;
+}
+function readStateClassDefs(lines, states) {
+  const classDefs = {};
+  for (const { text } of lines) {
+    const def = text.match(CLASSDEF_RE);
+    if (def) {
+      const decls = parseDeclarations(def[2]);
+      for (const name of def[1].split(",").map((s) => s.trim())) classDefs[name] = { ...classDefs[name] ?? {}, ...decls };
+      continue;
+    }
+    const cls = text.match(CLASS_RE);
+    if (cls) {
+      for (const id of cls[1].split(",").map((s) => s.trim()).filter(Boolean)) {
+        const state = states.get(id);
+        if (state) state.cssClass = cls[2];
+      }
+    }
+  }
+  return Object.keys(classDefs).length > 0 ? { classDefs } : {};
+}
+function applyStateClass(node, decls) {
+  if (!decls) return;
+  const num5 = (v) => v === void 0 ? void 0 : Number.parseFloat(v);
+  const fill = decls["fill"];
+  const stroke = decls["stroke"];
+  const strokeWidth = num5(decls["stroke-width"]);
+  if (fill) node.style.fill = fill;
+  if (stroke) node.style.stroke = stroke;
+  if (strokeWidth !== void 0 && Number.isFinite(strokeWidth)) node.style.strokeWidth = strokeWidth;
+  if (decls["color"]) node.style.color = decls["color"];
+  if (decls["stroke-dasharray"]) node.style.strokeDasharray = decls["stroke-dasharray"];
+  if (decls["font-weight"]) node.style.fontWeight = decls["font-weight"];
+  const fontSize = num5(decls["font-size"]);
+  if (fontSize !== void 0 && Number.isFinite(fontSize)) node.style.fontSize = fontSize;
+  if (decls["font-family"]) node.style.fontFamily = decls["font-family"];
+  const shape = { ...node.getMetadata("shape") ?? {} };
+  if (fill) shape["fill"] = fill;
+  if (stroke) shape["stroke"] = stroke;
+  if (strokeWidth !== void 0 && Number.isFinite(strokeWidth)) shape["strokeWidth"] = strokeWidth;
+  node.setMetadata("shape", shape);
+  node.setMetadata("dslStyled", true);
+}
+
 // libs/engine/src/dsl/mermaid/MermaidState.ts
 var PSEUDO_KINDS = /* @__PURE__ */ new Set([
   "start",
@@ -140090,6 +141025,32 @@ var NOTE_RE = new RegExp(`^note\\s+(left of|right of|over)\\s+(${ID})\\s*(?::\\s
 var DIRECTION_RE = /^direction\s+(TB|BT|LR|RL|TD)$/i;
 var REGION_SEPARATOR_RE = /^(?:--)+$/;
 var HISTORY_RE = /^\[H(\*)?\]$/;
+var KNOWN_UNMODELLED_RE = /^(?:(?:classDef|class|style|click)\s|scale\s+\d+\s+width$|hide empty description$|note\s+"[^"]*"\s+as\s+\S+$)/;
+function suggestId(name) {
+  const id = name.split(/\s+/).map((w) => w.replace(/[^A-Za-z0-9_\u00c0-\uffff]/g, "")).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join("");
+  return /^[A-Za-z_\u00c0-\uffff]/.test(id) ? id : `S${id}`;
+}
+function skippedLineError(text, line) {
+  const endpoint = (raw) => raw.replace(/:::[A-Za-z0-9_-]+$/, "").trim();
+  let names = [];
+  const arrow = text.indexOf("-->");
+  if (arrow > 0) {
+    const from = endpoint(text.slice(0, arrow));
+    const rest = text.slice(arrow + 3);
+    const colon = rest.indexOf(":");
+    const to = endpoint(colon >= 0 ? rest.slice(0, colon) : rest);
+    names = [from, to];
+  } else if (!/^(?:state|note|direction)\b/.test(text)) {
+    const colon = text.indexOf(":");
+    names = [endpoint(colon >= 0 ? text.slice(0, colon) : text)];
+  }
+  const spaced = names.filter((n3) => /\s/.test(n3) && !/["\[\]{}<>]/.test(n3));
+  if (spaced.length > 0) {
+    const fixes = spaced.map((n3) => `state "${n3}" as ${suggestId(n3)}`).join(" and ");
+    return `Line ${line}: a state id cannot contain spaces \u2014 write ${fixes}, then use the short id in the transition`;
+  }
+  return `Line ${line}: "${text}" is not a state, a transition or a directive \u2014 the line was skipped`;
+}
 function hasConcurrentRegions(lines, open) {
   let depth = 0;
   for (let i = open + 1; i < lines.length; i++) {
@@ -140107,10 +141068,11 @@ function hasConcurrentRegions(lines, open) {
   return false;
 }
 function parseMermaidState(text) {
-  const lines = significantLines(text, ["stateDiagram", "stateDiagram-v2"]);
+  const lines = significantLines(text, ["stateDiagram", "stateDiagram-v2"]).map((l) => ({ ...l, text: l.text.replace(/\s*;+$/, "") })).filter((l) => l.text !== "" && !l.text.startsWith("#"));
   const states = /* @__PURE__ */ new Map();
   const transitions = [];
   const notes = [];
+  const errors = [];
   let direction;
   const touch = (id, scope2, kind = "state") => {
     const existing = states.get(id);
@@ -140228,8 +141190,11 @@ function parseMermaidState(text) {
       touchStyled(line);
       continue;
     }
+    if (KNOWN_UNMODELLED_RE.test(line)) continue;
+    errors.push(skippedLineError(line, lines[i].line));
   }
-  return { states: [...states.values()], transitions, notes, ...direction ? { direction } : {} };
+  const styling = readStateClassDefs(lines, states);
+  return { states: [...states.values()], transitions, notes, ...direction ? { direction } : {}, ...styling, errors };
 }
 var PSEUDO_SIZE = 22;
 var STATE_PAD = 18;
@@ -140238,7 +141203,45 @@ var REGION_PAD = 14;
 var BAND_GAP = 10;
 var RANK_GAP = 50;
 var CROSS_GAP = 40;
-function layoutStateModel(model, nodes, start) {
+var NOTE_GAP = 24;
+function notedBox(state, notes) {
+  const side = (n3) => {
+    const where = String(n3.getMetadata("notePosition") ?? "right of");
+    return where.startsWith("left") ? "left" : where === "over" ? "over" : "right";
+  };
+  const left = notes.filter((n3) => side(n3) === "left");
+  const right = notes.filter((n3) => side(n3) === "right");
+  const over = notes.filter((n3) => side(n3) === "over");
+  const rowW = (ns) => ns.reduce((w, n3) => w + n3.size.width + NOTE_GAP, 0);
+  const overH = over.reduce((h, n3) => Math.max(h, n3.size.height), 0);
+  const overW = over.reduce((w, n3) => w + n3.size.width, 0) + Math.max(0, over.length - 1) * NOTE_GAP;
+  const leftW = rowW(left);
+  const rowH = Math.max(state.size.height, ...left.map((n3) => n3.size.height), ...right.map((n3) => n3.size.height));
+  const midW = Math.max(state.size.width, overW);
+  const width = leftW + midW + rowW(right);
+  const top = over.length ? overH + NOTE_GAP : 0;
+  const height = top + rowH;
+  const at = [];
+  const stateX = leftW + (midW - state.size.width) / 2;
+  at.push([state, { x: stateX, y: top + (rowH - state.size.height) / 2 }]);
+  let x = 0;
+  for (const n3 of left) {
+    at.push([n3, { x, y: top + (rowH - n3.size.height) / 2 }]);
+    x += n3.size.width + NOTE_GAP;
+  }
+  x = leftW + midW + NOTE_GAP;
+  for (const n3 of right) {
+    at.push([n3, { x, y: top + (rowH - n3.size.height) / 2 }]);
+    x += n3.size.width + NOTE_GAP;
+  }
+  x = leftW + (midW - overW) / 2;
+  for (const n3 of over) {
+    at.push([n3, { x, y: overH - n3.size.height }]);
+    x += n3.size.width + NOTE_GAP;
+  }
+  return { size: { width, height }, at };
+}
+function layoutStateModel(model, nodes, start, notesOf = /* @__PURE__ */ new Map()) {
   const byId2 = new Map(model.states.map((s) => [s.id, s]));
   const childrenOf = (scope) => model.states.filter((s) => (s.parent ?? void 0) === scope);
   const liftTo = (id, scope) => {
@@ -140252,15 +141255,21 @@ function layoutStateModel(model, nodes, start) {
   };
   const scopeEdges = (scope) => {
     const edges = [];
-    for (const t of model.transitions) {
+    model.transitions.forEach((t, index) => {
       const from = liftTo(t.from, scope);
       const to = liftTo(t.to, scope);
-      if (from !== void 0 && to !== void 0 && from !== to) {
-        edges.push({ from, to });
-      }
-    }
+      if (from === void 0 || to === void 0 || from === to && t.from !== t.to) return;
+      const direct = from === t.from && to === t.to;
+      edges.push({
+        key: String(index),
+        from,
+        to,
+        ...direct && t.label ? { label: { w: estimateLabelWidth(t.label, IMPORT_EDGE_FONT) + 2 * IMPORT_EDGE_PAD, h: IMPORT_EDGE_FONT + 2 * IMPORT_EDGE_PAD } } : {}
+      });
+    });
     return edges;
   };
+  const directionOf = (scope) => (scope !== void 0 ? byId2.get(scope)?.direction : void 0) ?? model.direction ?? "TB";
   const measured = /* @__PURE__ */ new Map();
   const arrangements = /* @__PURE__ */ new Map();
   const measure2 = (state) => {
@@ -140268,8 +141277,7 @@ function layoutStateModel(model, nodes, start) {
     if (cached) return cached;
     let size;
     if (!state.composite) {
-      const node = nodes.get(state.id);
-      size = { width: node.size.width, height: node.size.height };
+      size = notedBox(nodes.get(state.id), notesOf.get(state.id) ?? []).size;
     } else if (state.concurrent) {
       const regions = childrenOf(state.id).filter((s) => s.region);
       const bands = regions.map((r) => measure2(r));
@@ -140297,12 +141305,19 @@ function layoutStateModel(model, nodes, start) {
     if (cached) return cached;
     const children = childrenOf(scope);
     const placeable = children.map((child) => ({ id: child.id, size: measure2(child) }));
-    const direction = (scope !== void 0 ? byId2.get(scope)?.direction : void 0) ?? model.direction ?? "TB";
-    const positions = placeByRank(
-      placeable,
-      assignRanks2(placeable.map((p) => p.id), scopeEdges(scope)),
-      { direction, start: { x: 0, y: 0 }, rankGap: RANK_GAP, crossGap: CROSS_GAP }
+    const edges = scopeEdges(scope);
+    const laid = layoutForImport(
+      placeable.map((p) => ({ id: p.id, width: p.size.width, height: p.size.height })),
+      edges,
+      { direction: directionOf(scope), nodeSpacing: CROSS_GAP, rankSpacing: RANK_GAP }
     );
+    const positions = laid.positions;
+    const routes = /* @__PURE__ */ new Map();
+    for (const edge of edges) {
+      const t = model.transitions[Number(edge.key)];
+      const route = laid.routes.get(edge.key);
+      if (route && t && edge.from === t.from && edge.to === t.to) routes.set(Number(edge.key), route);
+    }
     let width = 0;
     let height = 0;
     for (const p of placeable) {
@@ -140310,14 +141325,21 @@ function layoutStateModel(model, nodes, start) {
       width = Math.max(width, at.x + p.size.width);
       height = Math.max(height, at.y + p.size.height);
     }
-    const arrangement = { positions, width, height };
+    width = Math.max(width, laid.width);
+    height = Math.max(height, laid.height);
+    const arrangement = { positions, routes, width, height };
     arrangements.set(key, arrangement);
     return arrangement;
   };
+  const origins = /* @__PURE__ */ new Map();
   const commit2 = (state, x, y) => {
     const node = nodes.get(state.id);
+    if (!state.composite) {
+      const { at } = notedBox(node, notesOf.get(state.id) ?? []);
+      for (const [placed, offset] of at) placed.setPosition(x + offset.x, y + offset.y);
+      return;
+    }
     node.setPosition(x, y);
-    if (!state.composite) return;
     const size = measured.get(state.id);
     node.setSize(size.width, size.height);
     if (state.concurrent) {
@@ -140330,6 +141352,7 @@ function layoutStateModel(model, nodes, start) {
         regionNode.setPosition(x + STATE_PAD, bandY);
         regionNode.setSize(bandWidth, band.height);
         const inner = arrangements.get(region.id) ?? arrange(region.id);
+        origins.set(region.id, { x: x + STATE_PAD + REGION_PAD, y: bandY + REGION_PAD });
         for (const child of childrenOf(region.id)) {
           const local = inner.positions.get(child.id);
           commitChild(child, x + STATE_PAD + REGION_PAD + local.x, bandY + REGION_PAD + local.y);
@@ -140340,6 +141363,7 @@ function layoutStateModel(model, nodes, start) {
       const pad = state.region ? REGION_PAD : STATE_PAD;
       const header = state.region ? 0 : STATE_HEADER;
       const inner = arrangements.get(state.id) ?? arrange(state.id);
+      origins.set(state.id, { x: x + pad, y: y + pad + header });
       for (const child of childrenOf(state.id)) {
         const local = inner.positions.get(child.id);
         commitChild(child, x + pad + local.x, y + pad + header + local.y);
@@ -140347,11 +141371,31 @@ function layoutStateModel(model, nodes, start) {
     }
   };
   const commitChild = commit2;
+  for (const state of model.states) {
+    if (state.composite || PSEUDO_KINDS.has(state.kind)) continue;
+    const node = nodes.get(state.id);
+    if (node) fitNodeToLabel(node);
+  }
   const root = arrange(void 0);
+  origins.set("", { x: start.x, y: start.y });
   for (const child of childrenOf(void 0)) {
     const local = root.positions.get(child.id);
     commit2(child, start.x + local.x, start.y + local.y);
   }
+  const out = [];
+  for (const [key, arrangement] of arrangements) {
+    const origin = origins.get(key);
+    if (!origin) continue;
+    const shift2 = (p) => ({ x: p.x + origin.x, y: p.y + origin.y });
+    for (const [index, route] of arrangement.routes) {
+      out.push({
+        index,
+        route: { points: route.points.map(shift2), ...route.label ? { label: shift2(route.label) } : {} },
+        direction: directionOf(key === "" ? void 0 : key)
+      });
+    }
+  }
+  return out;
 }
 function stateModelToDiagram(model) {
   const diagram = new DiagramModel("State Diagram");
@@ -140372,22 +141416,39 @@ function stateModelToDiagram(model) {
     });
     node.setLabel(state.label);
     node.setMetadata("stateNode", state);
-    const shape = isPseudo ? "circle" : state.kind === "choice" ? "rhombus" : "rounded-rectangle";
-    node.setMetadata("dslShape", shape);
-    node.setMetadata("shape", {
-      type: isPseudo ? "circle" : state.kind === "choice" ? "diamond" : "rect",
-      cornerRadius: isPseudo || state.kind === "choice" ? 0 : 8,
-      ...state.kind === "start" ? { fill: "#0f172a" } : {}
-    });
+    applyStateNodeLook(node, state, { direction: stateFlowDirection(model, state), headerHeight: STATE_HEADER });
+    applyStateClass(node, state.cssClass ? model.classDefs?.[state.cssClass] : void 0);
     diagram.addNode(node);
     nodes.set(state.id, node);
   });
-  layoutStateModel(model, nodes, { x: 80, y: 60 });
+  addStateNotes(diagram, model, nodes);
+  const notesOf = /* @__PURE__ */ new Map();
+  for (const node of diagram.getNodes()) {
+    if (node.getMetadata("stateNote") !== true) continue;
+    const target = String(node.getMetadata("noteTarget"));
+    notesOf.set(target, [...notesOf.get(target) ?? [], node]);
+  }
+  const routes = layoutStateModel(model, nodes, { x: 80, y: 60 }, notesOf);
+  for (const link of diagram.getLinks()) {
+    if (link.getMetadata("noteLink") !== true) continue;
+    const note = diagram.getNode(link.sourceNodeId ?? "");
+    const state = diagram.getNode(link.targetNodeId ?? "");
+    if (!note || !state) continue;
+    const dx = note.position.x + note.size.width / 2 - (state.position.x + state.size.width / 2);
+    const dy = note.position.y + note.size.height / 2 - (state.position.y + state.size.height / 2);
+    const [noteSide, stateSide] = Math.abs(dx) >= Math.abs(dy) ? dx > 0 ? ["left", "right"] : ["right", "left"] : dy > 0 ? ["top", "bottom"] : ["bottom", "top"];
+    const np = ensureSideAnchorPort(note, `${noteSide}@50%`);
+    const sp = ensureSideAnchorPort(state, `${stateSide}@50%`);
+    if (np) repointLinkEnd(diagram, link, "source", note, np);
+    if (sp) repointLinkEnd(diagram, link, "target", state, sp);
+    link.setPoints([]);
+  }
   for (const state of model.states) {
     if (!state.composite) continue;
     diagram.addGroup(
       new GroupModel({ id: `group-${state.id}`, name: state.region ? "" : state.label || state.id })
     );
+    markCompositeGroup(diagram, `group-${state.id}`);
   }
   for (const state of model.states) {
     if (!state.composite) continue;
@@ -140401,14 +141462,22 @@ function stateModelToDiagram(model) {
       if (diagram.getNode(child.id)) group.addMember(child.id, diagram);
     }
   }
-  for (const transition of model.transitions) {
+  const linkOf = /* @__PURE__ */ new Map();
+  model.transitions.forEach((transition, index) => {
     const source = nodes.get(transition.from);
     const target = nodes.get(transition.to);
-    if (!source || !target) continue;
+    if (!source || !target) return;
     const link = reverseRoute(diagram, source, target) ?? diagram.createSmartLink(source, target, "orthogonal");
-    if (!link) continue;
+    if (!link) return;
     if (transition.label) link.setLabel(transition.label);
     link.setMetadata("stateTransition", transition);
+    linkOf.set(index, link);
+  });
+  for (const { index, route, direction } of routes) {
+    const link = linkOf.get(index);
+    if (!link) continue;
+    link.setPathType("smooth");
+    applyImportRoute(link, diagram, route, direction);
   }
   return diagram;
 }
@@ -140438,6 +141507,7 @@ function reverseRoute(diagram, source, target) {
 function stateModelFromDiagram(diagram) {
   const states = [];
   for (const node of diagram.getNodes()) {
+    if (node.getMetadata("stateNote") === true) continue;
     const stored = node.getMetadata("stateNode");
     states.push(
       stored ? { ...stored, id: node.id, label: node.getLabel?.() ?? stored.label } : { id: node.id, label: node.getLabel?.() ?? node.id, kind: "state" }
@@ -140445,6 +141515,7 @@ function stateModelFromDiagram(diagram) {
   }
   const transitions = [];
   for (const link of diagram.getLinks()) {
+    if (link.getMetadata("noteLink") === true) continue;
     const from = link.sourceNodeId;
     const to = link.targetNodeId;
     if (!from || !to) continue;
@@ -140909,8 +141980,13 @@ var TEXT_GRAMMAR_METADATA_KEYS = [
   // block-beta pass-through directives
   "layout",
   // block-beta / architecture-beta: laid out as an architecture
-  "layoutCompact"
+  "layoutCompact",
   // block-beta
+  // Every type: the frontmatter title and the accessibility directives — what the
+  // renderer names and describes the SVG with (lines.ts readDiagramMetadata).
+  "title",
+  "accTitle",
+  "accDescr"
 ];
 function adoptTextGrammarMetadata(target, source) {
   for (const key of TEXT_GRAMMAR_METADATA_KEYS) {
@@ -141280,6 +142356,16 @@ var _DSL = class _DSL {
    * Parse DSL text with detailed results
    */
   parseDetailed(text) {
+    const result = this.parseBody(text);
+    if (result.diagram.getMetadata("unsupportedDiagramType") === void 0) {
+      const meta = readDiagramMetadata(text);
+      for (const key of ["title", "accTitle", "accDescr"]) {
+        if (meta[key] !== void 0) result.diagram.setMetadata(key, meta[key]);
+      }
+    }
+    return result;
+  }
+  parseBody(text) {
     const startTime = performance.now();
     try {
       const diagramType = this.detectDiagramType(text);
@@ -141297,11 +142383,8 @@ var _DSL = class _DSL {
         );
       }
       if (diagramType === "stateDiagram" || diagramType === "stateDiagram-v2") {
-        return this.finishGraphType(
-          stateModelToDiagram(parseMermaidState(text)),
-          "stateDiagram-v2",
-          startTime
-        );
+        const model = parseMermaidState(text);
+        return this.finishGraphType(stateModelToDiagram(model), "stateDiagram-v2", startTime, model.errors);
       }
       if (diagramType === "block-beta") {
         const model = parseMermaidBlock(text);
@@ -141326,6 +142409,7 @@ var _DSL = class _DSL {
           stats: { nodeCount: 0, linkCount: 0, parseTime: performance.now() - startTime }
         };
       }
+      text = blankFrontmatter(text);
       if (this.options.debug) {
         debugLog("[DSL] Phase 4: Parsing styles and templates...");
       }
@@ -141427,9 +142511,13 @@ var _DSL = class _DSL {
         ]
       };
     }
-    if (this.detectDiagramType(text) !== "flowchart") return { valid: true, errors };
+    const type = this.detectDiagramType(text);
+    if (type !== "flowchart") {
+      errors.push(..._DSL.graphTypeErrors(type, text));
+      return { valid: errors.length === 0, errors };
+    }
     try {
-      this.lexer = new Lexer(text);
+      this.lexer = new Lexer(blankFrontmatter(text));
       const tokens = this.lexer.tokenize();
       this.parser.parse(tokens);
       for (const error of this.parser.getErrors()) errors.push(error.message);
@@ -141437,6 +142525,14 @@ var _DSL = class _DSL {
       errors.push(error instanceof Error ? error.message : String(error));
     }
     return { valid: errors.length === 0, errors };
+  }
+  /**
+   * The lines a graph-family grammar skipped, from its parser alone (no model is
+   * built). A grammar reports them by returning `errors` on its parsed model.
+   */
+  static graphTypeErrors(type, text) {
+    if (type === "stateDiagram" || type === "stateDiagram-v2") return parseMermaidState(text).errors ?? [];
+    return [];
   }
   /** Is this first word a diagram header the DSL recognises (parsed or not)? */
   static isDiagramHeader(word) {
@@ -141509,18 +142605,49 @@ var _DSL = class _DSL {
       debugLog("[DSL] Generating DSL text from diagram...");
     }
     const graphType = diagram.getMetadata("diagramType");
-    if (graphType === "erDiagram" || graphType === "erd") return generateErFromDiagram(diagram);
-    if (graphType === "classDiagram") return generateClassFromDiagram(diagram);
-    if (graphType === "stateDiagram" || graphType === "stateDiagram-v2") {
-      return generateStateFromDiagram(diagram);
-    }
-    if (graphType === "block-beta") return generateBlockFromDiagram(diagram);
-    if (graphType === "architecture-beta") return generateArchitectureFromDiagram(diagram);
-    const text = this.generator.generate(diagram, options);
+    let text;
+    if (graphType === "erDiagram" || graphType === "erd") text = generateErFromDiagram(diagram);
+    else if (graphType === "classDiagram") text = generateClassFromDiagram(diagram);
+    else if (graphType === "stateDiagram" || graphType === "stateDiagram-v2") text = generateStateFromDiagram(diagram);
+    else if (graphType === "block-beta") text = generateBlockFromDiagram(diagram);
+    else if (graphType === "architecture-beta") text = generateArchitectureFromDiagram(diagram);
+    else text = this.generator.generate(diagram, options);
     if (this.options.debug) {
       debugLog(`[DSL] Generated ${text.split("\n").length} lines of DSL text`);
     }
-    return text;
+    return _DSL.withDiagramMetadata(text, diagram);
+  }
+  /**
+   * Write the diagram-level metadata back into a generated body: the frontmatter
+   * `title` above the header, `accTitle` / `accDescr` right after it — every
+   * Mermaid type takes both. A body without them is returned unchanged.
+   */
+  static withDiagramMetadata(body, diagram) {
+    const read = (key) => {
+      const value = diagram.getMetadata(key);
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : void 0;
+    };
+    const title = read("title");
+    const accTitle = read("accTitle");
+    const accDescr = read("accDescr");
+    if (!title && !accTitle && !accDescr) return body;
+    const lines = body.split("\n");
+    const header = lines.findIndex((l) => l.trim() !== "" && !l.trim().startsWith("%%"));
+    const directives = [];
+    if (accTitle) directives.push(`    accTitle: ${accTitle.replace(/\s*\n\s*/g, " ")}`);
+    if (accDescr) {
+      directives.push(
+        accDescr.includes("\n") && !accDescr.includes("}") ? ["    accDescr {", ...accDescr.split("\n").map((l) => `      ${l}`), "    }"].join("\n") : `    accDescr: ${accDescr.replace(/\s*\n\s*/g, " ")}`
+      );
+    }
+    lines.splice(header + 1, 0, ...directives);
+    const out = lines.join("\n");
+    if (!title) return out;
+    const plain2 = /^[A-Za-z0-9\u00c0-\uffff][^:#\n"'{}[\],&*!|>%@`]*$/.test(title) && !/\s$/.test(title);
+    return `---
+title: ${plain2 ? title : JSON.stringify(title)}
+---
+${out}`;
   }
   /**
    * Generate and format DSL text from diagram
@@ -141741,11 +142868,12 @@ var _DSL = class _DSL {
    * are line-oriented and share nothing with the flowchart token stream — so
    * the AST/token slots are empty by construction, not by omission.
    */
-  finishGraphType(diagram, astType, startTime) {
+  finishGraphType(diagram, astType, startTime, errors) {
     return {
       diagram,
       ast: { type: "Diagram", diagramType: astType, direction: "TD", statements: [] },
       tokens: [],
+      ...errors ? { errors } : {},
       stats: {
         nodeCount: diagram.getNodes().length,
         linkCount: diagram.getLinks().length,
@@ -141940,6 +143068,11 @@ function applyBodyOntoSidecar(sidecarDoc, parsed, options) {
   }
   const direction = parsed.getMetadata?.("direction");
   if (direction !== void 0) base.setMetadata?.("direction", direction);
+  for (const key of ["title", "accTitle", "accDescr"]) {
+    const value = parsed.getMetadata(key);
+    if (value !== void 0) base.setMetadata(key, value);
+    else if (base.getMetadata(key) !== void 0) base.deleteMetadata(key);
+  }
   return base;
 }
 
@@ -159824,23 +160957,6 @@ var IntegratedSyncManager = class {
   }
 };
 
-// libs/engine/src/dsl/types/ASTNode.ts
-function isNodeDefinition(node) {
-  return node.type === "NodeDefinition";
-}
-function isEdgeDefinition(node) {
-  return node.type === "EdgeDefinition";
-}
-function isSubgraph(node) {
-  return node.type === "Subgraph";
-}
-function isStyleNode(node) {
-  return node.type === "Style";
-}
-function isClassDef(node) {
-  return node.type === "ClassDef";
-}
-
 // libs/engine/src/collab/op.ts
 function setValueOf(op) {
   return op.clear === true ? void 0 : op.value;
@@ -165061,6 +166177,10 @@ function substituteCssVars(value, lookup) {
   const out = resolveFrom(value, 0).trim();
   return unresolved.length > 0 ? { unresolved } : { value: out, unresolved };
 }
+function themeVarLookup(theme, overrides = {}) {
+  const vars = { ...resolveBindableVars(theme), ...resolveThemeVars(theme), ...overrides };
+  return (name) => vars[name];
+}
 function createClassStyleResolver(theme, warnings = []) {
   const vars = resolveThemeVars(theme);
   const compiled = BASE_STYLE_RULES.map((rule, order) => {
@@ -165247,8 +166367,17 @@ function elementAttrs(vnode, options, extraDefs, html) {
       attrs.set(prop, value);
     }
   }
-  for (const [prop, value] of Object.entries(inline)) {
+  for (const [prop, raw2] of Object.entries(inline)) {
     if (CSS_ONLY_DECLS.has(prop)) continue;
+    let value = raw2;
+    if (value.includes("var(") && options.resolveVar) {
+      const substituted = substituteCssVars(value, options.resolveVar);
+      if (substituted.value === void 0) {
+        options.warnings?.push(`unresolved CSS variable in inline "${prop}: ${raw2}" \u2014 declaration dropped`);
+        continue;
+      }
+      value = substituted.value;
+    }
     attrs.set(prop, prop === "filter" ? translateBlurFilter(value, extraDefs) : value);
   }
   return { attrs, text, raw };
@@ -166714,9 +167843,11 @@ function exportSvg(root, options = {}) {
   const width = clamped.width;
   const height = clamped.height;
   const classStyles = createClassStyleResolver(theme, warnings);
+  const resolveVar = themeVarLookup(theme);
   const extraDefs = /* @__PURE__ */ new Map();
   const serialize = (child) => serializeVNode(child, {
     classStyles,
+    resolveVar,
     foreignObject: options.foreignObject,
     captureForeignObject: options.captureForeignObject,
     warnings,
@@ -169822,6 +170953,22 @@ function noteVerts(b) {
     { x: b.x0, y: r3(b.y0 + b.h) }
   ];
 }
+function asymmetricVerts(b) {
+  const notch = Math.min(b.h / 2, b.w * 0.2);
+  return [
+    { x: b.x0, y: b.y0 },
+    { x: r3(b.x0 + b.w), y: b.y0 },
+    { x: r3(b.x0 + b.w), y: r3(b.y0 + b.h) },
+    { x: b.x0, y: r3(b.y0 + b.h) },
+    { x: r3(b.x0 + notch), y: r3(b.y0 + b.h / 2) }
+  ];
+}
+var AsymmetricShape = polygonShape("asymmetric", asymmetricVerts, {
+  innerRect: (w, h) => {
+    const notch = Math.min(h / 2, w * 0.2);
+    return { x: notch, y: 0.1 * h, w: w - notch - 0.06 * w, h: 0.8 * h };
+  }
+});
 var ParallelogramShape = polygonShape("parallelogram", (b) => parallelogramVerts(b, 1));
 var ParallelogramTopShape = polygonShape("parallelogram-top", (b) => parallelogramVerts(b, -1));
 var TrapezoidShape = polygonShape("trapezoid", (b) => trapezoidVerts(b, "top"));
@@ -170158,6 +171305,7 @@ for (const def of [RectShape, CircleShape, EllipseShape, DiamondShape, HexagonSh
   registry3.set(def.type, def);
 }
 for (const def of [
+  AsymmetricShape,
   ParallelogramShape,
   ParallelogramTopShape,
   TrapezoidShape,
@@ -170192,7 +171340,9 @@ var SHAPE_ALIASES = {
   // narrow-bottom in some dialects; near enough
   folder: PackageShape,
   comment: NoteShape,
-  "use-case-actor": ActorShape
+  "use-case-actor": ActorShape,
+  odd: AsymmetricShape
+  // Mermaid v11's name for `>text]`
 };
 for (const [alias, def] of Object.entries(SHAPE_ALIASES)) {
   registry3.set(alias, def);
@@ -173069,6 +174219,9 @@ var ArrowRenderer = class {
 };
 
 // libs/renderer/src/svg/LabelRenderer.ts
+var LINK_LABEL_COLOR_VAR = `var(${THEME_VARS["linkLabel.color"].cssVar})`;
+var LINK_LABEL_BACKGROUND_VAR = `var(${THEME_VARS["linkLabel.background"].cssVar})`;
+var isCssVar = (paint2) => typeof paint2 === "string" && paint2.trim().startsWith("var(");
 var DEFAULT_HTML_LABEL_WIDTH = 120;
 var DEFAULT_HTML_LABEL_HEIGHT = 28;
 function alongPolyline(pts, t) {
@@ -173162,8 +174315,10 @@ var LabelRenderer = class {
     }
     const fontSize = label.style?.fontSize ?? this.defaultFontSize;
     const fontFamily = label.style?.fontFamily;
-    const color = label.style?.color ?? this.defaultColor;
-    const themedSurface = context.theme?.colors.background.surface;
+    const theme = context.theme;
+    const cssDefaults = !!context.cssMode && !!theme;
+    const color = label.style?.color ?? (cssDefaults ? LINK_LABEL_COLOR_VAR : theme?.colors?.text?.primary ?? this.defaultColor);
+    const themedSurface = theme ? cssDefaults ? LINK_LABEL_BACKGROUND_VAR : theme.colors?.background?.surface : void 0;
     const rawBackground = label.style?.background ?? themedSurface;
     const background = rawBackground === "none" ? void 0 : rawBackground;
     const padding = label.style?.padding ?? this.defaultPadding;
@@ -173179,7 +174334,9 @@ var LabelRenderer = class {
           y: -textHeight / 2 - padding,
           width: textWidth + padding * 2,
           height: textHeight + padding * 2,
-          fill: background,
+          // A `var()` paint must be inline style: as an attribute it is invalid
+          // and the chip would paint black.
+          ...isCssVar(background) ? { style: { fill: background } } : { fill: background },
           stroke: label.style?.border,
           rx: borderRadius,
           className: "link-label-bg"
@@ -173265,9 +174422,13 @@ var LabelRenderer = class {
       // LabelStyle has always declared weight, style and decoration; nothing
       // drew them — a bold green "card number and CVV" rendered regular.
       fontWeight: label.style?.fontWeight,
-      color,
+      color: isCssVar(color) ? void 0 : color,
       className: "link-label-text"
     });
+    if (isCssVar(color)) {
+      const props = block.props;
+      props["style"] = { ...props["style"] ?? {}, fill: color };
+    }
     if (label.style?.fontStyle || label.style?.textDecoration) {
       const props = block.props;
       if (label.style.fontStyle) props["fontStyle"] = label.style.fontStyle;
@@ -175794,12 +176955,34 @@ function styleClassTokens(styleClass) {
 }
 var CHANNEL_NUDGE_TRIGGER = 4;
 var CONTENT_RENDER_SLACK = 200;
+var DOCUMENT_TIER = "document";
 function polylineLength(points) {
   let total = 0;
   for (let i = 0; i < points.length - 1; i++) {
     total += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
   }
   return total;
+}
+function hoistVarPaintsDeep(vnode) {
+  const props = vnode.props;
+  if (props) {
+    const moved = {};
+    for (const key of ["fill", "stroke"]) {
+      const value = props[key];
+      if (typeof value === "string" && value.includes("var(")) {
+        moved[key] = value;
+        delete props[key];
+      }
+    }
+    if (Object.keys(moved).length > 0) {
+      const existing = props["style"];
+      props["style"] = existing && typeof existing === "object" ? { ...existing, ...moved } : typeof existing === "string" && existing ? `${existing}; ${Object.entries(moved).map(([k, v]) => `${k}: ${v}`).join("; ")}` : moved;
+    }
+  }
+  for (const child of vnode.children ?? []) {
+    if (child && typeof child === "object" && "type" in child) hoistVarPaintsDeep(child);
+  }
+  return vnode;
 }
 var MIN_LABEL_FONT_PX = 8;
 function fitFontSize(text, maxWidth, base) {
@@ -176171,6 +177354,8 @@ var _SVGRenderer = class _SVGRenderer {
       // defaults off: the alternative is zoom breakpoints pessimistic enough to
       // protect a 10k scene, imposed on a 30-node one that never needed them.
       qualityGovernor: config.qualityGovernor ?? true,
+      // 'document': a static figure — never shed detail (see the option docs).
+      lod: config.lod ?? "auto",
       routeSolverPort: config.routeSolverPort,
       routeSolverOptions: config.routeSolverOptions,
       onRoutesRefined: config.onRoutesRefined,
@@ -176187,7 +177372,7 @@ var _SVGRenderer = class _SVGRenderer {
       this.edgeOptimizer = new EdgeOptimizer({ jumpOwnership: this.config.jumpOwnership });
     }
     const gov = this.config.qualityGovernor;
-    if (gov) {
+    if (gov && this.config.lod !== "document") {
       this.governor = new QualityGovernor(typeof gov === "object" ? gov : {});
     }
     this.instanceId = config.instanceId || nextInstanceId();
@@ -176412,7 +177597,7 @@ var _SVGRenderer = class _SVGRenderer {
     }
     this.frameChangedGeometry = false;
     this.autoSizeNodes(diagram);
-    const zoomTier = diagram.getLODLevel(zoom);
+    const zoomTier = this.config.lod === "document" ? DOCUMENT_TIER : diagram.getLODLevel(zoom);
     const lod = this.governor ? this.governor.effectiveTier(zoomTier, this.lodTierNames(diagram)) : zoomTier;
     this.frameLod = lod;
     this.frameZoom = zoom > 0 && Number.isFinite(zoom) ? zoom : 1;
@@ -176564,7 +177749,8 @@ var _SVGRenderer = class _SVGRenderer {
    * stale list would step a custom tier into one that no longer exists.
    */
   lodTierNames(diagram) {
-    return [...diagram.getLODConfig().tiers].sort((a, b) => b.minZoom - a.minZoom).map((t) => t.name);
+    const tiers = diagram.getActiveLODTiers?.() ?? [...diagram.getLODConfig().tiers].sort((a, b) => b.minZoom - a.minZoom);
+    return tiers.map((t) => t.name);
   }
   /**
    * wave8/dirty — everything a frame depends on that is NOT model state.
@@ -178542,6 +179728,7 @@ var _SVGRenderer = class _SVGRenderer {
    * Returns false when there is no diagram (nothing to render anyway).
    */
   lodAllows(feature, lod) {
+    if (lod === DOCUMENT_TIER && this.config.lod === "document") return true;
     if (this.lodCacheTier !== lod) {
       this.lodCacheTier = lod;
       this.lodCache.clear();
@@ -178691,7 +179878,7 @@ var _SVGRenderer = class _SVGRenderer {
       if (entry.type === "node") diagram.getNode(entry.id)?.markDirty?.();
       else diagram.getLink(entry.id)?.markDirty?.();
       this.vnodeCache.delete(`${entry.type}-${entry.id}`);
-      for (const lod of ["high", "medium", "low"]) {
+      for (const lod of [...diagram.getLODConfig().tiers.map((t) => t.name), DOCUMENT_TIER]) {
         this.vnodeCache.delete(`${entry.type}-${entry.id}-${lod}`);
       }
     }
@@ -178787,7 +179974,7 @@ var _SVGRenderer = class _SVGRenderer {
         continue;
       }
       frames.push(
-        this.renderGroupFrame(g, bounds, g.parentGroupId ? byId2.get(g.parentGroupId) : void 0)
+        hoistVarPaintsDeep(this.renderGroupFrame(g, bounds, g.parentGroupId ? byId2.get(g.parentGroupId) : void 0))
       );
     }
     return {
@@ -178801,6 +179988,15 @@ var _SVGRenderer = class _SVGRenderer {
       },
       children: frames
     };
+  }
+  /**
+   * A theme paint for chrome the shared stylesheet does not own (group frames,
+   * subtitles): in CSS mode the token's VARIABLE — so the SVG is the same bytes
+   * under every theme and the page's variable block decides — else its literal.
+   * A `var()` cannot be a presentation attribute; see {@link hoistVarPaintsDeep}.
+   */
+  chromePaint(token) {
+    return this.config.useCSSMode ? `var(${THEME_VARS[token].cssVar})` : String(THEME_VARS[token].read(this.theme));
   }
   /**
    * A zone's frame: its own fill, border, dash and radius, and its caption in a
@@ -178824,7 +180020,7 @@ var _SVGRenderer = class _SVGRenderer {
         rx: radius,
         ry: radius,
         fill: str("fill") ?? "none",
-        stroke: str("stroke") ?? c.node.default.stroke,
+        stroke: str("stroke") ?? this.chromePaint("node.stroke"),
         strokeWidth: num5("strokeWidth") ?? 1,
         ...str("strokeDasharray") ? { strokeDasharray: str("strokeDasharray") } : {},
         className: "group-frame-rect group-zone-rect",
@@ -178838,7 +180034,7 @@ var _SVGRenderer = class _SVGRenderer {
     const INSET_X = 16;
     const INSET_Y = 12 + fontSize * 0.7;
     const style = {
-      fill: str("color") ?? c.text.secondary,
+      fill: str("color") ?? this.chromePaint("label.muted"),
       fontSize: `${fontSize}px`,
       fontWeight: z["fontWeight"] !== void 0 ? String(z["fontWeight"]) : "600",
       ...str("fontFamily") ? { fontFamily: fontStackFor(str("fontFamily")) } : {},
@@ -178892,8 +180088,9 @@ var _SVGRenderer = class _SVGRenderer {
       bounds.height
     );
     const fontSize = this.theme.typography.fontSize.sm;
-    const stroke = c.node.default.stroke;
-    const surface = c.background.surface;
+    const stroke = this.chromePaint("node.stroke");
+    const surface = this.chromePaint("group.fill");
+    const ink = this.chromePaint("label.color");
     const frameRect = {
       type: "rect",
       key: `group-frame-rect-${group.id}`,
@@ -178989,7 +180186,7 @@ var _SVGRenderer = class _SVGRenderer {
         fontSize,
         fontFamily: this.theme.typography.fontFamily.default,
         fontWeight: this.theme.typography.fontWeight.medium,
-        fill: c.text.primary,
+        fill: ink,
         className: sideStrip > 0 ? "group-frame-label group-frame-label-pool" : "group-frame-label group-frame-label-folded",
         textContent: group.name,
         "aria-hidden": "true"
@@ -179004,7 +180201,7 @@ var _SVGRenderer = class _SVGRenderer {
         fontSize,
         fontFamily: this.theme.typography.fontFamily.default,
         fontWeight: this.theme.typography.fontWeight.medium,
-        fill: c.text.primary,
+        fill: ink,
         className: "group-frame-label",
         textContent: group.name,
         // The visible label; the accessible name is on the container, so hide
@@ -179045,7 +180242,7 @@ var _SVGRenderer = class _SVGRenderer {
   renderPhases(group, bounds, collapsed) {
     const lc = group.laneConfig;
     if (!lc) return [];
-    const stroke = this.theme.colors.node.default.stroke;
+    const stroke = this.chromePaint("node.stroke");
     const line = (key, x1, y1, x2, y2, className) => ({
       type: "line",
       key,
@@ -179059,7 +180256,7 @@ var _SVGRenderer = class _SVGRenderer {
         {
           type: "rect",
           key: `group-phase-band-${group.id}`,
-          props: { ...head, fill: this.theme.colors.background.surface, fillOpacity: 0.9, stroke: "none", className: "group-phase-band", "aria-hidden": "true" }
+          props: { ...head, fill: this.chromePaint("group.fill"), fillOpacity: 0.9, stroke: "none", className: "group-phase-band", "aria-hidden": "true" }
         },
         horizontal ? line(`group-phase-divider-${group.id}`, head.x, head.y + head.height, head.x + head.width, head.y + head.height, "group-phase-divider") : line(`group-phase-divider-${group.id}`, head.x + head.width, head.y, head.x + head.width, head.y + head.height, "group-phase-divider")
       ];
@@ -179083,7 +180280,7 @@ var _SVGRenderer = class _SVGRenderer {
             fontSize: this.theme.typography.fontSize.sm,
             fontFamily: this.theme.typography.fontFamily.default,
             fontWeight: this.theme.typography.fontWeight.medium,
-            fill: this.theme.colors.text.primary,
+            fill: this.chromePaint("label.color"),
             className: "group-phase-label",
             textContent: b.name,
             "aria-hidden": "true"
@@ -179106,10 +180303,16 @@ var _SVGRenderer = class _SVGRenderer {
   /** The canvas's own semantics. */
   rootAriaProps() {
     const diagram = this.engine?.getDiagram?.();
+    const meta = (key) => {
+      const value = diagram?.getMetadata?.(key);
+      return typeof value === "string" && value.trim() ? value.trim() : void 0;
+    };
+    const description = meta("accDescr");
     return {
       role: DIAGRAM_ROLE,
       "aria-roledescription": diagramRoleDescription(this.config.diagramType),
-      "aria-label": diagram ? diagramAccessibleName(diagram, this.config.diagramLabel) : "Diagram",
+      "aria-label": diagram ? diagramAccessibleName(diagram, this.config.diagramLabel || meta("accTitle") || meta("title")) : "Diagram",
+      ...description ? { "aria-description": description } : {},
       // The single tab stop — surrendered to whichever child is focused.
       tabindex: this.a11yFocus ? "-1" : "0"
     };
@@ -179285,6 +180488,7 @@ var _SVGRenderer = class _SVGRenderer {
     const styles = this.config.useCSSMode ? this.computeNodeStylesCSS(node) : this.computeNodeStylesProgrammatic(node);
     const isHovered = node.state.hovered;
     const isSelected = node.isSelected();
+    const headerContainer = node.getMetadata("labelPlacement") === "header";
     const connectionState = this.engine.getConnectionStateManager().getState();
     const isConnectionTarget = connectionState.isConnecting && connectionState.validTargetNodes.has(node.id);
     const vnode = {
@@ -179330,9 +180534,13 @@ var _SVGRenderer = class _SVGRenderer {
         // Drop shadow (Phase 3.1: Shape-aware). `style.shadow: false` turns it
         // OFF — it used to add nothing and remove nothing, so a flat box (and a
         // text note) still wore a blurred grey slab under it.
-        ...this.lodAllows("shadows", lod) && this.resolvedNodeStyle(node).shadow !== false ? [this.renderShadow(node, isHovered)] : [],
-        // Node shape (Phase 3.1: Shape-based rendering)
-        this.renderNodeShape(node, styles, isHovered),
+        // A HEADER CONTAINER (see renderHeaderBand) casts none: its body is see-through.
+        ...this.lodAllows("shadows", lod) && !headerContainer && this.resolvedNodeStyle(node).shadow !== false ? [this.renderShadow(node, isHovered)] : [],
+        // Node shape (Phase 3.1: Shape-based rendering). A header container's body
+        // is see-through — lines inside it paint BELOW nodes, and an opaque body hid
+        // every one of them — and its paint moves to the caption band.
+        this.renderNodeShape(node, headerContainer ? { ...styles, fill: "none" } : styles, isHovered),
+        ...headerContainer ? [this.renderHeaderBand(node, styles)] : [],
         // Far zoom: an HTML card over an invisible shape keeps a silhouette.
         ...!this.lodAllows("decorations", lod) && hasHtmlContent(node) && this.bodyPaintsNothing(styles) ? [this.renderHtmlSilhouette(node)] : [],
         // Card 5: composite panel overlay (header band / image / rows / badges /
@@ -179340,7 +180548,7 @@ var _SVGRenderer = class _SVGRenderer {
         ...this.lodAllows("decorations", lod) ? this.renderPanelOverlay(node) : [],
         // Label (if LOD allows and label exists) — shape-fit wrap + ellipsis,
         // clipped to the shape's inner rect (see renderNodeLabel).
-        ...diagram.shouldRenderLabels(lod) && node.getLabel() ? this.renderNodeLabel(node) : [],
+        ...this.lodAllows("labels", lod) && node.getLabel() ? this.renderNodeLabel(node) : [],
         // Card 4: HTML / foreignObject body (sanitized) on top of the shape
         // background, so it rotates + hit-tests + selects like any shape. Skipped
         // at LODs that drop decorations (a far-zoom node is just its silhouette).
@@ -179785,6 +180993,9 @@ var _SVGRenderer = class _SVGRenderer {
     if (node.getMetadata("labelPlacement") === "below") {
       return this.renderNodeLabelBelow(node);
     }
+    if (node.getMetadata("labelPlacement") === "header") {
+      return this.renderNodeLabelHeader(node);
+    }
     const shapeConfig = node.getMetadata("shape") || { type: "rect" };
     if (shapeConfig.type === "text") return this.renderTextNoteLabel(node);
     const { width, height } = node.size;
@@ -179850,7 +181061,7 @@ var _SVGRenderer = class _SVGRenderer {
       props["style"] = { ...props["style"] ?? {}, ...inline };
     }
     if (!sublabel) return [clip, text];
-    const subColor = sublabel.color ?? this.theme.colors.text.secondary;
+    const subColor = sublabel.color ?? this.chromePaint("label.muted");
     const sub = renderTextBlock({
       text: sublabel.text,
       x: inner.x + inner.w / 2,
@@ -179865,7 +181076,8 @@ var _SVGRenderer = class _SVGRenderer {
       nonInteractive: true,
       className: "diagram-sublabel",
       emitFontSize: true,
-      color: subColor
+      // A var() is not a valid attribute; the inline style below carries it.
+      color: subColor.includes("var(") ? void 0 : subColor
     });
     sub.props["style"] = {
       fill: subColor,
@@ -179996,6 +181208,77 @@ var _SVGRenderer = class _SVGRenderer {
    * sits {@link BELOW_LABEL_GAP} px under the node's height, so it can never
    * straddle the silhouette edge.
    */
+  /** A header container's caption band height: `metadata.headerHeight`, default 22. */
+  headerBandHeight(node) {
+    const h = node.getMetadata("headerHeight");
+    const band = typeof h === "number" && Number.isFinite(h) && h > 0 ? h : 22;
+    return Math.min(band, node.size.height);
+  }
+  /**
+   * `metadata.labelPlacement: 'header'` — a CONTAINER's caption band: a composite
+   * state ("Active" over its sub-states), a UML package. The band runs across
+   * the node's top (`metadata.headerHeight`, default 22) with the node's own
+   * corners on top and a straight edge below — that edge is the divider — in the
+   * node's paint, while the body below stays see-through. Without it a composite
+   * was an opaque box with its name dead centre, UNDER its children, and every
+   * transition inside it hidden beneath its fill.
+   */
+  renderHeaderBand(node, styles) {
+    const { width } = node.size;
+    const h = this.headerBandHeight(node);
+    const r = Math.max(0, Math.min(this.nodeCornerRadius(node) ?? 0, h, width / 2));
+    const d = `M 0 ${h} L 0 ${r} A ${r} ${r} 0 0 1 ${r} 0 L ${width - r} 0 A ${r} ${r} 0 0 1 ${width} ${r} L ${width} ${h} Z`;
+    const css = this.config.useCSSMode;
+    const fill = styles.fill ?? this.chromePaint("node.fill");
+    const stroke = styles.stroke ?? this.chromePaint("node.stroke");
+    const strokeWidth = styles.strokeWidth ?? (css ? `var(${THEME_VARS["node.strokeWidth"].cssVar})` : this.theme.nodes.default.strokeWidth);
+    return {
+      type: "path",
+      key: `node-header-${node.id}`,
+      props: {
+        d,
+        className: "gf-node-header",
+        style: { fill, stroke, strokeWidth },
+        pointerEvents: "none",
+        "aria-hidden": "true"
+      }
+    };
+  }
+  /** The caption of a header container, centred in its band (see renderHeaderBand). */
+  renderNodeLabelHeader(node) {
+    const { width } = node.size;
+    const band = this.headerBandHeight(node);
+    const label = String(node.getLabel());
+    const typo = this.nodeTextStyle(node);
+    const baseFont = typo.fontSize ?? this.theme.typography.fontSize.md;
+    const maxWidth = Math.max(1, width - 16);
+    const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont), Math.max(8, Math.floor(band / 1.3)));
+    const shrunk = fontSize < baseFont;
+    const css = this.config.useCSSMode;
+    const text = renderTextBlock({
+      text: label,
+      x: width / 2,
+      y: band / 2,
+      maxWidth,
+      align: "middle",
+      valign: "middle",
+      fontSize,
+      lineHeight: 1.2,
+      maxLines: 1,
+      nonInteractive: true,
+      className: css ? "diagram-label gf-label-header" : "gf-label-header",
+      emitFontSize: !css || shrunk,
+      color: css ? void 0 : typo.style.fill ?? this.theme.colors.text.primary,
+      fontWeight: css ? void 0 : typo.style.fontWeight ?? this.theme.typography.fontWeight.medium
+    });
+    const inline = { ...typo.style };
+    if (shrunk) inline.fontSize = `${fontSize}px`;
+    if (Object.keys(inline).length > 0) {
+      const props = text.props;
+      props["style"] = { ...props["style"] ?? {}, ...inline };
+    }
+    return [text];
+  }
   renderNodeLabelBelow(node) {
     const { width, height } = node.size;
     const label = String(node.getLabel());
@@ -181201,6 +182484,7 @@ var _SVGRenderer = class _SVGRenderer {
               const labelVNode = this.labelRenderer.renderLabel(placed, link, {
                 offset,
                 theme: this.theme,
+                cssMode: this.config.useCSSMode,
                 path: points
               });
               if (labelVNode) {
@@ -181215,12 +182499,13 @@ var _SVGRenderer = class _SVGRenderer {
               position: 0.5,
               offset: { x: 0, y: -10 },
               style: {
-                fontSize: this.theme.typography.fontSize.sm,
-                color: this.theme.colors.text.primary,
-                background: this.theme.colors.background.surface
+                fontSize: this.theme.typography.fontSize.sm
               }
             };
-            const labelVNode = this.labelRenderer.renderLabel(legacyLabel, link);
+            const labelVNode = this.labelRenderer.renderLabel(legacyLabel, link, {
+              theme: this.theme,
+              cssMode: this.config.useCSSMode
+            });
             if (labelVNode) {
               labelVNodes.push(labelVNode);
             }
@@ -181457,6 +182742,7 @@ var _SVGRenderer = class _SVGRenderer {
     if (this.connectSnap?.nodeId === node.id) classes.push(`connect-snap-${this.connectSnap.verdict}`);
     if (!node.state.enabled) classes.push("disabled");
     if (node.state.error) classes.push("error");
+    if (node.getMetadata("shape")?.ink) classes.push("node-ink");
     classes.push(...styleClassTokens(node.style.styleClass));
     if (node.style.className) classes.push(node.style.className);
     if (node.classes?.size) classes.push(...node.classes);
@@ -181487,6 +182773,9 @@ var _SVGRenderer = class _SVGRenderer {
       // so untouched props still fall back to the theme.
       ...style.opacity !== void 0 && { opacity: style.opacity },
       ...style.borderRadius !== void 0 && { rx: style.borderRadius },
+      // A dashed border (`style.strokeDasharray`, a classDef's stroke-dasharray, a
+      // concurrent region's divider) — declared on NodeStyle and drawn by nothing.
+      ...style.strokeDasharray && { strokeDasharray: style.strokeDasharray },
       ...shadowFilter && { filter: shadowFilter }
     };
   }
@@ -181503,6 +182792,7 @@ var _SVGRenderer = class _SVGRenderer {
       strokeWidth: style.strokeWidth ?? themeDefaults.strokeWidth,
       rx: style.borderRadius ?? themeDefaults.borderRadius,
       opacity: style.opacity ?? themeDefaults.opacity,
+      ...style.strokeDasharray && { strokeDasharray: style.strokeDasharray },
       ...shadowFilter && { filter: shadowFilter }
     };
   }
@@ -184726,6 +186016,7 @@ var CanvasStyleResolver = class {
     this.warnings = [];
     this.theme = options.theme;
     this.classRules = this.compile(options.theme, options.varOverrides);
+    this.lookupVar = themeVarLookup(options.theme, options.varOverrides);
   }
   /**
    * Build the class-rule resolver for a theme.
@@ -184744,6 +186035,7 @@ var CanvasStyleResolver = class {
   setTheme(theme, varOverrides) {
     this.theme = theme;
     this.classRules = this.compile(theme, varOverrides);
+    this.lookupVar = themeVarLookup(theme, varOverrides);
   }
   getTheme() {
     return this.theme;
@@ -184771,7 +186063,14 @@ var CanvasStyleResolver = class {
     if (classes.length > 0) {
       Object.assign(decls, this.classRules(classes));
     }
-    Object.assign(decls, parseInlineStyle(props["style"]));
+    for (const [prop, value] of Object.entries(parseInlineStyle(props["style"]))) {
+      if (!value.includes("var(")) {
+        decls[prop] = value;
+        continue;
+      }
+      const substituted = substituteCssVars(value, this.lookupVar);
+      if (substituted.value !== void 0) decls[prop] = substituted.value;
+    }
     applyDecls(decls, style);
     return style;
   }
@@ -195486,6 +196785,7 @@ function createDiagram(container, options = {}) {
       themes: options.themes,
       tokenBridge: options.tokenBridge,
       highlightConnected: options.highlightConnected ?? options.renderer?.highlightConnected,
+      lod: options.lod ?? options.renderer?.lod,
       // "My picture improved with no model change — repaint me." Fired by the
       // async route solver's refinements and by motion-stable routing's settle
       // frame (a tween's provisional routes re-deciding once motion stops).
@@ -196309,7 +197609,7 @@ function renderStaticNow(options) {
     const bounds = contentBounds(model);
     if (bounds) viewport.fitToBounds(bounds, options.fitPadding ?? 40);
   }
-  const renderer = new SVGRenderer(engine, { instanceId }, options.theme);
+  const renderer = new SVGRenderer(engine, { instanceId, lod: options.lod }, options.theme);
   const vnode = renderer.render(viewport.getRenderViewport(), viewport.getZoom());
   const live = serializeVNode(vnode, { fidelity: "dom", standalone: options.standalone });
   const svg = serializeVNode(
@@ -213779,6 +215079,8 @@ export {
   LANE_BAND_KEY,
   LANE_TITLE_SIZE,
   LIGHT_THEME,
+  LINK_LABEL_BACKGROUND_VAR,
+  LINK_LABEL_COLOR_VAR,
   LINK_LABEL_SLOT_POSITIONS,
   LINK_TEMPLATES,
   LabelRenderer,
@@ -213882,6 +215184,7 @@ export {
   SCREEN_LAYER_CLASS,
   SERVER_ROOT_STYLE,
   SHAPES,
+  SMALL_DIAGRAM_NODES,
   SMART_MODE_CONFIG,
   STYLES,
   SUBGRAPH_FORMAT,
@@ -214104,6 +215407,7 @@ export {
   createDefaultLayoutRegistry,
   createDiagram,
   createDiagramApi,
+  createDocumentLODConfig,
   createDomElement,
   createDomRasterBackend,
   createDrawTool,
@@ -214651,6 +215955,7 @@ export {
   themeRefToken,
   themeRefVar,
   themeVar,
+  themeVarLookup,
   themeVarValue,
   throttle,
   toEdgeSpec,
