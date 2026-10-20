@@ -11,7 +11,7 @@
 // rect, the wrap the node label engine runs, the point a label is drawn at — so
 // it fails exactly when the picture would.
 
-import { importDiagramText, linkLabelPosition, type DiagramModel, type LinkModel, type NodeModel } from '@grafloria/engine';
+import { importDiagramText, linkLabelPosition, glyphTextWidth, type DiagramModel, type LinkModel, type NodeModel } from '@grafloria/engine';
 import { LabelRenderer } from './LabelRenderer';
 import { getShape, getInnerRect } from './shape-registry';
 import { wrapText } from './text-block';
@@ -165,9 +165,11 @@ describe('imported Mermaid: every word the author wrote is visible', () => {
       const shape = getShape((node.getMetadata('shape') as { type?: string } | undefined)?.type ?? 'rect');
       const inner = getInnerRect(shape, node.size.width, node.size.height);
       // The renderer shrinks the font only for a word too wide for its box: never here.
-      expect({ label, font: fitFontSize(label, inner.w, 14) }).toEqual({ label, font: 14 });
-      const lines = wrapText(label, inner.w, 14).length;
-      expect({ label, fits: lines <= Math.floor(inner.h / (14 * 1.2)) }).toEqual({ label, fits: true });
+      // Imported labels draw at Mermaid's 16 px.
+      expect(node.style.fontSize).toBe(16);
+      expect({ label, font: fitFontSize(label, inner.w, 16) }).toEqual({ label, font: 16 });
+      const lines = wrapText(label, inner.w, 16).length;
+      expect({ label, fits: lines <= Math.floor(inner.h / (16 * 1.2)) }).toEqual({ label, fits: true });
     }
   });
 
@@ -190,15 +192,17 @@ describe('imported Mermaid: every word the author wrote is visible', () => {
   });
 });
 
-describe('imported Mermaid: boxes grow to hold their text', () => {
+describe("imported Mermaid: boxes are Mermaid's, and hold their text", () => {
   it('wraps at 200 px, then grows taller — never an ellipsis', () => {
     const d = load(`flowchart LR
       A[Short] --> B[A label of a dozen or so words that is far too long for one line of the box]
       B --> C[A label twice as long again, a label of a couple of dozen words that has to wrap onto many lines of the box before it fits]`);
     const [a, b, c] = ['A', 'B', 'C'].map((id) => d.getNode(id)!);
-    expect(a.size).toMatchObject({ width: 120, height: 80 }); // the default stays the floor
-    expect(b.size.width).toBeLessThanOrEqual(200 + 16);
-    expect(c.size.width).toBeLessThanOrEqual(200 + 16);
+    // Mermaid's [Short]: its text (here, with no canvas, the server-side estimate) + 60, by 54.
+    const short = Math.max('Short'.length * 16 * 0.6, glyphTextWidth('Short', { size: 16 }) * 1.15 + 2);
+    expect(a.size).toMatchObject({ width: Math.ceil(short + 60), height: 54 });
+    expect(b.size.width).toBeLessThanOrEqual(200 + 60);
+    expect(c.size.width).toBeLessThanOrEqual(200 + 60);
     expect(c.size.height).toBeGreaterThan(b.size.height); // more lines, a taller box
   });
 
@@ -207,7 +211,7 @@ describe('imported Mermaid: boxes grow to hold their text', () => {
       Draft --> GoodsReleasedForShipmentToTheCustomer: release`);
     const node = d.getNode('GoodsReleasedForShipmentToTheCustomer')!;
     const inner = getInnerRect(getShape('rect'), node.size.width, node.size.height);
-    expect(fitFontSize('GoodsReleasedForShipmentToTheCustomer', inner.w, 14)).toBe(14);
+    expect(fitFontSize('GoodsReleasedForShipmentToTheCustomer', inner.w, 16)).toBe(16);
   });
 });
 
@@ -262,5 +266,96 @@ describe('imported Mermaid: edges leave the side facing the next rank', () => {
     const bySource = into.slice().sort((a, b) => d.getNode(a.sourceNodeId!)!.position.y - d.getNode(b.sourceNodeId!)!.position.y);
     const byEntry = into.slice().sort((a, b) => a.points[a.points.length - 1].y - b.points[b.points.length - 1].y);
     expect(byEntry.map((l) => l.id)).toEqual(bySource.map((l) => l.id));
+  });
+});
+
+/** The line as drawn: its `d` (M, L and C commands), each cubic sampled 16 times. */
+function drawnLine(d: string): Array<{ x: number; y: number }> {
+  const out: Array<{ x: number; y: number }> = [];
+  for (const [, cmd, args] of d.matchAll(/([MLC])([^MLC]*)/g)) {
+    const n = (args.match(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g) ?? []).map(Number);
+    if (cmd !== 'C') {
+      for (let i = 0; i + 1 < n.length; i += 2) out.push({ x: n[i], y: n[i + 1] });
+      continue;
+    }
+    for (let i = 0; i + 5 < n.length; i += 6) {
+      const p = out[out.length - 1];
+      const [ax, ay, bx, by, x, y] = n.slice(i, i + 6);
+      for (let s = 1; s <= 16; s++) {
+        const t = s / 16;
+        const u = 1 - t;
+        out.push({
+          x: u * u * u * p.x + 3 * u * u * t * ax + 3 * u * t * t * bx + t * t * t * x,
+          y: u * u * u * p.y + 3 * u * u * t * ay + 3 * u * t * t * by + t * t * t * y,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** How far a line's heading turns over its last `span` units, in degrees. */
+function endTurn(line: Array<{ x: number; y: number }>, span: number): number {
+  let total = 0;
+  let walked = 0;
+  let heading: number | null = null;
+  for (let i = line.length - 1; i > 0 && walked < span; i--) {
+    const dx = line[i].x - line[i - 1].x;
+    const dy = line[i].y - line[i - 1].y;
+    const step = Math.hypot(dx, dy);
+    if (step < 1e-6) continue;
+    walked += step;
+    const a = Math.atan2(dy, dx);
+    if (heading !== null) {
+      let turn = Math.abs(a - heading);
+      if (turn > Math.PI) turn = 2 * Math.PI - turn;
+      total += turn;
+    }
+    heading = a;
+  }
+  return (total * 180) / Math.PI;
+}
+
+describe('imported Mermaid: no edge end hooks back past its arrowhead', () => {
+  // A smooth line through a route pulls the stretch beside each end toward the
+  // point before it; a lead shorter than that pull ran the curve past the box
+  // and curled it back into its own arrowhead (38 ends in 15 of a reader's 32
+  // fences). Measured on the drawn path over its last 20 units — about the
+  // 14 px a reader sees at the zoom such a figure fits at.
+  it.each(Object.entries(FENCES))('%s', (_name, text) => {
+    load(text);
+    const { container } = mounted[mounted.length - 1];
+    const paths = Array.from(container.querySelectorAll('g.link-group path.diagram-link'));
+    expect(paths.length).toBeGreaterThan(0);
+    for (const path of paths) {
+      const line = drawnLine(path.getAttribute('d') ?? '');
+      const id = path.closest('g.link-group')?.getAttribute('data-link-id');
+      const worst = Math.round(Math.max(endTurn(line, 20), endTurn([...line].reverse(), 20)));
+      expect({ id, hooks: worst > 120 }).toEqual({ id, hooks: false });
+    }
+  });
+});
+
+describe('imported Mermaid: an edge label draws as Mermaid draws it', () => {
+  it('at the node text size, wrapped at 200 px — so the ranks stay close and the figure keeps its size', () => {
+    const d = load(`flowchart LR
+      Offer -->|Convert To Order of every line, as accepted| Order
+      Order -->|deliver| Delivered`);
+    const long = d.getLinks().find((l) => labelText(l)?.startsWith('Convert'))!;
+    const label = long.labels[0];
+    expect(label).toMatchObject({ style: { fontSize: 16 }, textWrap: true, maxWidth: 200 });
+    const lines = wrapText(label.text, 200, 16);
+    expect(lines.length).toBeGreaterThan(1);
+    // The gap between the two ranks holds the WRAPPED label, and is narrower than one long line.
+    const [offer, order] = ['Offer', 'Order'].map((id) => d.getNode(id)!);
+    const gap = order.position.x - (offer.position.x + offer.size.width);
+    expect(gap).toBeGreaterThanOrEqual(labels.labelBox(label).width);
+    expect(gap).toBeLessThan(label.text.length * 16 * 0.6);
+  });
+
+  it('a state transition label too', () => {
+    const d = load(`stateDiagram-v2
+      Approved --> Awarded: Consider the award as submitted to the supplier`);
+    expect(d.getLinks()[0].labels[0]).toMatchObject({ style: { fontSize: 16 }, textWrap: true, maxWidth: 200 });
   });
 });

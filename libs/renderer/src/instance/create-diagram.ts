@@ -1,5 +1,6 @@
 import { DiagramEngine, getMutationEpoch, exportDiagramText, CommentStore, layoutArchitecture } from '@grafloria/engine';
-import type { MeasureText, ClipboardData } from '@grafloria/engine';
+import type { ClipboardData } from '@grafloria/engine';
+import { canvasTextMeasure } from '../svg/text-measure';
 import { CommentOverlayController } from '../comments/comment-overlay';
 import { textKitFor } from './text-kits';
 import type {
@@ -445,6 +446,15 @@ export interface DiagramInstance {
 
   /** Frame all content. */
   fitView(padding?: number): void;
+
+  /**
+   * World bounds of everything the canvas draws — boxes, lines, edge labels,
+   * group frames: what `fitView` fits. A host sizing a FIGURE (a diagram in a
+   * page, fitted to its column) takes its height from this aspect ratio, after
+   * `loadText` — a Mermaid import measures its words in the page, so the model
+   * parsed on its own has another shape. Null when there is nothing to draw.
+   */
+  getContentBounds(): Rectangle | null;
 
   /** Queue a repaint (coalesced into one frame). */
   render(): void;
@@ -1832,7 +1842,7 @@ export function createDiagram(
   }
 
   function fitView(padding = 40): void {
-    const bounds = contentBounds(model);
+    const bounds = contentBounds(model, renderer.getTheme());
     // maxZoom 1: fitting means "show me everything", never "magnify a small
     // graph until it fills the wall". Zooming out to fit is still unbounded
     // (down to the controller's minZoom). Hosts wanting magnification can call
@@ -1921,7 +1931,9 @@ export function createDiagram(
       // The shared load path (refuse unreadable text, the C9 notation kits,
       // reconcile the imported models, groups and ink, adopt the diagram type) —
       // the framework canvases call the same function.
-      const result = loadTextInto(model, text, textOptions, {
+      // A Mermaid import measures its words in THIS canvas's face (svg/text-measure.ts).
+      const face = renderer.getTheme().typography?.fontFamily?.default as string | undefined;
+      const result = loadTextInto(model, text, { measureText: canvasTextMeasure(face), ...textOptions }, {
         beforeNodes: templatedData,
         afterNodes: (before) => rederiveTemplates(before as Map<string, string> | null),
         warnEdge: (w) => warnEdge(w),
@@ -1946,6 +1958,7 @@ export function createDiagram(
     animations: renderer.getAnimationService(),
 
     fitView,
+    getContentBounds: () => contentBounds(model, renderer.getTheme()),
 
     render: () => scheduler.schedule(),
     renderNow: () => {
@@ -2086,30 +2099,5 @@ function ensureLayers(
   container.appendChild(root);
 
   return { root, svg, html };
-}
-
-/**
- * Measure text with a real canvas, in the theme's faces, so a composing layout
- * sizes boxes to the words as they will actually draw. Undefined where there is
- * no canvas (a server, jsdom) — the layout then estimates.
- */
-function canvasTextMeasure(): MeasureText | undefined {
-  if (typeof document === 'undefined') return undefined;
-  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent ?? '')) return undefined;
-  let ctx: CanvasRenderingContext2D | null = null;
-  try {
-    ctx = document.createElement('canvas').getContext('2d');
-  } catch {
-    return undefined;
-  }
-  if (!ctx) return undefined;
-  const c = ctx;
-  return (text, font) => {
-    const family = /mono/i.test(font.family ?? '')
-      ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
-      : font.family ?? 'Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-    c.font = `${font.weight ?? 400} ${font.size}px ${family}`;
-    return c.measureText(text).width + (font.letterSpacing ?? 0) * Array.from(text).length;
-  };
 }
 

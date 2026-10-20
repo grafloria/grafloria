@@ -387,6 +387,39 @@ describe('LabelRenderer (Phase 1.2)', () => {
         expect(tspans[1]!.props['dy']).toBeDefined();
       }
     });
+
+    // A wrapped label's chip was one line tall and the whole text long: the
+    // lines above and below it sat on the bare stroke, and the edge optimizer
+    // placed a box that was not the one drawn.
+    it("a wrapped label's chip holds every line, and labelBox is that chip", () => {
+      const label: LinkLabel = {
+        id: 'l',
+        text: 'Convert To Order of every line',
+        position: 0.5,
+        offset: { x: 0, y: 0 },
+        textWrap: true,
+        maxWidth: 200,
+        style: { fontSize: 14 },
+      };
+      const theme = { colors: { background: { surface: '#ffffff' } } } as never;
+      const vnode = renderer.renderLabel(label, createMockLink([{ x: 0, y: 0 }, { x: 300, y: 0 }]), { theme });
+      const text = vnode!.children!.find((c) => c.type === 'text')!;
+      const chip = vnode!.children!.find((c) => c.type === 'rect')!;
+      const lines = text.children!.map((t) => String(t!.props['textContent']));
+      expect(lines).toEqual(['Convert To Order of', 'every line']);
+      // Two lines at 1.2 × 14, plus 4 px of padding each side; as wide as the wider line.
+      expect(chip.props['height']).toBeCloseTo(2 * 14 * 1.2 + 8);
+      expect(chip.props['y']).toBeCloseTo(-(2 * 14 * 1.2) / 2 - 4);
+      expect(chip.props['width']).toBeCloseTo('Convert To Order of'.length * 14 * 0.6 + 8);
+      expect(renderer.labelBox(label)).toEqual({ width: chip.props['width'], height: chip.props['height'] });
+      // …and each line centres on its step, so the block centres on the chip.
+      for (const line of text.children!) expect(line!.props['dominantBaseline']).toBe('middle');
+    });
+
+    it('one line keeps its historical chip: one font size tall', () => {
+      const label: LinkLabel = { id: 'l', text: 'approve', position: 0.5, offset: { x: 0, y: 0 }, textWrap: true, maxWidth: 200 };
+      expect(renderer.labelBox(label)).toEqual({ width: 'approve'.length * 12 * 0.6 + 8, height: 12 + 8 });
+    });
   });
 
   describe('RED PHASE: Label Styling', () => {

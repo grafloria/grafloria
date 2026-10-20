@@ -29,6 +29,9 @@ export const TEXT_GRAMMAR_METADATA_KEYS: readonly string[] = [
   'title',
   'accTitle',
   'accDescr',
+  // A flowchart / stateDiagram import that sized its boxes to MEASURED text: the
+  // renderer wraps the labels with the same measure (import-layout.ts).
+  'measuredText',
 ];
 
 /**

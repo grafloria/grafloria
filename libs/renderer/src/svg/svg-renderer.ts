@@ -186,6 +186,9 @@ import {
 // Node label engine: shared, link-agnostic text-block core (wrap / multi-line /
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock, wrapText } from './text-block';
+import { labelMeasureFor } from './text-measure';
+import { basisSegments, sampleBasis, MEASURED_TEXT_FLAG, MEASURED_LABEL_FLAG } from '@grafloria/engine';
+import { labelsOverLines } from './label-paint-order';
 
 /** A 'text' note: words on the canvas with no box of their own. */
 function isTextNote(node: NodeModel): boolean {
@@ -435,8 +438,20 @@ function hoistVarPaintsDeep(vnode: VNode): VNode {
  * point the existing ellipsis behaviour takes over.
  */
 const MIN_LABEL_FONT_PX = 8;
-export function fitFontSize(text: string, maxWidth: number, base: number): number {
+export function fitFontSize(
+  text: string,
+  maxWidth: number,
+  base: number,
+  measureAt?: (text: string, size: number) => number
+): number {
   if (!text || !isFinite(maxWidth) || maxWidth <= 0) return base;
+  if (measureAt) {
+    // A measured diagram (svg/text-measure.ts): the widest token as it draws.
+    let widest = 0;
+    for (const token of text.split(/[\s-]+/)) if (token) widest = Math.max(widest, measureAt(token, base));
+    if (widest <= maxWidth) return base;
+    return Math.max(MIN_LABEL_FONT_PX, Math.floor((base * maxWidth) / widest));
+  }
   // Longest token AFTER the breaks wrapText can actually make (spaces, hyphens).
   let longest = 0;
   for (const token of text.split(/[\s-]+/)) longest = Math.max(longest, token.length);
@@ -3115,7 +3130,16 @@ export class SVGRenderer implements IRenderer {
     // with the geometry final and before any line is styled.
     this.computeFrameCrossings(sortedLinks);
 
-    const children = sortedLinks.map(link => this.renderLink(link, lod));
+    const rendered = sortedLinks.map(link => this.renderLink(link, lod));
+    // A Mermaid import paints its labels over the lines, as Mermaid does: a
+    // line that crosses another link's label paints first (see
+    // label-paint-order.ts). An import is known by its routes (`importRoute`) —
+    // a server's fresh model has no measured flag — or by that flag. Any other
+    // diagram paints in its own order.
+    const imported =
+      sortedLinks[0]?.diagram?.getMetadata(MEASURED_TEXT_FLAG) === true ||
+      sortedLinks.some((link) => link.getMetadata('importRoute') === true);
+    const children = imported ? labelsOverLines(sortedLinks, rendered) : rendered;
     this.frameOverlay = [];
     if (this.frameCrossings.size > 0) {
       for (const vnode of children) {
@@ -3659,7 +3683,7 @@ export class SVGRenderer implements IRenderer {
       const position = linkLabelPosition(label);
       const anchor = link.getPointAtPosition(position) ?? points[0];
       const normal = link.getNormalAt(position) ?? { x: 0, y: -1 };
-      const box = this.labelRenderer.labelBox(label);
+      const box = this.labelRenderer.labelBox(label, link, this.theme);
       return {
         id: label.id,
         anchor,
@@ -5984,7 +6008,19 @@ export class SVGRenderer implements IRenderer {
     // path sheared it ("Decisior", "nnec"). Scale the font down just enough for
     // the widest unbreakable token to fit, with a legibility floor.
     const baseFont = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
-    const fontSize = fitFontSize(label, inner.w, baseFont);
+    // A diagram an import sized to MEASURED text wraps with the same measure, in
+    // the face and weight the label draws in; any other keeps the estimate.
+    const measureAt = labelMeasureFor(
+      node.diagram,
+      {
+        size: baseFont,
+        family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
+        weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
+      },
+      node.getMetadata(MEASURED_LABEL_FLAG) === true
+    );
+    const fontSize = fitFontSize(label, inner.w, baseFont, measureAt);
+    const measure = measureAt ? (t: string) => measureAt(t, fontSize) : undefined;
     const shrunk = fontSize < baseFont;
     const lineHeight = fontSize * 1.2;
     const clipId = `node-clip-${node.id}`;
@@ -6007,7 +6043,7 @@ export class SVGRenderer implements IRenderer {
     const subFont = sublabel ? fitFontSize(sublabel.text, inner.w, sublabel.fontSize ?? Math.round(fontSize * 0.85)) : 0;
     const subLineHeight = subFont * 1.2;
     const GAP = sublabel ? 3 : 0;
-    const titleLines = Math.max(1, Math.min(wrapText(label, inner.w, fontSize).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
+    const titleLines = Math.max(1, Math.min(wrapText(label, inner.w, fontSize, measure).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
     const subLines = sublabel ? Math.max(1, Math.min(wrapText(sublabel.text, inner.w, subFont).length, Math.floor((inner.h - titleLines * lineHeight - GAP) / subLineHeight))) : 0;
     const titleH = titleLines * lineHeight;
     const blockH = titleH + (sublabel ? GAP + subLines * subLineHeight : 0);
@@ -6022,6 +6058,7 @@ export class SVGRenderer implements IRenderer {
       valign: 'middle',
       fontSize,
       lineHeight: 1.2,
+      measure,
       maxLines: sublabel ? titleLines : Math.max(1, Math.floor(inner.h / lineHeight)),
       clipId,
       nonInteractive: true,
@@ -6269,7 +6306,16 @@ export class SVGRenderer implements IRenderer {
     const baseFont = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
     // One line: it shrinks to the band's width rather than wrapping out of it.
     const maxWidth = Math.max(1, width - 16);
-    const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont), Math.max(8, Math.floor(band / 1.3)));
+    const measureAt = labelMeasureFor(
+      node.diagram,
+      {
+        size: baseFont,
+        family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
+        weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
+      },
+      node.getMetadata(MEASURED_LABEL_FLAG) === true
+    );
+    const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont, measureAt), Math.max(8, Math.floor(band / 1.3)));
     const shrunk = fontSize < baseFont;
     const css = this.config.useCSSMode;
     const text = renderTextBlock({
@@ -7423,7 +7469,7 @@ export class SVGRenderer implements IRenderer {
     //
     // ANY node the curve reaches, not just the link's own two: the whole reason
     // this route has corners is that it was steered around something.
-    const samples = this.sampleCatmullRom(routePoints, 8);
+    const samples = this.sampleSpline(routePoints, style, 8);
     const mustClear = this.splineClearanceNodes(samples, avoidNodes);
     if (mustClear.length === 0 || this.penetrationLength(samples, mustClear) <= 2) {
       return samples;
@@ -7480,8 +7526,8 @@ export class SVGRenderer implements IRenderer {
         // corners instead. A detouring route was bought clearance from
         // obstacles; the spline must not spend it. Must stay in step with
         // paintedHitPolyline, or the hit shape and the drawn shape disagree.
-        const spline = this.catmullRomPath(points);
-        const samples = this.sampleCatmullRom(points, 8);
+        const spline = this.splinePath(points, style);
+        const samples = this.sampleSpline(points, style, 8);
         const avoid = this.splineClearanceNodes(samples, avoidNodes ?? []);
         if (avoid.length === 0 || this.penetrationLength(samples, avoid) <= 2) {
           return spline;
@@ -8575,7 +8621,7 @@ export class SVGRenderer implements IRenderer {
 
     // Smooth/bezier with manual waypoints: keep the curved identity
     if ((pathType === 'smooth' || pathType === 'bezier') && points.length > 2) {
-      return this.catmullRomPath(points);
+      return this.splinePath(points, style);
     }
 
     // Default: straight lines between points
@@ -10246,6 +10292,34 @@ export class SVGRenderer implements IRenderer {
     }
     return nodes;
   }
+
+  /** The curve a multi-point smooth link draws through its route — its `style.spline`. */
+  private splinePath(points: Array<{ x: number; y: number }>, style?: Partial<LinkStyle>): string {
+    return style?.spline === 'basis' ? this.basisPath(points) : this.catmullRomPath(points);
+  }
+
+  /** {@link splinePath} as a polyline, for hit shapes and clearance checks. */
+  private sampleSpline(
+    points: Array<{ x: number; y: number }>,
+    style: Partial<LinkStyle> | undefined,
+    stepsPerSegment = 8
+  ): Array<{ x: number; y: number }> {
+    return style?.spline === 'basis' ? sampleBasis(points, stepsPerSegment) : this.sampleCatmullRom(points, stepsPerSegment);
+  }
+
+  private basisPath(points: Array<{ x: number; y: number }>): string {
+    if (points.length === 0) return '';
+    const fmt = (v: number) => +v.toFixed(2);
+    let d = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
+    for (const seg of basisSegments(points)) {
+      d += seg.c1 && seg.c2
+        ? ` C ${fmt(seg.c1.x)} ${fmt(seg.c1.y)}, ${fmt(seg.c2.x)} ${fmt(seg.c2.y)}, ${fmt(seg.to.x)} ${fmt(seg.to.y)}`
+        : ` L ${fmt(seg.to.x)} ${fmt(seg.to.y)}`;
+    }
+    return d;
+  }
+
+
 
   /**
    * Smooth cubic spline (Catmull-Rom) through every route point — used so a

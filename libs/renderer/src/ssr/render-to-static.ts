@@ -151,7 +151,7 @@ function renderStaticNow(options: StaticRenderOptions): StaticRenderResult {
   if (options.fitView) {
     // The live fitView()'s own bounds: nodes, routed waypoints AND group/lane
     // frames with their captions. Counting nodes alone clipped a lane's frame.
-    const bounds = contentBounds(model);
+    const bounds = contentBounds(model, options.theme);
     if (bounds) viewport.fitToBounds(bounds, options.fitPadding ?? 40);
   }
 

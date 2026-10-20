@@ -13,13 +13,15 @@
  */
 import type { DiagramModel } from './DiagramModel';
 import type { LinkModel } from './LinkModel';
-import type { LinkLabel } from '../types/model.types';
+import type { LinkLabel, LinkStyle } from '../types/model.types';
 
 /** What a link had before the import's route: stored on it by applyImportRoute. */
 export interface ImportRouteOriginal {
   ports?: { source?: string; target?: string };
-  /** Each label's own slot and position, in order; `added` when the route added the only label. */
-  labels?: Array<{ slot?: LinkLabel['slot']; position?: number }>;
+  /** The link's own `style.spline` (null: it had none); the route draws as a basis curve. */
+  spline?: LinkStyle['spline'] | null;
+  /** Each label's own slot, position and offset, in order; `added` when the route added the only label. */
+  labels?: Array<{ slot?: LinkLabel['slot']; position?: number; offset?: LinkLabel['offset'] }>;
   added?: boolean;
 }
 
@@ -31,6 +33,7 @@ export function dropImportRoute(link: LinkModel, diagram: DiagramModel): void {
   link.setMetadata('layoutAnchored', false);
   link.setPoints([]);
   const original = link.getMetadata('importOriginal') as ImportRouteOriginal | undefined;
+  if (original && original.spline !== undefined) link.updateStyle({ spline: original.spline ?? undefined });
   for (const end of ['source', 'target'] as const) {
     const portId = original?.ports?.[end];
     const node = diagram.getNode((end === 'source' ? link.sourceNodeId : link.targetNodeId) ?? '');
@@ -49,7 +52,7 @@ export function dropImportRoute(link: LinkModel, diagram: DiagramModel): void {
         const was = original.labels?.[i];
         if (!was) return label;
         const { slot: _slot, ...rest } = label;
-        return { ...rest, ...(was.slot ? { slot: was.slot } : {}), position: was.position ?? 0.5 };
+        return { ...rest, ...(was.slot ? { slot: was.slot } : {}), position: was.position ?? 0.5, offset: was.offset ?? { x: 0, y: 0 } };
       })
     );
   }

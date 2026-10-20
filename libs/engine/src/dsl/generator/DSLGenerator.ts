@@ -12,6 +12,7 @@ import { DiagramAnalyzer, DiagramAnalysis } from './DiagramAnalyzer';
 import { NodeShape, LinkType } from '../types/ASTNode';
 import { GroupModel } from '../../models/GroupModel';
 import { isSideAnchorPort } from '../../ports/side-anchor';
+import { IMPORT_EDGE_FONT, IMPORT_NODE_FONT } from '../mermaid/import-layout';
 
 export interface GeneratorOptions {
   /**
@@ -366,7 +367,7 @@ export class DSLGenerator {
       // hasCustomStyle flag, which treats fill/stroke as non-custom — and for
       // nodes that carry the AI-diagram look (typography, the flat box).
       if ((node.getMetadata('dslStyled') || this.hasLookStyle(node)) && node.style) {
-        const styleProps = this.formatStyleProperties(node.style);
+        const styleProps = this.formatStyleProperties(this.ownNodeStyle(node.style));
         if (styleProps) {
           lines.push(`  style ${this.sanitizeId(node.id)} ${styleProps}`);
         }
@@ -391,7 +392,9 @@ export class DSLGenerator {
       const labelStyle = link.labels?.[0]?.style as Record<string, unknown> | undefined;
       if (labelStyle?.['color']) own['color'] = labelStyle['color'];
       if (labelStyle?.['fontWeight']) own['fontWeight'] = labelStyle['fontWeight'];
-      if (labelStyle?.['fontSize']) own['fontSize'] = labelStyle['fontSize'];
+      // The node text's size is how an import draws Mermaid's own default
+      // (import-layout.ts), so it reads back the same without a linkStyle.
+      if (labelStyle?.['fontSize'] && labelStyle['fontSize'] !== IMPORT_EDGE_FONT) own['fontSize'] = labelStyle['fontSize'];
       const props = this.formatStyleProperties(own);
       const step = link.pathType === 'orthogonal' ? 'interpolate stepBefore ' : '';
       if (props || step) lines.push(`  linkStyle ${i} ${step}${props}`.trimEnd());
@@ -400,9 +403,20 @@ export class DSLGenerator {
     return lines;
   }
 
+  /**
+   * A node's style as the author wrote it: Mermaid's own 16 px label size is
+   * how an import draws Mermaid's default (import-layout.ts), so it reads back
+   * the same without a `style` line.
+   */
+  private ownNodeStyle<T extends object>(style: T): T {
+    const own = { ...style } as Record<string, unknown>;
+    if (own['fontSize'] === IMPORT_NODE_FONT) delete own['fontSize'];
+    return own as T;
+  }
+
   /** A node that carries the AI-diagram look — typography or the flat box. */
   private hasLookStyle(node: NodeModel): boolean {
-    const st = node.style as Record<string, unknown> | undefined;
+    const st = node.style ? (this.ownNodeStyle(node.style) as Record<string, unknown>) : undefined;
     if (!st) return false;
     return st['fontWeight'] !== undefined || st['fontSize'] !== undefined || st['fontFamily'] !== undefined || st['shadow'] === false || st['color'] !== undefined;
   }

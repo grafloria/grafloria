@@ -15,6 +15,9 @@ import {
   fitNodeToLabel,
   repointLinkEnd,
   importEdgeLabelBox,
+  importEdgeLabelProps,
+  importMeasuresText,
+  MEASURED_TEXT_FLAG,
   layoutForImport,
 } from '../mermaid/import-layout';
 import { readMermaidLabel } from '../mermaid/rich-label';
@@ -181,6 +184,8 @@ export class ASTTransformer {
       .filter((node) => this.nodePositions.has(node.id));
     if (placeable.length === 0) return;
     for (const node of placeable) fitNodeToLabel(node);
+    // Sized to MEASURED text: the renderer wraps it with the same measure.
+    if (importMeasuresText()) diagram.setMetadata(MEASURED_TEXT_FLAG, true);
 
     const idSet = new Set(placeable.map((n) => n.id));
     const links = diagram
@@ -659,7 +664,8 @@ export class ASTTransformer {
       // `labels[]` array — so every Mermaid edge label (`-->|yes|`) parsed
       // correctly, was stored on the link, and then never appeared. That left
       // branch edges looking like unexplained stray lines.
-      if (!link.labels?.length) link.addLabel({ text, slot: 'center' });
+      // Drawn as Mermaid draws it: node-size text, wrapped at Mermaid's width.
+      if (!link.labels?.length) link.addLabel({ text, slot: 'center', ...importEdgeLabelProps() });
     }
 
     // Store link type information

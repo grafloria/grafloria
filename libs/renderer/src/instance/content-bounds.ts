@@ -1,16 +1,21 @@
 // World bounds of what the canvas draws — the one definition `fitView()` (live)
 // and `renderToStaticSVG({ fitView: true })` (server) both fit to. DOM-free.
 
-import type { DiagramModel, NodeModel } from '@grafloria/engine';
+import { linkLabelPosition, type DiagramModel, type NodeModel } from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
 import { groupFrameRects } from '../svg/group-frame-bounds';
+import { LabelRenderer } from '../svg/LabelRenderer';
+import type { Theme } from '../types/theme.types';
+
+/** Label boxes are the renderer's own (LabelRenderer.labelBox); it keeps no state. */
+const LABELS = new LabelRenderer();
 
 /**
  * World bounding box of what the canvas draws — every visible node, every routed
- * link waypoint, every group frame with its caption — or null when there is
- * nothing to fit.
+ * link waypoint and edge label, every group frame with its caption — or null
+ * when there is nothing to fit.
  */
-export function contentBounds(model: DiagramModel): Rectangle | null {
+export function contentBounds(model: DiagramModel, theme?: Theme): Rectangle | null {
   const nodes = model.getNodes().filter((n: NodeModel) => n.state?.visible !== false);
   if (nodes.length === 0 && groupFrameRects(model).length === 0) return null;
 
@@ -36,6 +41,24 @@ export function contentBounds(model: DiagramModel): Rectangle | null {
       top = Math.min(top, p.y);
       right = Math.max(right, p.x);
       bottom = Math.max(bottom, p.y);
+    }
+  }
+
+  // Edge LABELS. A label's chip hangs past the line it rides — beside the first
+  // box of a rank it can reach past every box, and fitting to boxes and routes
+  // alone sliced it at the viewport edge ("deliver all active orders" drew as
+  // "ver all active orders"). Each chip where its line puts it.
+  for (const link of model.getLinks()) {
+    for (const label of link.labels ?? []) {
+      const at = link.getPointAtPosition?.(linkLabelPosition(label));
+      if (!at) continue;
+      const { width, height } = LABELS.labelBox(label, link, theme);
+      const x = at.x + (label.offset?.x ?? 0);
+      const y = at.y + (label.offset?.y ?? 0);
+      left = Math.min(left, x - width / 2);
+      top = Math.min(top, y - height / 2);
+      right = Math.max(right, x + width / 2);
+      bottom = Math.max(bottom, y + height / 2);
     }
   }
 

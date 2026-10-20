@@ -32,11 +32,11 @@ import { significantLines, unquote } from './lines';
 import { type RankEdge } from './layout';
 import {
   applyImportRoute,
-  estimateLabelWidth,
+  edgeLabelBox,
   fitNodeToLabel,
-  IMPORT_EDGE_FONT,
-  IMPORT_EDGE_PAD,
+  importMeasuresText,
   layoutForImport,
+  MEASURED_TEXT_FLAG,
   repointLinkEnd,
   type ImportRoute,
 } from './import-layout';
@@ -529,7 +529,7 @@ function layoutStateModel(
         from,
         to,
         ...(direct && t.label
-          ? { label: { w: estimateLabelWidth(t.label, IMPORT_EDGE_FONT) + 2 * IMPORT_EDGE_PAD, h: IMPORT_EDGE_FONT + 2 * IMPORT_EDGE_PAD } }
+          ? { label: edgeLabelBox(t.label) }
           : {}),
       });
     });
@@ -737,6 +737,8 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
     notesOf.set(target, [...(notesOf.get(target) ?? []), node]);
   }
   const routes = layoutStateModel(model, nodes, { x: 80, y: 60 }, notesOf);
+  // Sized to MEASURED text: the renderer wraps it with the same measure.
+  if (importMeasuresText()) diagram.setMetadata(MEASURED_TEXT_FLAG, true);
   // Each note's line joins the two sides that face each other.
   for (const link of diagram.getLinks()) {
     if (link.getMetadata('noteLink') !== true) continue;
