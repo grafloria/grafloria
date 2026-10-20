@@ -26,7 +26,7 @@ import type { DiagramModel } from '../../models/DiagramModel';
 import type { NodeModel } from '../../models/NodeModel';
 import type { LinkModel } from '../../models/LinkModel';
 import type { LinkLabel } from '../../types/model.types';
-import type { MeasureText } from '../../layout/architecture/text-metrics';
+import { estimateTextWidth as glyphEstimate, type MeasureText } from '../../layout/architecture/text-metrics';
 import { ensureSideAnchorPort } from '../../ports/side-anchor';
 import { dropImportRoute, type ImportRouteOriginal } from '../../models/import-route';
 import { sampleBasis } from '../../routing/basis-spline';
@@ -65,6 +65,20 @@ export const IMPORT_WRAP_WIDTH = 200;
  * the lines the boxes were sized for.
  */
 export const MEASURED_TEXT_FLAG = 'measuredText';
+/**
+ * Node metadata: this box was sized to text MEASURED in a page. A renderer that
+ * cannot measure (a server) wraps its label by {@link glyphTextWidth}, which
+ * tracks real faces closely, instead of the 0.6 em estimate — which runs ~20%
+ * wide on lowercase text and would wrap a measured one-line box onto two lines
+ * and cut it short ("Awaiting…").
+ */
+export const MEASURED_LABEL_FLAG = 'labelMeasured';
+
+/**
+ * Width of a line from per-glyph classes of a UI sans face (capitals, wide m/w,
+ * narrow i/l…): within a few percent of Inter and DejaVu Sans.
+ */
+export const glyphTextWidth: MeasureText = glyphEstimate;
 
 // The measure an import runs with — the renderer's canvas while createDiagram
 // loads text, nothing (the estimate) on a server or in a test.
@@ -89,9 +103,22 @@ export function importMeasuresText(): boolean {
   return measureNow !== undefined;
 }
 
-/** How wide a line draws: measured when the import can, else the renderer's estimate. */
+/**
+ * How wide a line draws: measured when the import can. Without a measure (a
+ * server), wide enough for any UI face: the renderer's 0.6 em estimate runs up
+ * to 65% SHORT on capitals and wide glyphs ("MRQ" is 29 px by it, 37.5 in
+ * DejaVu Sans), and a box sized by it cut "MRQ" to "MRC". So the larger of that
+ * estimate and the per-glyph one with 15% to spare (DejaVu runs up to 12.5% over
+ * it), plus 2 px.
+ */
 function textWidth(text: string, fontSize: number, weight?: number): number {
-  return measureNow ? measureNow(text, { size: fontSize, ...(weight ? { weight } : {}) }) : estimateLabelWidth(text, fontSize);
+  if (measureNow) return measureNow(text, { size: fontSize, ...(weight ? { weight } : {}) });
+  return Math.max(estimateLabelWidth(text, fontSize), glyphEstimate(text, { size: fontSize, ...(weight ? { weight } : {}) }) * 1.15 + 2);
+}
+
+/** The width an import gives a line of text right now (measured, or the server-side estimate). */
+export function importTextWidth(text: string, fontSize: number, weight?: number): number {
+  return textWidth(text, fontSize, weight);
 }
 
 /**
@@ -283,6 +310,9 @@ export function fitNodeToLabel(node: NodeModel): void {
   const w = Math.ceil(Math.max(mermaid.w, holds.w));
   const h = Math.ceil(Math.max(mermaid.h, holds.h));
   if (w !== node.size.width || h !== node.size.height) node.setSize(w, h, node.size.depth ?? 0);
+  // Sized to measured text: a renderer that cannot measure wraps it by glyphs.
+  if (measureNow) node.setMetadata(MEASURED_LABEL_FLAG, true);
+  else if (node.getMetadata(MEASURED_LABEL_FLAG) !== undefined) node.deleteMetadata(MEASURED_LABEL_FLAG);
 }
 
 /** The box the renderer draws for a link's label (LabelRenderer.labelBox), or undefined for none. */

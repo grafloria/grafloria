@@ -6,7 +6,7 @@
 // same picture. The picture itself is checked with the renderer's numbers in
 // libs/renderer/src/svg/mermaid-import-layout.spec.ts.
 import { importDiagramText, exportDiagramText } from '../../serialization/TextFormat';
-import { estimateLabelWidth, edgeLabelBox, IMPORT_EDGE_FONT, wrapLabelLines, fitNodeToLabel } from './import-layout';
+import { estimateLabelWidth, edgeLabelBox, IMPORT_EDGE_FONT, wrapLabelLines, fitNodeToLabel, importTextWidth } from './import-layout';
 import { NodeModel } from '../../models/NodeModel';
 import { DiagramModel } from '../../models/DiagramModel';
 
@@ -103,7 +103,8 @@ describe('imported Mermaid layout', () => {
       fitNodeToLabel(n);
       return n;
     };
-    const text = (label: string) => estimateLabelWidth(label, 16); // no canvas here: the renderer's estimate
+    // No canvas here: the server-side estimate, wide enough for any UI face.
+    const text = (label: string) => importTextWidth(label, 16);
     // `[Short]`: 30 px each side, 15 above and below one 24 px line — the placeholder 120×80 goes.
     const short = node('Short');
     expect(short.style.fontSize).toBe(16);
@@ -128,7 +129,7 @@ describe('imported Mermaid layout', () => {
     sized.setStyle({ fontSize: 20 });
     fitNodeToLabel(sized);
     expect(sized.style.fontSize).toBe(20);
-    expect(sized.size.width).toBe(Math.ceil(estimateLabelWidth('Short', 20) + 60));
+    expect(sized.size.width).toBe(Math.ceil(importTextWidth('Short', 20) + 60));
   });
 
   it('a state note sits on the side the author named, beside its own state, on nothing else', () => {
@@ -195,10 +196,10 @@ describe('imported Mermaid layout', () => {
     const measured = importDiagramText(flow, { measureText }).diagram;
     expect(measured.getMetadata('measuredText')).toBe(true);
     expect(measured.getNode('A')!.size.width).toBe(Math.ceil('Short'.length * 16 * 0.5 + 60));
-    // Without one (a server, a test), the renderer's own estimate — and no flag.
+    // Without one (a server, a test), an estimate wide enough for any face — and no flag.
     const estimated = importDiagramText(flow).diagram;
     expect(estimated.getMetadata('measuredText')).toBeUndefined();
-    expect(estimated.getNode('A')!.size.width).toBe(Math.ceil('Short'.length * 16 * 0.6 + 60));
+    expect(estimated.getNode('A')!.size.width).toBe(Math.ceil(importTextWidth('Short', 16) + 60));
     // A state diagram the same.
     const state = importDiagramText('stateDiagram-v2\n  Draft --> Sent: send', { measureText }).diagram;
     expect(state.getMetadata('measuredText')).toBe(true);

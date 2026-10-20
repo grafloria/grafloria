@@ -86,4 +86,4 @@ export { TEXT_GRAMMAR_METADATA_KEYS, adoptTextGrammarMetadata } from './text-met
  * import leaves on the diagram, so the renderer wraps its labels with the same
  * measure.
  */
-export { MEASURED_TEXT_FLAG } from './import-layout';
+export { MEASURED_TEXT_FLAG, MEASURED_LABEL_FLAG, glyphTextWidth } from './import-layout';
