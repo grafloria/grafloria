@@ -18,6 +18,21 @@ import { MEASURED_TEXT_FLAG, glyphTextWidth, type DiagramModel, type MeasureText
 const DEFAULT_FAMILY = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
 
 let context: CanvasRenderingContext2D | null | undefined;
+
+/** Can this page measure text (a canvas), or is it a server / jsdom? */
+export function canMeasureText(): boolean {
+  return canvasContext() !== null;
+}
+
+/**
+ * The lines a node's box was sized for when an import measured its words
+ * (MEASURED_LABEL_FLAG), if they still spell its label — else undefined.
+ */
+export function sizedLines(metadata: unknown, label: string): string[] | undefined {
+  if (!Array.isArray(metadata) || !metadata.every((l) => typeof l === 'string')) return undefined;
+  const words = (s: string) => s.split(/\s+/).filter(Boolean).join(' ');
+  return words(metadata.join(' ')) === words(label) ? (metadata as string[]) : undefined;
+}
 const byFamily = new Map<string, MeasureText>();
 
 /**

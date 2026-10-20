@@ -186,7 +186,7 @@ import {
 // Node label engine: shared, link-agnostic text-block core (wrap / multi-line /
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock, wrapText } from './text-block';
-import { labelMeasureFor } from './text-measure';
+import { labelMeasureFor, canMeasureText, sizedLines } from './text-measure';
 import { basisSegments, sampleBasis, MEASURED_TEXT_FLAG, MEASURED_LABEL_FLAG } from '@grafloria/engine';
 import { labelsOverLines } from './label-paint-order';
 
@@ -5994,7 +5994,11 @@ export class SVGRenderer implements IRenderer {
       height
     );
 
-    const label = String(node.getLabel());
+    // A node an import sized to MEASURED text, drawn where nothing can measure
+    // (a server rendering a saved document): the lines its box was sized for,
+    // as they are — re-wrapped by an estimate they overran or were cut short.
+    const sized = canMeasureText() ? undefined : sizedLines(node.getMetadata(MEASURED_LABEL_FLAG), String(node.getLabel()));
+    const label = sized ? sized.join('\n') : String(node.getLabel());
     // THE NODE'S OWN TYPOGRAPHY. `style.color`, `fontSize`, `fontWeight`,
     // `fontFamily` were declared on NodeStyle and read by nothing — a caption
     // styled teal, bold and 11 px drew in the theme's ink at 14 px. Resolved
@@ -6017,10 +6021,12 @@ export class SVGRenderer implements IRenderer {
         family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
         weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
       },
-      node.getMetadata(MEASURED_LABEL_FLAG) === true
+      node.getMetadata(MEASURED_LABEL_FLAG) !== undefined
     );
     const fontSize = fitFontSize(label, inner.w, baseFont, measureAt);
     const measure = measureAt ? (t: string) => measureAt(t, fontSize) : undefined;
+    // Stored lines are what the box holds: drawn as they are, never re-wrapped.
+    const wrapWidth = sized ? Infinity : inner.w;
     const shrunk = fontSize < baseFont;
     const lineHeight = fontSize * 1.2;
     const clipId = `node-clip-${node.id}`;
@@ -6043,7 +6049,7 @@ export class SVGRenderer implements IRenderer {
     const subFont = sublabel ? fitFontSize(sublabel.text, inner.w, sublabel.fontSize ?? Math.round(fontSize * 0.85)) : 0;
     const subLineHeight = subFont * 1.2;
     const GAP = sublabel ? 3 : 0;
-    const titleLines = Math.max(1, Math.min(wrapText(label, inner.w, fontSize, measure).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
+    const titleLines = Math.max(1, Math.min(wrapText(label, wrapWidth, fontSize, measure).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
     const subLines = sublabel ? Math.max(1, Math.min(wrapText(sublabel.text, inner.w, subFont).length, Math.floor((inner.h - titleLines * lineHeight - GAP) / subLineHeight))) : 0;
     const titleH = titleLines * lineHeight;
     const blockH = titleH + (sublabel ? GAP + subLines * subLineHeight : 0);
@@ -6053,7 +6059,7 @@ export class SVGRenderer implements IRenderer {
       text: label,
       x: inner.x + inner.w / 2,
       y: sublabel ? top + titleH / 2 : inner.y + inner.h / 2,
-      maxWidth: inner.w,
+      maxWidth: wrapWidth,
       align: 'middle',
       valign: 'middle',
       fontSize,
@@ -6313,7 +6319,7 @@ export class SVGRenderer implements IRenderer {
         family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
         weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
       },
-      node.getMetadata(MEASURED_LABEL_FLAG) === true
+      node.getMetadata(MEASURED_LABEL_FLAG) !== undefined
     );
     const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont, measureAt), Math.max(8, Math.floor(band / 1.3)));
     const shrunk = fontSize < baseFont;

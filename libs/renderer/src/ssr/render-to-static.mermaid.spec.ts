@@ -61,4 +61,21 @@ describe('a Mermaid import rendered on a server (no canvas)', () => {
     expect(labels.map((l) => l.text)).toEqual(expect.arrayContaining(['Awaiting approval', 'Rejected by the owner']));
     for (const { text } of labels) expect(text).not.toContain('…');
   });
+
+  it('…and a measured label that wraps draws on a server the very lines its box was sized for', () => {
+    // An estimate re-wrapping it packed one word more than the box held (a
+    // reader's create-l-g fence clipped "Choose a scope and stage view").
+    const src = 'stateDiagram-v2\n  [*] --> Scope\n  state "Choose a scope and stage view for the whole letter of guarantee" as Scope';
+    // A page whose face is narrower than the glyph estimate: re-wrapped by that
+    // estimate, the lines would not be the ones the box was sized for.
+    const measureText = (text: string, font: { size: number }) => glyphTextWidth(text, font) * 0.85;
+    const measured = importDiagramText(src, { measureText }).diagram;
+    const lines = measured.getNode('Scope')!.getMetadata('labelMeasured') as string[];
+    expect(lines.length).toBeGreaterThan(1);
+    const saved = exportDiagramText(measured, { lossless: true });
+    const svg = runDeterministic(() => serverSvg(importDiagramText(saved).diagram));
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    const label = Array.from(doc.querySelectorAll('text.diagram-label')).find((t) => (t.textContent ?? '').startsWith('Choose'))!;
+    expect(Array.from(label.querySelectorAll('tspan')).map((t) => t.textContent)).toEqual(lines);
+  });
 });
