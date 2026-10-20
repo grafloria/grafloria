@@ -29,6 +29,7 @@ import type { LinkLabel } from '../../types/model.types';
 import type { MeasureText } from '../../layout/architecture/text-metrics';
 import { ensureSideAnchorPort } from '../../ports/side-anchor';
 import { dropImportRoute, type ImportRouteOriginal } from '../../models/import-route';
+import { sampleBasis } from '../../routing/basis-spline';
 
 // CJS interop, as in HierarchicalLayoutAlgorithm: Node's ESM loader exposes
 // dagre's API only on `.default`.
@@ -618,14 +619,19 @@ function pickAnchor(
   node: NodeModel,
   toward: { x: number; y: number },
   flowSide: Side | undefined,
-  dagreSide: Side,
+  own: { side: Side; pct: number },
   obstacles: readonly NodeModel[]
 ): { side: Side; pct: number } {
+  const dagreSide = own.side;
   const sides: Side[] = [];
   for (const side of [flowSide, dagreSide, 'right', 'bottom', 'left', 'top'] as Array<Side | undefined>) {
     if (side && !sides.includes(side)) sides.push(side);
   }
-  const candidates: Array<{ side: Side; pct: number }> = [];
+  // First, the layout's own point: where the line from the box toward its next
+  // bend meets the box — Mermaid's. A steep edge then climbs from the start
+  // instead of leaving the flow side level and running through the labels
+  // stacked beside it.
+  const candidates: Array<{ side: Side; pct: number }> = [own];
   for (const side of sides) {
     candidates.push({ side, pct: aimedPct(node, side, toward) });
     if (side === flowSide || side === dagreSide) for (const pct of [50, 15, 85]) candidates.push({ side, pct });
@@ -673,6 +679,24 @@ function anchorPoint(node: NodeModel, side: Side, pct: number): { x: number; y: 
 }
 
 /** Arc-length fraction of the point on `points` nearest to `p`. */
+/** The point `t` of the way along a polyline, by length (LabelRenderer's alongPolyline). */
+function pointAlong(points: ReadonlyArray<{ x: number; y: number }>, t: number): { x: number; y: number } {
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) total += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+  let remaining = total * Math.max(0, Math.min(1, t));
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > 0 && (remaining <= len || i === points.length - 2)) {
+      const u = Math.min(1, remaining / len);
+      return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+    }
+    remaining -= len;
+  }
+  return { ...points[points.length - 1] };
+}
+
 function fractionAlong(points: ReadonlyArray<{ x: number; y: number }>, p: { x: number; y: number }): number {
   let total = 0;
   const lengths: number[] = [];
@@ -721,11 +745,10 @@ export function applyImportRoute(
 
   // WHERE EACH END LEAVES ITS BOX. dagre's middle legs run in the gaps between
   // ranks, so only the two end legs can cut across another box. Each end tries,
-  // in order: the side facing the next rank, aimed where the line goes next
-  // (an edge with the flow leaves right in LR, left in RL, down in TB — and
-  // sibling edges leave apart instead of all from the middle); the side dagre
-  // chose, aimed; that side's ends and middle; then the other sides — and
-  // takes the first whose leg clears every other box.
+  // in order: dagre's own point, where the line toward the next bend meets the
+  // box (Mermaid's); the side facing the next rank, aimed where the line goes
+  // next; the side dagre chose, aimed; those sides' ends and middle; then the
+  // other sides — and takes the first whose leg clears every other box.
   const flow = flowSides(direction);
   const forward = !!flow && source !== target && goesWithFlow(source, target, flow.out);
   const next = points.length > 2 ? points[1] : points[points.length - 1];
@@ -733,8 +756,8 @@ export function applyImportRoute(
   const obstacles = diagram
     .getNodes()
     .filter((n) => n !== source && n !== target && !encloses(n, source) && !encloses(n, target));
-  const from = pickAnchor(source, next, forward ? flow!.out : undefined, sideAnchor(source, points[0]).side, obstacles);
-  const to = pickAnchor(target, prev, forward ? flow!.in : undefined, sideAnchor(target, points[points.length - 1]).side, obstacles);
+  const from = pickAnchor(source, next, forward ? flow!.out : undefined, sideAnchor(source, points[0]), obstacles);
+  const to = pickAnchor(target, prev, forward ? flow!.in : undefined, sideAnchor(target, points[points.length - 1]), obstacles);
   const sourcePort = ensureSideAnchorPort(source, `${from.side}@${from.pct}%`);
   const targetPort = ensureSideAnchorPort(target, `${to.side}@${to.pct}%`);
   if (!sourcePort || !targetPort) return;
@@ -745,7 +768,7 @@ export function applyImportRoute(
       ports: { source: link.sourcePortId, target: link.targetPortId },
       spline: link.style?.spline ?? null,
       ...(link.labels?.length
-        ? { labels: link.labels.map((l) => ({ ...(l.slot ? { slot: l.slot } : {}), position: l.position })) }
+        ? { labels: link.labels.map((l) => ({ ...(l.slot ? { slot: l.slot } : {}), position: l.position, offset: l.offset })) }
         : route.label
           ? { added: true }
           : {}),
@@ -756,36 +779,11 @@ export function applyImportRoute(
   repointLinkEnd(diagram, link, 'target', target, targetPort);
   const start = anchorPoint(source, from.side, from.pct);
   const end = anchorPoint(target, to.side, to.pct);
-  // A straight LEAD at each end, out of the box along its side's normal, so the
-  // curve leaves and arrives square to the box (the look of Mermaid's basis
-  // curve) instead of swinging back across the box it left. Usually short; as
-  // long as it takes when the leg beyond it would cut a box of the same rank
-  // (dagre bends an edge only between ranks: a box beside its source can sit
-  // right across its first leg).
+  // No lead: the route draws as a basis curve (link.style.spline), which leaves
+  // and meets a box straight along its first and last legs and never swings
+  // back across it — as Mermaid draws the same points.
   const interior = points.slice(1, -1);
-  const lead = (p: { x: number; y: number }, side: Side, next: { x: number; y: number }) => {
-    const n = NORMAL[side];
-    const room = Math.abs((next.x - p.x) * n.x + (next.y - p.y) * n.y);
-    const across = Math.abs((next.x - p.x) * n.y - (next.y - p.y) * n.x);
-    // A smooth line through the points pulls the stretch beside an end toward
-    // the point before it by a sixth of the way there. A lead shorter than that
-    // lets the curve run past the box and hook back into it, arrowhead and all
-    // (a 10 px lead on a 100 px leg did) — so a quarter of the leg, at least.
-    const short = Math.min(room * 0.8, Math.max(10, Math.max(room, across) / 4));
-    if (short < 4) return [];
-    for (let d = short; d <= room * 0.8; d += 8) {
-      const q = { x: p.x + n.x * d, y: p.y + n.y * d };
-      if (!cutsAny(q, next, obstacles) && !cutsAny(p, q, obstacles)) return [q];
-    }
-    return [{ x: p.x + n.x * short, y: p.y + n.y * short }];
-  };
-  points = [
-    start,
-    ...lead(start, from.side, interior[0] ?? end),
-    ...interior,
-    ...lead(end, to.side, interior[interior.length - 1] ?? start).reverse(),
-    end,
-  ];
+  points = [start, ...interior, end];
 
   link.setPoints(points);
   // Drawn as Mermaid draws a route: a basis curve near its bends, which never
@@ -797,19 +795,28 @@ export function applyImportRoute(
   diagram.noteImportRoute(link.id);
 
   if (route.label) {
-    const position = fractionAlong(points, route.label);
+    // EXACTLY where the layout made room, as Mermaid places it. The line draws
+    // as a basis curve, which passes NEAR its bends, not through them; the label
+    // rides the drawn curve (the renderer's painted path — sampled here the
+    // same way) at its nearest point, stepped over to the layout's point. Placed
+    // by fraction alone, labels slid off the room dagre kept clear and other
+    // lines ran through them.
+    const curve = sampleBasis(points, 8);
+    const position = fractionAlong(curve, route.label);
+    const at = pointAlong(curve, position);
+    const offset = { x: route.label.x - at.x, y: route.label.y - at.y };
     const text = link.labels?.[0]?.text ?? (link.getMetadata('label') as string | undefined);
     if (link.labels?.length) {
       // A named slot wins over a position (linkLabelPosition), so the slot goes.
       const [first, ...rest] = link.labels;
       const { slot: _slot, ...placed } = first;
-      link.setLabels([{ ...placed, position }, ...rest]);
+      link.setLabels([{ ...placed, position, offset }, ...rest]);
     } else if (text) {
       // A label kept only as metadata (the state builder's) is drawn by the
       // renderer's legacy path at the middle, nudged 10 px up — not where the
       // layout made room. A real label, placed, takes over (the legacy one
       // steps aside when `labels` is not empty).
-      link.addLabel({ text, position, ...importEdgeLabelProps() });
+      link.addLabel({ text, position, offset, ...importEdgeLabelProps() });
     }
   }
 }

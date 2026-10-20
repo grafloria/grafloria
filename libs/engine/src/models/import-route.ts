@@ -20,8 +20,8 @@ export interface ImportRouteOriginal {
   ports?: { source?: string; target?: string };
   /** The link's own `style.spline` (null: it had none); the route draws as a basis curve. */
   spline?: LinkStyle['spline'] | null;
-  /** Each label's own slot and position, in order; `added` when the route added the only label. */
-  labels?: Array<{ slot?: LinkLabel['slot']; position?: number }>;
+  /** Each label's own slot, position and offset, in order; `added` when the route added the only label. */
+  labels?: Array<{ slot?: LinkLabel['slot']; position?: number; offset?: LinkLabel['offset'] }>;
   added?: boolean;
 }
 
@@ -52,7 +52,7 @@ export function dropImportRoute(link: LinkModel, diagram: DiagramModel): void {
         const was = original.labels?.[i];
         if (!was) return label;
         const { slot: _slot, ...rest } = label;
-        return { ...rest, ...(was.slot ? { slot: was.slot } : {}), position: was.position ?? 0.5 };
+        return { ...rest, ...(was.slot ? { slot: was.slot } : {}), position: was.position ?? 0.5, offset: was.offset ?? { x: 0, y: 0 } };
       })
     );
   }

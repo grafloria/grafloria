@@ -211,6 +211,28 @@ describe('imported Mermaid layout', () => {
     expect(native.getMetadata('measuredText')).toBeUndefined();
   });
 
+  it("an edge leaves where the line toward its first bend meets the box — Mermaid's — so a fan climbs from the start", () => {
+    // Six outcomes of one box: the top ones leave its TOP, not its right side at
+    // mid-height (which ran them flat along the labels stacked beside it).
+    const d = importDiagramText(`flowchart LR
+    Offer -->|Valid Offer| Valid[Valid offer]
+    Offer -->|Alternative Offer| Alternative[Alternative offer]
+    Offer -->|Revision| Revision
+    Offer -->|Rejected Offer| Rejected[Rejected offer]
+    Offer -->|Cancel RFQ| Cancelled[Cancelled RFQ]
+    Offer -->|Regretted To Offer| Regretted[Regretted offer]`).diagram;
+    const offer = d.getNode('Offer')!;
+    const leaving = (target: string) => {
+      const link = d.getLinks().find((l) => l.targetNodeId === target)!;
+      return offer.getPort(link.sourcePortId)?.side;
+    };
+    expect(leaving('Valid')).toBe('top');
+    expect(leaving('Regretted')).toBe('bottom');
+    // …and no lead: the line starts on the box and runs straight to its next point.
+    const valid = d.getLinks().find((l) => l.targetNodeId === 'Valid')!;
+    expect(valid.points[0].y).toBeCloseTo(offer.position.y);
+  });
+
   it('taking a route back restores the label too: its slot, or no added label at all', () => {
     const flow = importDiagramText(LR).diagram;
     const labelled = flow.getLinks().find((l) => l.labels[0]?.text === 'convert')!;
