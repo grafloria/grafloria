@@ -48,16 +48,16 @@ var require_eventemitter3 = __commonJS({
       Events.prototype = /* @__PURE__ */ Object.create(null);
       if (!new Events().__proto__) prefix = false;
     }
-    function EE(fn, context, once2) {
+    function EE(fn, context2, once2) {
       this.fn = fn;
-      this.context = context;
+      this.context = context2;
       this.once = once2 || false;
     }
-    function addListener(emitter, event, fn, context, once2) {
+    function addListener(emitter, event, fn, context2, once2) {
       if (typeof fn !== "function") {
         throw new TypeError("The listener must be a function");
       }
-      var listener = new EE(fn, context || emitter, once2), evt = prefix ? prefix + event : event;
+      var listener = new EE(fn, context2 || emitter, once2), evt = prefix ? prefix + event : event;
       if (!emitter._events[evt]) emitter._events[evt] = listener, emitter._eventsCount++;
       else if (!emitter._events[evt].fn) emitter._events[evt].push(listener);
       else emitter._events[evt] = [emitter._events[evt], listener];
@@ -148,13 +148,13 @@ var require_eventemitter3 = __commonJS({
       }
       return true;
     };
-    EventEmitter2.prototype.on = function on(event, fn, context) {
-      return addListener(this, event, fn, context, false);
+    EventEmitter2.prototype.on = function on(event, fn, context2) {
+      return addListener(this, event, fn, context2, false);
     };
-    EventEmitter2.prototype.once = function once2(event, fn, context) {
-      return addListener(this, event, fn, context, true);
+    EventEmitter2.prototype.once = function once2(event, fn, context2) {
+      return addListener(this, event, fn, context2, true);
     };
-    EventEmitter2.prototype.removeListener = function removeListener(event, fn, context, once2) {
+    EventEmitter2.prototype.removeListener = function removeListener(event, fn, context2, once2) {
       var evt = prefix ? prefix + event : event;
       if (!this._events[evt]) return this;
       if (!fn) {
@@ -163,12 +163,12 @@ var require_eventemitter3 = __commonJS({
       }
       var listeners3 = this._events[evt];
       if (listeners3.fn) {
-        if (listeners3.fn === fn && (!once2 || listeners3.once) && (!context || listeners3.context === context)) {
+        if (listeners3.fn === fn && (!once2 || listeners3.once) && (!context2 || listeners3.context === context2)) {
           clearEvent(this, evt);
         }
       } else {
         for (var i = 0, events = [], length = listeners3.length; i < length; i++) {
-          if (listeners3[i].fn !== fn || once2 && !listeners3[i].once || context && listeners3[i].context !== context) {
+          if (listeners3[i].fn !== fn || once2 && !listeners3[i].once || context2 && listeners3[i].context !== context2) {
             events.push(listeners3[i]);
           }
         }
@@ -110710,6 +110710,7 @@ function dropImportRoute(link, diagram) {
   link.setMetadata("layoutAnchored", false);
   link.setPoints([]);
   const original = link.getMetadata("importOriginal");
+  if (original && original.spline !== void 0) link.updateStyle({ spline: original.spline ?? void 0 });
   for (const end of ["source", "target"]) {
     const portId = original?.ports?.[end];
     const node = diagram.getNode((end === "source" ? link.sourceNodeId : link.targetNodeId) ?? "");
@@ -110728,7 +110729,7 @@ function dropImportRoute(link, diagram) {
         const was = original.labels?.[i];
         if (!was) return label;
         const { slot: _slot, ...rest } = label;
-        return { ...rest, ...was.slot ? { slot: was.slot } : {}, position: was.position ?? 0.5 };
+        return { ...rest, ...was.slot ? { slot: was.slot } : {}, position: was.position ?? 0.5, offset: was.offset ?? { x: 0, y: 0 } };
       })
     );
   }
@@ -113274,19 +113275,19 @@ var Command = class {
   /**
    * Redo the command (default: re-execute)
    */
-  redo(context) {
-    return this.execute(context);
+  redo(context2) {
+    return this.execute(context2);
   }
   /**
    * Check if command can be executed
    */
-  canExecute(context) {
+  canExecute(context2) {
     return true;
   }
   /**
    * Check if command can be undone
    */
-  canUndo(context) {
+  canUndo(context2) {
     return true;
   }
   /**
@@ -113327,21 +113328,21 @@ var BatchCommand = class extends Command {
     super(name);
     this.commands = commands;
   }
-  async execute(context) {
+  async execute(context2) {
     for (const command of this.commands) {
-      await command.execute(context);
+      await command.execute(context2);
     }
   }
-  async undo(context) {
+  async undo(context2) {
     for (let i = this.commands.length - 1; i >= 0; i--) {
-      await this.commands[i]?.undo(context);
+      await this.commands[i]?.undo(context2);
     }
   }
-  canExecute(context) {
-    return this.commands.every((cmd) => cmd.canExecute(context));
+  canExecute(context2) {
+    return this.commands.every((cmd) => cmd.canExecute(context2));
   }
-  canUndo(context) {
-    return this.commands.every((cmd) => cmd.canUndo(context));
+  canUndo(context2) {
+    return this.commands.every((cmd) => cmd.canUndo(context2));
   }
   serialize() {
     return {
@@ -113373,8 +113374,8 @@ var BatchCommand = class extends Command {
 // libs/engine/src/commands/CommandManager.ts
 var CommandManager = class {
   // ms
-  constructor(context, eventBus = context.eventBus) {
-    this.context = context;
+  constructor(context2, eventBus = context2.eventBus) {
+    this.context = context2;
     this.eventBus = eventBus;
     this.history = [];
     this.currentIndex = -1;
@@ -113784,8 +113785,8 @@ var AddNodeCommand = class extends Command {
     this.node = node;
     this.nodeData = node.serialize();
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -113798,8 +113799,8 @@ var AddNodeCommand = class extends Command {
       }
     }
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -113812,11 +113813,11 @@ var AddNodeCommand = class extends Command {
     }
     diagram.removeNode(this.nodeData.id);
   }
-  canExecute(context) {
-    return context.diagram && !context.diagram.nodes.has(this.nodeData.id);
+  canExecute(context2) {
+    return context2.diagram && !context2.diagram.nodes.has(this.nodeData.id);
   }
-  canUndo(context) {
-    return context.diagram && context.diagram.nodes.has(this.nodeData.id);
+  canUndo(context2) {
+    return context2.diagram && context2.diagram.nodes.has(this.nodeData.id);
   }
   serialize() {
     return {
@@ -113839,8 +113840,8 @@ var RemoveNodeCommand = class extends Command {
     super("Remove Node");
     this.nodeId = nodeId;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -113867,8 +113868,8 @@ var RemoveNodeCommand = class extends Command {
     }
     diagram.removeNode(this.nodeId);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.nodeData) {
       throw new Error("Cannot undo: missing diagram or node data");
     }
@@ -113898,11 +113899,11 @@ var RemoveNodeCommand = class extends Command {
       }
     }
   }
-  canExecute(context) {
-    return context.diagram && context.diagram.nodes.has(this.nodeId);
+  canExecute(context2) {
+    return context2.diagram && context2.diagram.nodes.has(this.nodeId);
   }
-  canUndo(context) {
-    return context.diagram && !!this.nodeData;
+  canUndo(context2) {
+    return context2.diagram && !!this.nodeData;
   }
   serialize() {
     return {
@@ -113931,8 +113932,8 @@ var MoveNodeCommand = class _MoveNodeCommand extends Command {
     }
     this.mergeable = options.mergeable !== false;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -113945,8 +113946,8 @@ var MoveNodeCommand = class _MoveNodeCommand extends Command {
     }
     node.setPosition(this.newPosition.x, this.newPosition.y, this.newPosition.z);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.oldPosition) {
       throw new Error("Cannot undo: missing diagram or old position");
     }
@@ -113956,11 +113957,11 @@ var MoveNodeCommand = class _MoveNodeCommand extends Command {
     }
     node.setPosition(this.oldPosition.x, this.oldPosition.y, this.oldPosition.z);
   }
-  canExecute(context) {
-    return context.diagram && context.diagram.nodes.has(this.nodeId);
+  canExecute(context2) {
+    return context2.diagram && context2.diagram.nodes.has(this.nodeId);
   }
-  canUndo(context) {
-    return context.diagram && !!this.oldPosition;
+  canUndo(context2) {
+    return context2.diagram && !!this.oldPosition;
   }
   canMergeWith(other) {
     if (!(other instanceof _MoveNodeCommand)) {
@@ -114007,14 +114008,14 @@ var MoveGroupCommand = class extends Command {
     this.nodeMoves = nodeMoves;
     this.frameMoves = frameMoves;
   }
-  execute(context) {
-    this.apply(context, "to");
+  execute(context2) {
+    this.apply(context2, "to");
   }
-  undo(context) {
-    this.apply(context, "from");
+  undo(context2) {
+    this.apply(context2, "from");
   }
-  apply(context, key) {
-    const diagram = context.diagram;
+  apply(context2, key) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114035,11 +114036,11 @@ var MoveGroupCommand = class extends Command {
       });
     }
   }
-  canExecute(context) {
-    return !!context.diagram;
+  canExecute(context2) {
+    return !!context2.diagram;
   }
-  canUndo(context) {
-    return !!context.diagram;
+  canUndo(context2) {
+    return !!context2.diagram;
   }
   /** True when the gesture actually moved something (drop == press is a no-op). */
   isNoop() {
@@ -114068,8 +114069,8 @@ var ResizeNodeCommand = class _ResizeNodeCommand extends Command {
       this.oldSize = { ...oldSize };
     }
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114082,8 +114083,8 @@ var ResizeNodeCommand = class _ResizeNodeCommand extends Command {
     }
     node.setSize(this.newSize.width, this.newSize.height, this.newSize.depth);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.oldSize) {
       throw new Error("Cannot undo: missing diagram or old size");
     }
@@ -114093,11 +114094,11 @@ var ResizeNodeCommand = class _ResizeNodeCommand extends Command {
     }
     node.setSize(this.oldSize.width, this.oldSize.height, this.oldSize.depth);
   }
-  canExecute(context) {
-    return context.diagram && context.diagram.nodes.has(this.nodeId);
+  canExecute(context2) {
+    return context2.diagram && context2.diagram.nodes.has(this.nodeId);
   }
-  canUndo(context) {
-    return context.diagram && !!this.oldSize;
+  canUndo(context2) {
+    return context2.diagram && !!this.oldSize;
   }
   canMergeWith(other) {
     if (!(other instanceof _ResizeNodeCommand)) {
@@ -114140,26 +114141,26 @@ var AddLinkCommand = class extends Command {
     this.link = link;
     this.linkData = link.serialize();
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
     const link = LinkModel.fromJSON(this.linkData);
     diagram.addLink(link);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
     diagram.removeLink(this.linkData.id);
   }
-  canExecute(context) {
-    return context.diagram && !context.diagram.links.has(this.linkData.id);
+  canExecute(context2) {
+    return context2.diagram && !context2.diagram.links.has(this.linkData.id);
   }
-  canUndo(context) {
-    return context.diagram && context.diagram.links.has(this.linkData.id);
+  canUndo(context2) {
+    return context2.diagram && context2.diagram.links.has(this.linkData.id);
   }
   serialize() {
     return {
@@ -114182,8 +114183,8 @@ var RemoveLinkCommand = class extends Command {
     super("Remove Link");
     this.linkId = linkId;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114194,19 +114195,19 @@ var RemoveLinkCommand = class extends Command {
     this.linkData = link.serialize();
     diagram.removeLink(this.linkId);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.linkData) {
       throw new Error("Cannot undo: missing diagram or link data");
     }
     const link = LinkModel.fromJSON(this.linkData);
     diagram.addLink(link);
   }
-  canExecute(context) {
-    return context.diagram && context.diagram.links.has(this.linkId);
+  canExecute(context2) {
+    return context2.diagram && context2.diagram.links.has(this.linkId);
   }
-  canUndo(context) {
-    return context.diagram && !!this.linkData;
+  canUndo(context2) {
+    return context2.diagram && !!this.linkData;
   }
   serialize() {
     return {
@@ -114231,8 +114232,8 @@ var SetParentCommand = class extends Command {
     this.nodeId = nodeId;
     this.newParentId = newParentId;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114265,8 +114266,8 @@ var SetParentCommand = class extends Command {
     }
     node.updateHierarchyDepth();
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114289,11 +114290,11 @@ var SetParentCommand = class extends Command {
     }
     node.updateHierarchyDepth();
   }
-  canExecute(context) {
-    return context.diagram && context.diagram.nodes.has(this.nodeId);
+  canExecute(context2) {
+    return context2.diagram && context2.diagram.nodes.has(this.nodeId);
   }
-  canUndo(context) {
-    return context.diagram && context.diagram.nodes.has(this.nodeId);
+  canUndo(context2) {
+    return context2.diagram && context2.diagram.nodes.has(this.nodeId);
   }
   serialize() {
     return {
@@ -114323,26 +114324,26 @@ var AddGroupCommand = class extends Command {
     this.group = group;
     this.groupData = group.serialize();
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
     const group = GroupModel.fromJSON(this.groupData);
     diagram.addGroup(group);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
     diagram.removeGroup(this.groupData.id);
   }
-  canExecute(context) {
-    return !!(context.diagram && !context.diagram.groups.has(this.groupData.id));
+  canExecute(context2) {
+    return !!(context2.diagram && !context2.diagram.groups.has(this.groupData.id));
   }
-  canUndo(context) {
-    return !!(context.diagram && context.diagram.groups.has(this.groupData.id));
+  canUndo(context2) {
+    return !!(context2.diagram && context2.diagram.groups.has(this.groupData.id));
   }
   serialize() {
     return {
@@ -114365,8 +114366,8 @@ var RemoveGroupCommand = class extends Command {
     super("Remove Group");
     this.groupId = groupId;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114376,19 +114377,19 @@ var RemoveGroupCommand = class extends Command {
     }
     diagram.removeGroup(this.groupId);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.groupData) {
       throw new Error("Cannot undo: diagram or group data not found");
     }
     const group = GroupModel.fromJSON(this.groupData);
     diagram.addGroup(group);
   }
-  canExecute(context) {
-    return context.diagram && context.diagram.groups.has(this.groupId);
+  canExecute(context2) {
+    return context2.diagram && context2.diagram.groups.has(this.groupId);
   }
-  canUndo(context) {
-    return context.diagram && !context.diagram.groups.has(this.groupId) && !!this.groupData;
+  canUndo(context2) {
+    return context2.diagram && !context2.diagram.groups.has(this.groupId) && !!this.groupData;
   }
   serialize() {
     return {
@@ -114415,8 +114416,8 @@ var AddToGroupCommand = class extends Command {
     /** The frames this execution changed, outermost last, for undo. */
     this.refitted = [];
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114435,8 +114436,8 @@ var AddToGroupCommand = class extends Command {
       if (now3 && !sameFrame(now3, snap.before)) this.refitted.push(snap);
     }
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114454,22 +114455,22 @@ var AddToGroupCommand = class extends Command {
     }
     this.refitted = [];
   }
-  canExecute(context) {
-    if (!context.diagram) {
+  canExecute(context2) {
+    if (!context2.diagram) {
       return false;
     }
-    const group = context.diagram.getGroup(this.groupId);
+    const group = context2.diagram.getGroup(this.groupId);
     if (!group) {
       return false;
     }
-    const entityExists = context.diagram.nodes.has(this.entityId) || context.diagram.links.has(this.entityId) || context.diagram.groups.has(this.entityId);
+    const entityExists = context2.diagram.nodes.has(this.entityId) || context2.diagram.links.has(this.entityId) || context2.diagram.groups.has(this.entityId);
     return entityExists;
   }
-  canUndo(context) {
-    if (!context.diagram) {
+  canUndo(context2) {
+    if (!context2.diagram) {
       return false;
     }
-    const group = context.diagram.getGroup(this.groupId);
+    const group = context2.diagram.getGroup(this.groupId);
     return !!group && group.members.has(this.entityId);
   }
   serialize() {
@@ -114518,8 +114519,8 @@ var RemoveFromGroupCommand = class extends Command {
     this.groupId = groupId;
     this.entityId = entityId;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114529,8 +114530,8 @@ var RemoveFromGroupCommand = class extends Command {
     }
     group.removeMember(this.entityId);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -114540,18 +114541,18 @@ var RemoveFromGroupCommand = class extends Command {
     }
     group.addMember(this.entityId);
   }
-  canExecute(context) {
-    if (!context.diagram) {
+  canExecute(context2) {
+    if (!context2.diagram) {
       return false;
     }
-    const group = context.diagram.getGroup(this.groupId);
+    const group = context2.diagram.getGroup(this.groupId);
     return !!group && group.members.has(this.entityId);
   }
-  canUndo(context) {
-    if (!context.diagram) {
+  canUndo(context2) {
+    if (!context2.diagram) {
       return false;
     }
-    const group = context.diagram.getGroup(this.groupId);
+    const group = context2.diagram.getGroup(this.groupId);
     return !!group && !group.members.has(this.entityId);
   }
   serialize() {
@@ -114750,17 +114751,17 @@ var PoolEditCommand = class extends Command {
     this.before = before;
     this.after = after;
   }
-  execute(context) {
-    restorePoolSnapshot(context.diagram, this.after, this.before);
+  execute(context2) {
+    restorePoolSnapshot(context2.diagram, this.after, this.before);
   }
-  undo(context) {
-    restorePoolSnapshot(context.diagram, this.before, this.after);
+  undo(context2) {
+    restorePoolSnapshot(context2.diagram, this.before, this.after);
   }
-  canExecute(context) {
-    return !!context.diagram;
+  canExecute(context2) {
+    return !!context2.diagram;
   }
-  canUndo(context) {
-    return !!context.diagram;
+  canUndo(context2) {
+    return !!context2.diagram;
   }
   serialize() {
     return { id: this.id, name: this.name, timestamp: this.timestamp, data: { before: this.before, after: this.after } };
@@ -115643,8 +115644,8 @@ var ExpandGroupCommand = class extends Command {
     super("Expand Group");
     this.groupId = groupId;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115655,8 +115656,8 @@ var ExpandGroupCommand = class extends Command {
     this.wasCollapsed = group.isCollapsed;
     new GroupCollapseService(diagram).expand(group);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115668,15 +115669,15 @@ var ExpandGroupCommand = class extends Command {
       new GroupCollapseService(diagram).collapse(group);
     }
   }
-  canExecute(context) {
-    if (!context.diagram) {
+  canExecute(context2) {
+    if (!context2.diagram) {
       return false;
     }
-    const group = context.diagram.getGroup(this.groupId);
+    const group = context2.diagram.getGroup(this.groupId);
     return !!group;
   }
-  canUndo(context) {
-    return this.canExecute(context) && this.wasCollapsed !== void 0;
+  canUndo(context2) {
+    return this.canExecute(context2) && this.wasCollapsed !== void 0;
   }
   serialize() {
     return {
@@ -115701,8 +115702,8 @@ var CollapseGroupCommand = class extends Command {
     this.groupId = groupId;
     this.options = options;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115713,8 +115714,8 @@ var CollapseGroupCommand = class extends Command {
     this.wasExpanded = !group.isCollapsed;
     new GroupCollapseService(diagram).collapse(group, this.options);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115726,15 +115727,15 @@ var CollapseGroupCommand = class extends Command {
       new GroupCollapseService(diagram).expand(group);
     }
   }
-  canExecute(context) {
-    if (!context.diagram) {
+  canExecute(context2) {
+    if (!context2.diagram) {
       return false;
     }
-    const group = context.diagram.getGroup(this.groupId);
+    const group = context2.diagram.getGroup(this.groupId);
     return !!group;
   }
-  canUndo(context) {
-    return this.canExecute(context) && this.wasExpanded !== void 0;
+  canUndo(context2) {
+    return this.canExecute(context2) && this.wasExpanded !== void 0;
   }
   serialize() {
     return {
@@ -115761,8 +115762,8 @@ var SetLayoutCommand = class extends Command {
     this.layoutConfig = layoutConfig;
     this.oldLayoutType = "none";
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115774,8 +115775,8 @@ var SetLayoutCommand = class extends Command {
     this.oldLayoutConfig = group.layoutConfig;
     group.setLayout(this.layoutType, this.layoutConfig);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115789,14 +115790,14 @@ var SetLayoutCommand = class extends Command {
       group.setLayout(this.oldLayoutType, this.oldLayoutConfig);
     }
   }
-  canExecute(context) {
-    const diagram = context.diagram;
+  canExecute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return false;
     const group = diagram.getGroup(this.groupId);
     return group !== void 0;
   }
-  canUndo(context) {
-    const diagram = context.diagram;
+  canUndo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return false;
     const group = diagram.getGroup(this.groupId);
     return group !== void 0;
@@ -115827,8 +115828,8 @@ var SetFlexItemCommand = class extends Command {
     this.nodeId = nodeId;
     this.flexConfig = flexConfig;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115839,8 +115840,8 @@ var SetFlexItemCommand = class extends Command {
     this.oldFlexConfig = node.getFlexItem();
     node.setFlexItem(this.flexConfig);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115854,14 +115855,14 @@ var SetFlexItemCommand = class extends Command {
       node.setFlexItem(this.oldFlexConfig);
     }
   }
-  canExecute(context) {
-    const diagram = context.diagram;
+  canExecute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return false;
     const node = diagram.getNode(this.nodeId);
     return node !== void 0;
   }
-  canUndo(context) {
-    const diagram = context.diagram;
+  canUndo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return false;
     const node = diagram.getNode(this.nodeId);
     return node !== void 0;
@@ -115890,8 +115891,8 @@ var SetGridItemCommand = class extends Command {
     this.nodeId = nodeId;
     this.gridConfig = gridConfig;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115902,8 +115903,8 @@ var SetGridItemCommand = class extends Command {
     this.oldGridConfig = node.getGridItem();
     node.setGridItem(this.gridConfig);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -115917,14 +115918,14 @@ var SetGridItemCommand = class extends Command {
       node.setGridItem(this.oldGridConfig);
     }
   }
-  canExecute(context) {
-    const diagram = context.diagram;
+  canExecute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return false;
     const node = diagram.getNode(this.nodeId);
     return node !== void 0;
   }
-  canUndo(context) {
-    const diagram = context.diagram;
+  canUndo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return false;
     const node = diagram.getNode(this.nodeId);
     return node !== void 0;
@@ -115978,13 +115979,13 @@ var CopyCommand = class extends Command {
     this.copiedLinkIds = [];
     this.copiedGroupIds = [];
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
     const diagramSelection = diagram.getSelectedNodes().map((n3) => n3.id);
-    const storeSelection = context.store?.get("selectedNodes");
+    const storeSelection = context2.store?.get("selectedNodes");
     const selectedNodeIds = diagramSelection.length > 0 ? diagramSelection : Array.from(storeSelection ?? []);
     if (selectedNodeIds.length === 0) {
       throw new Error("No nodes selected");
@@ -116024,15 +116025,15 @@ var CopyCommand = class extends Command {
       sourceDiagramId: diagram.id
     });
   }
-  undo(context) {
+  undo(context2) {
   }
-  canExecute(context) {
-    if (!context.diagram) return false;
-    if (context.diagram.getSelectedNodes().length > 0) return true;
-    const selectedNodes = context.store?.get("selectedNodes");
+  canExecute(context2) {
+    if (!context2.diagram) return false;
+    if (context2.diagram.getSelectedNodes().length > 0) return true;
+    const selectedNodes = context2.store?.get("selectedNodes");
     return selectedNodes !== void 0 && selectedNodes.size > 0;
   }
-  canUndo(context) {
+  canUndo(context2) {
     return false;
   }
   isUndoable() {
@@ -116089,8 +116090,8 @@ var PasteCommand = class extends Command {
     // old port ID -> new port ID
     this.pasteSlot = null;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -116179,17 +116180,17 @@ var PasteCommand = class extends Command {
         this.pastedGroupIds.push(group.id);
       }
     }
-    if (this.options.selectPasted !== false && context.store) {
-      context.store.set("selectedNodes", new Set(this.pastedNodeIds));
-      context.store.set("selectedLinks", /* @__PURE__ */ new Set());
+    if (this.options.selectPasted !== false && context2.store) {
+      context2.store.set("selectedNodes", new Set(this.pastedNodeIds));
+      context2.store.set("selectedLinks", /* @__PURE__ */ new Set());
       diagram.getNodes().forEach((node) => {
         node.setState({ selected: this.pastedNodeIds.includes(node.id) });
       });
-      context.eventBus?.emit("selection:changed", { nodes: this.pastedNodeIds });
+      context2.eventBus?.emit("selection:changed", { nodes: this.pastedNodeIds });
     }
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -116202,16 +116203,16 @@ var PasteCommand = class extends Command {
     for (const nodeId of this.pastedNodeIds.reverse()) {
       diagram.removeNode(nodeId);
     }
-    if (context.store) {
-      context.store.set("selectedNodes", /* @__PURE__ */ new Set());
-      context.eventBus?.emit("selection:cleared");
+    if (context2.store) {
+      context2.store.set("selectedNodes", /* @__PURE__ */ new Set());
+      context2.eventBus?.emit("selection:cleared");
     }
   }
-  canExecute(context) {
-    return !!(context.diagram && this.clipboard.hasData());
+  canExecute(context2) {
+    return !!(context2.diagram && this.clipboard.hasData());
   }
-  canUndo(context) {
-    return !!(context.diagram && this.pastedNodeIds.length > 0);
+  canUndo(context2) {
+    return !!(context2.diagram && this.pastedNodeIds.length > 0);
   }
   serialize() {
     return {
@@ -116247,13 +116248,13 @@ var DuplicateCommand = class extends Command {
     // old node/group ID -> new ID
     this.portIdMap = /* @__PURE__ */ new Map();
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
     const diagramSel = diagram.getSelectedNodes().map((n3) => n3.id);
-    const storeSel = context.store?.get("selectedNodes");
+    const storeSel = context2.store?.get("selectedNodes");
     const selectedNodeIds = new Set(diagramSel.length > 0 ? diagramSel : Array.from(storeSel ?? []));
     if (selectedNodeIds.size === 0) {
       throw new Error("No nodes selected");
@@ -116348,17 +116349,17 @@ var DuplicateCommand = class extends Command {
         this.duplicatedGroupIds.push(newGroup.id);
       }
     }
-    if (this.options.selectDuplicated !== false && context.store) {
-      context.store.set("selectedNodes", new Set(this.duplicatedNodeIds));
-      context.store.set("selectedLinks", /* @__PURE__ */ new Set());
+    if (this.options.selectDuplicated !== false && context2.store) {
+      context2.store.set("selectedNodes", new Set(this.duplicatedNodeIds));
+      context2.store.set("selectedLinks", /* @__PURE__ */ new Set());
       diagram.getNodes().forEach((node) => {
         node.setState({ selected: this.duplicatedNodeIds.includes(node.id) });
       });
-      context.eventBus?.emit("selection:changed", { nodes: this.duplicatedNodeIds });
+      context2.eventBus?.emit("selection:changed", { nodes: this.duplicatedNodeIds });
     }
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -116371,20 +116372,20 @@ var DuplicateCommand = class extends Command {
     for (const nodeId of this.duplicatedNodeIds.reverse()) {
       diagram.removeNode(nodeId);
     }
-    if (context.store) {
-      context.store.set("selectedNodes", /* @__PURE__ */ new Set());
-      context.eventBus?.emit("selection:cleared");
+    if (context2.store) {
+      context2.store.set("selectedNodes", /* @__PURE__ */ new Set());
+      context2.eventBus?.emit("selection:cleared");
     }
   }
-  canExecute(context) {
-    const diagram = context.diagram;
+  canExecute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return false;
     if (diagram.getSelectedNodes().length > 0) return true;
-    const selectedNodeIds = context.store?.get("selectedNodes");
+    const selectedNodeIds = context2.store?.get("selectedNodes");
     return !!(selectedNodeIds && selectedNodeIds.size > 0);
   }
-  canUndo(context) {
-    return !!(context.diagram && this.duplicatedNodeIds.length > 0);
+  canUndo(context2) {
+    return !!(context2.diagram && this.duplicatedNodeIds.length > 0);
   }
   serialize() {
     return {
@@ -116418,15 +116419,15 @@ var DeleteSelectionCommand = class extends Command {
     this.deletedGroups = [];
     this.affectedGroups = /* @__PURE__ */ new Map();
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
     const diagramNodeSel = diagram.getSelectedNodes().map((n3) => n3.id);
     const diagramLinkSel = diagram.getLinks().filter((l) => l.state === "selected").map((l) => l.id);
-    const storeNodeSel = context.store?.get("selectedNodes");
-    const storeLinkSel = context.store?.get("selectedLinks");
+    const storeNodeSel = context2.store?.get("selectedNodes");
+    const storeLinkSel = context2.store?.get("selectedLinks");
     const selectedNodeIds = new Set(diagramNodeSel.length > 0 ? diagramNodeSel : Array.from(storeNodeSel ?? []));
     const selectedLinkIds = new Set(diagramLinkSel.length > 0 ? diagramLinkSel : Array.from(storeLinkSel ?? []));
     if ((!selectedNodeIds || selectedNodeIds.size === 0) && (!selectedLinkIds || selectedLinkIds.size === 0)) {
@@ -116501,14 +116502,14 @@ var DeleteSelectionCommand = class extends Command {
       this.deletedNodes.push(node.serialize());
       diagram.removeNode(node.id);
     }
-    if (context.store) {
-      context.store.set("selectedNodes", /* @__PURE__ */ new Set());
-      context.store.set("selectedLinks", /* @__PURE__ */ new Set());
-      context.eventBus?.emit("selection:cleared");
+    if (context2.store) {
+      context2.store.set("selectedNodes", /* @__PURE__ */ new Set());
+      context2.store.set("selectedLinks", /* @__PURE__ */ new Set());
+      context2.eventBus?.emit("selection:cleared");
     }
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -116551,13 +116552,13 @@ var DeleteSelectionCommand = class extends Command {
    * command removed the first time. The recorded arrays are left intact, so the
    * command can be undone again afterwards (undo/redo/undo/redo all work).
    */
-  redo(context) {
-    const diagram = context.diagram;
+  redo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
     if (this.deletedNodes.length === 0 && this.deletedLinks.length === 0 && this.deletedGroups.length === 0) {
-      this.execute(context);
+      this.execute(context2);
       return;
     }
     for (const linkData of this.deletedLinks) {
@@ -116577,23 +116578,23 @@ var DeleteSelectionCommand = class extends Command {
     for (const nodeData of this.deletedNodes) {
       diagram.removeNode(nodeData.id);
     }
-    if (context.store) {
-      context.store.set("selectedNodes", /* @__PURE__ */ new Set());
-      context.store.set("selectedLinks", /* @__PURE__ */ new Set());
-      context.eventBus?.emit("selection:cleared");
+    if (context2.store) {
+      context2.store.set("selectedNodes", /* @__PURE__ */ new Set());
+      context2.store.set("selectedLinks", /* @__PURE__ */ new Set());
+      context2.eventBus?.emit("selection:cleared");
     }
   }
-  canExecute(context) {
-    const diagram = context.diagram;
+  canExecute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return false;
     if (diagram.getSelectedNodes().length > 0) return true;
     if (diagram.getLinks().some((l) => l.state === "selected")) return true;
-    const selectedNodeIds = context.store?.get("selectedNodes");
-    const selectedLinkIds = context.store?.get("selectedLinks");
+    const selectedNodeIds = context2.store?.get("selectedNodes");
+    const selectedLinkIds = context2.store?.get("selectedLinks");
     return !!(selectedNodeIds && selectedNodeIds.size > 0 || selectedLinkIds && selectedLinkIds.size > 0);
   }
-  canUndo(context) {
-    return !!(context.diagram && (this.deletedNodes.length > 0 || this.deletedLinks.length > 0 || this.deletedGroups.length > 0));
+  canUndo(context2) {
+    return !!(context2.diagram && (this.deletedNodes.length > 0 || this.deletedLinks.length > 0 || this.deletedGroups.length > 0));
   }
   serialize() {
     return {
@@ -116667,27 +116668,27 @@ var MacroCommand = class extends Command {
   addSteps(commands) {
     commands.forEach((cmd) => this.addStep(cmd));
   }
-  async execute(context) {
+  async execute(context2) {
     for (const step of this.steps) {
       if (step.delay) {
         await this.sleep(step.delay);
       }
-      await step.command.execute(context);
+      await step.command.execute(context2);
     }
   }
-  async undo(context) {
+  async undo(context2) {
     for (let i = this.steps.length - 1; i >= 0; i--) {
       const step = this.steps[i];
       if (step) {
-        await step.command.undo(context);
+        await step.command.undo(context2);
       }
     }
   }
-  canExecute(context) {
-    return this.steps.every((step) => step.command.canExecute(context));
+  canExecute(context2) {
+    return this.steps.every((step) => step.command.canExecute(context2));
   }
-  canUndo(context) {
-    return this.steps.every((step) => step.command.canUndo(context));
+  canUndo(context2) {
+    return this.steps.every((step) => step.command.canUndo(context2));
   }
   serialize() {
     return {
@@ -116744,16 +116745,16 @@ var CutCommand = class extends MacroCommand {
    * A cut needs something to copy: CopyCommand has no link-only payload, so a
    * selection of links alone cannot be cut (it can still be deleted).
    */
-  canExecute(context) {
-    return super.canExecute(context);
+  canExecute(context2) {
+    return super.canExecute(context2);
   }
   /** See class docs (1): copy is non-undoable by design; the delete half decides. */
-  canUndo(context) {
-    return this.deleteCommand.canUndo(context);
+  canUndo(context2) {
+    return this.deleteCommand.canUndo(context2);
   }
   /** See class docs (2): replay the delete from its recorded data, never the copy. */
-  async redo(context) {
-    await this.deleteCommand.redo(context);
+  async redo(context2) {
+    await this.deleteCommand.redo(context2);
   }
   getDescription() {
     return this.deleteCommand.getDescription().replace(/^Delete/, "Cut");
@@ -116767,26 +116768,26 @@ var UpdateLinkStyleCommand = class extends Command {
     this.linkId = linkId;
     this.style = style;
   }
-  execute(context) {
-    const link = context.diagram?.getLink(this.linkId);
+  execute(context2) {
+    const link = context2.diagram?.getLink(this.linkId);
     if (!link) {
       throw new Error(`Link ${this.linkId} not found`);
     }
     this.previousStyle = { ...link.style };
     link.updateStyle(this.style);
   }
-  undo(context) {
-    const link = context.diagram?.getLink(this.linkId);
+  undo(context2) {
+    const link = context2.diagram?.getLink(this.linkId);
     if (!link || !this.previousStyle) {
       throw new Error("Cannot undo: missing link or previous style");
     }
     link.replaceStyle({ ...this.previousStyle });
   }
-  canExecute(context) {
-    return !!context.diagram?.getLink(this.linkId);
+  canExecute(context2) {
+    return !!context2.diagram?.getLink(this.linkId);
   }
-  canUndo(context) {
-    return !!context.diagram?.getLink(this.linkId) && !!this.previousStyle;
+  canUndo(context2) {
+    return !!context2.diagram?.getLink(this.linkId) && !!this.previousStyle;
   }
   serialize() {
     return {
@@ -116812,8 +116813,8 @@ var SetNodeStyleCommand = class extends Command {
     this.style = style;
     this.nodeIds = typeof nodeId === "string" ? [nodeId] : [...nodeId];
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) throw new Error("Diagram not found in context");
     const nodes = this.nodeIds.map((id) => {
       const n3 = diagram.getNode(id);
@@ -116823,8 +116824,8 @@ var SetNodeStyleCommand = class extends Command {
     this.previousStyles = new Map(nodes.map((n3) => [n3.id, { ...n3.style }]));
     for (const n3 of nodes) n3.setStyle(this.style);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.previousStyles) {
       throw new Error("Cannot undo: missing diagram or previous style");
     }
@@ -116834,13 +116835,13 @@ var SetNodeStyleCommand = class extends Command {
       node.replaceStyle(previous);
     }
   }
-  canExecute(context) {
-    const diagram = context.diagram;
+  canExecute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return false;
     return this.nodeIds.length > 0 && this.nodeIds.every((id) => !!diagram.getNode(id));
   }
-  canUndo(context) {
-    return !!context.diagram && !!this.previousStyles;
+  canUndo(context2) {
+    return !!context2.diagram && !!this.previousStyles;
   }
   serialize() {
     return {
@@ -116873,8 +116874,8 @@ var SetLinkLabelsCommand = class extends Command {
     this.linkId = linkId;
     this.labels = labels;
   }
-  execute(context) {
-    const link = context.diagram?.getLink(this.linkId);
+  execute(context2) {
+    const link = context2.diagram?.getLink(this.linkId);
     if (!link) {
       throw new Error(`Link ${this.linkId} not found`);
     }
@@ -116883,8 +116884,8 @@ var SetLinkLabelsCommand = class extends Command {
     link.markDirty("labels");
     link.emitter.emit("link:labels-changed", { labels: link.labels });
   }
-  undo(context) {
-    const link = context.diagram?.getLink(this.linkId);
+  undo(context2) {
+    const link = context2.diagram?.getLink(this.linkId);
     if (!link || !this.previousLabels) {
       throw new Error("Cannot undo: missing link or previous labels");
     }
@@ -116892,11 +116893,11 @@ var SetLinkLabelsCommand = class extends Command {
     link.markDirty("labels");
     link.emitter.emit("link:labels-changed", { labels: link.labels });
   }
-  canExecute(context) {
-    return !!context.diagram?.getLink(this.linkId);
+  canExecute(context2) {
+    return !!context2.diagram?.getLink(this.linkId);
   }
-  canUndo(context) {
-    return !!context.diagram?.getLink(this.linkId) && !!this.previousLabels;
+  canUndo(context2) {
+    return !!context2.diagram?.getLink(this.linkId) && !!this.previousLabels;
   }
   serialize() {
     return {
@@ -116926,8 +116927,8 @@ var RotateNodeCommand = class _RotateNodeCommand extends Command {
     }
     this.mergeable = options.mergeable === true;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -116940,8 +116941,8 @@ var RotateNodeCommand = class _RotateNodeCommand extends Command {
     }
     node.setRotation(this.newRotation);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || this.oldRotation === void 0) {
       throw new Error("Cannot undo: missing diagram or old rotation");
     }
@@ -116951,11 +116952,11 @@ var RotateNodeCommand = class _RotateNodeCommand extends Command {
     }
     node.setRotation(this.oldRotation);
   }
-  canExecute(context) {
-    return context.diagram && context.diagram.nodes.has(this.nodeId);
+  canExecute(context2) {
+    return context2.diagram && context2.diagram.nodes.has(this.nodeId);
   }
-  canUndo(context) {
-    return context.diagram && this.oldRotation !== void 0;
+  canUndo(context2) {
+    return context2.diagram && this.oldRotation !== void 0;
   }
   canMergeWith(other) {
     if (!(other instanceof _RotateNodeCommand)) {
@@ -117023,8 +117024,8 @@ var SetNodeLabelCommand = class extends Command {
       this.oldLabel = oldLabel;
     }
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -117039,8 +117040,8 @@ var SetNodeLabelCommand = class extends Command {
     node.setLabel(this.newLabel);
     node.markDirty("label-edited");
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || this.oldLabel === void 0) {
       throw new Error("Cannot undo: missing diagram or old label");
     }
@@ -117052,11 +117053,11 @@ var SetNodeLabelCommand = class extends Command {
     else node.setLabel(this.oldLabel);
     node.markDirty("label-edited");
   }
-  canExecute(context) {
-    return context.diagram && context.diagram.nodes.has(this.nodeId);
+  canExecute(context2) {
+    return context2.diagram && context2.diagram.nodes.has(this.nodeId);
   }
-  canUndo(context) {
-    return context.diagram && this.oldLabel !== void 0;
+  canUndo(context2) {
+    return context2.diagram && this.oldLabel !== void 0;
   }
   /**
    * Never merge: each committed edit (one editor session) is one undo step.
@@ -117092,8 +117093,8 @@ var SetLinkPointsCommand = class extends Command {
     }
     this.oldManual = oldManual;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -117111,8 +117112,8 @@ var SetLinkPointsCommand = class extends Command {
     link.setMetadata("hasManualWaypoints", this.newPoints.length > 2);
     link.markDirty("link-points-changed");
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.oldPoints) {
       throw new Error("Cannot undo: missing diagram or old points");
     }
@@ -117124,11 +117125,11 @@ var SetLinkPointsCommand = class extends Command {
     link.setMetadata("hasManualWaypoints", this.oldManual === true);
     link.markDirty("link-points-changed");
   }
-  canExecute(context) {
-    return context.diagram && context.diagram.links.has(this.linkId);
+  canExecute(context2) {
+    return context2.diagram && context2.diagram.links.has(this.linkId);
   }
-  canUndo(context) {
-    return context.diagram && !!this.oldPoints;
+  canUndo(context2) {
+    return context2.diagram && !!this.oldPoints;
   }
   /** One vertex gesture = one undo step; never merge two of them. */
   canMergeWith() {
@@ -117161,8 +117162,8 @@ var SetStrokePointsCommand = class extends Command {
       this.oldPoints = oldPoints.map((p) => ({ ...p }));
     }
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -117175,8 +117176,8 @@ var SetStrokePointsCommand = class extends Command {
     }
     stroke.setPoints(this.newPoints.map((p) => ({ ...p })));
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.oldPoints) {
       throw new Error("Cannot undo: missing diagram or old points");
     }
@@ -117186,11 +117187,11 @@ var SetStrokePointsCommand = class extends Command {
     }
     stroke.setPoints(this.oldPoints.map((p) => ({ ...p })));
   }
-  canExecute(context) {
-    return !!context.diagram && context.diagram.getStroke(this.strokeId) !== void 0;
+  canExecute(context2) {
+    return !!context2.diagram && context2.diagram.getStroke(this.strokeId) !== void 0;
   }
-  canUndo(context) {
-    return !!context.diagram && !!this.oldPoints;
+  canUndo(context2) {
+    return !!context2.diagram && !!this.oldPoints;
   }
   /** One edit gesture = one undo step; never merge two of them. */
   canMergeWith() {
@@ -117220,19 +117221,19 @@ var AddStrokeCommand = class extends Command {
     this.stroke = stroke;
     this.added = false;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) throw new Error("Diagram not found in context");
     diagram.addStroke(this.stroke);
     this.added = true;
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.added) throw new Error("Cannot undo: stroke was not added");
     diagram.removeStroke(this.stroke.id);
   }
-  canExecute(context) {
-    return !!context.diagram && this.stroke.pointCount > 0;
+  canExecute(context2) {
+    return !!context2.diagram && this.stroke.pointCount > 0;
   }
   serialize() {
     return {
@@ -117249,8 +117250,8 @@ var RemoveStrokesCommand = class extends Command {
     this.strokeIds = strokeIds;
     this.removed = [];
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) throw new Error("Diagram not found in context");
     this.removed = [];
     for (const id of this.strokeIds) {
@@ -117261,15 +117262,15 @@ var RemoveStrokesCommand = class extends Command {
       }
     }
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) throw new Error("Diagram not found in context");
     for (const stroke of this.removed) {
       diagram.addStroke(stroke);
     }
   }
-  canExecute(context) {
-    return !!context.diagram && this.strokeIds.length > 0;
+  canExecute(context2) {
+    return !!context2.diagram && this.strokeIds.length > 0;
   }
   serialize() {
     return {
@@ -117292,8 +117293,8 @@ var ReconnectLinkCommand = class extends Command {
     this.oldPortId = oldPortId;
     this.oldNodeId = oldNodeId;
   }
-  apply(context, portId, nodeId) {
-    const diagram = context.diagram;
+  apply(context2, portId, nodeId) {
+    const diagram = context2.diagram;
     if (!diagram) throw new Error("Diagram not found in context");
     const link = diagram.getLink(this.linkId);
     if (!link) throw new Error(`Link ${this.linkId} not found`);
@@ -117303,11 +117304,11 @@ var ReconnectLinkCommand = class extends Command {
       link.reconnectTarget(portId, nodeId);
     }
   }
-  execute(context) {
-    this.apply(context, this.newPortId, this.newNodeId);
+  execute(context2) {
+    this.apply(context2, this.newPortId, this.newNodeId);
   }
-  undo(context) {
-    this.apply(context, this.oldPortId, this.oldNodeId);
+  undo(context2) {
+    this.apply(context2, this.oldPortId, this.oldNodeId);
   }
   serialize() {
     return {
@@ -117337,35 +117338,35 @@ var SetLinkLabelCommand = class extends Command {
       this.oldText = oldText;
     }
   }
-  execute(context) {
-    const link = this.resolve(context);
+  execute(context2) {
+    const link = this.resolve(context2);
     if (this.oldText === void 0) {
       this.oldText = link.labels?.[this.labelIndex]?.text ?? "";
     }
     link.updateLabel(this.labelIndex, { text: this.newText });
     link.markDirty("label-edited");
   }
-  undo(context) {
+  undo(context2) {
     if (this.oldText === void 0) {
       throw new Error("Cannot undo: missing old label text");
     }
-    const link = this.resolve(context);
+    const link = this.resolve(context2);
     link.updateLabel(this.labelIndex, { text: this.oldText });
     link.markDirty("label-edited");
   }
-  canExecute(context) {
-    const link = context.diagram?.getLink?.(this.linkId);
+  canExecute(context2) {
+    const link = context2.diagram?.getLink?.(this.linkId);
     return !!link && !!link.labels && this.labelIndex >= 0 && this.labelIndex < link.labels.length;
   }
-  canUndo(context) {
-    return this.canExecute(context) && this.oldText !== void 0;
+  canUndo(context2) {
+    return this.canExecute(context2) && this.oldText !== void 0;
   }
   /** One editor session = one undo step. */
   canMergeWith() {
     return false;
   }
-  resolve(context) {
-    const diagram = context.diagram;
+  resolve(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -117403,8 +117404,8 @@ var SetLinkDisplayLabelCommand = class extends Command {
       this.oldLabel = oldLabel;
     }
   }
-  execute(context) {
-    const link = this.resolve(context);
+  execute(context2) {
+    const link = this.resolve(context2);
     if (this.oldLabel === void 0) {
       this.oldSlots = captureLabelSlots(link);
       this.oldLabel = String(link.getLabel() ?? "");
@@ -117412,27 +117413,27 @@ var SetLinkDisplayLabelCommand = class extends Command {
     link.setLabel(this.newLabel);
     link.markDirty("label-edited");
   }
-  undo(context) {
+  undo(context2) {
     if (this.oldLabel === void 0) {
       throw new Error("Cannot undo: missing old label text");
     }
-    const link = this.resolve(context);
+    const link = this.resolve(context2);
     if (this.oldSlots) restoreLabelSlots(link, this.oldSlots);
     else link.setLabel(this.oldLabel);
     link.markDirty("label-edited");
   }
-  canExecute(context) {
-    return !!context.diagram?.getLink?.(this.linkId);
+  canExecute(context2) {
+    return !!context2.diagram?.getLink?.(this.linkId);
   }
-  canUndo(context) {
-    return this.canExecute(context) && this.oldLabel !== void 0;
+  canUndo(context2) {
+    return this.canExecute(context2) && this.oldLabel !== void 0;
   }
   /** One editor session = one undo step. */
   canMergeWith() {
     return false;
   }
-  resolve(context) {
-    const diagram = context.diagram;
+  resolve(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -117466,8 +117467,8 @@ var SetLinkPathTypeCommand = class extends Command {
     this.linkId = linkId;
     this.pathType = pathType;
   }
-  execute(context) {
-    const link = context.diagram?.getLink(this.linkId);
+  execute(context2) {
+    const link = context2.diagram?.getLink(this.linkId);
     if (!link) throw new Error(`Link ${this.linkId} not found`);
     this.previous = {
       pathType: link.pathType,
@@ -117476,8 +117477,8 @@ var SetLinkPathTypeCommand = class extends Command {
     };
     link.setPathType(this.pathType);
   }
-  undo(context) {
-    const link = context.diagram?.getLink(this.linkId);
+  undo(context2) {
+    const link = context2.diagram?.getLink(this.linkId);
     if (!link || !this.previous) {
       throw new Error("Cannot undo: missing link or previous path type");
     }
@@ -117487,11 +117488,11 @@ var SetLinkPathTypeCommand = class extends Command {
       link.setMetadata("hasManualWaypoints", true);
     }
   }
-  canExecute(context) {
-    return !!context.diagram?.getLink(this.linkId);
+  canExecute(context2) {
+    return !!context2.diagram?.getLink(this.linkId);
   }
-  canUndo(context) {
-    return !!context.diagram?.getLink(this.linkId) && !!this.previous;
+  canUndo(context2) {
+    return !!context2.diagram?.getLink(this.linkId) && !!this.previous;
   }
   serialize() {
     return {
@@ -117517,25 +117518,25 @@ var SetNodeShapeConfigCommand = class extends Command {
     this.nodeId = nodeId;
     this.patch = patch;
   }
-  execute(context) {
-    const node = context.diagram?.getNode(this.nodeId);
+  execute(context2) {
+    const node = context2.diagram?.getNode(this.nodeId);
     if (!node) throw new Error(`Node ${this.nodeId} not found`);
     const current = node.getMetadata("shape");
     this.previous = { shape: current ? { ...current } : void 0 };
     node.setMetadata("shape", { ...current ?? {}, ...this.patch });
   }
-  undo(context) {
-    const node = context.diagram?.getNode(this.nodeId);
+  undo(context2) {
+    const node = context2.diagram?.getNode(this.nodeId);
     if (!node || !this.previous) {
       throw new Error("Cannot undo: missing node or previous shape config");
     }
     node.setMetadata("shape", this.previous.shape ? { ...this.previous.shape } : void 0);
   }
-  canExecute(context) {
-    return !!context.diagram?.getNode(this.nodeId) && Object.keys(this.patch).length > 0;
+  canExecute(context2) {
+    return !!context2.diagram?.getNode(this.nodeId) && Object.keys(this.patch).length > 0;
   }
-  canUndo(context) {
-    return !!context.diagram?.getNode(this.nodeId) && !!this.previous;
+  canUndo(context2) {
+    return !!context2.diagram?.getNode(this.nodeId) && !!this.previous;
   }
   serialize() {
     return {
@@ -117557,20 +117558,20 @@ var AddPortCommand = class extends Command {
     this.nodeId = nodeId;
     this.portData = port.serialize();
   }
-  execute(context) {
-    const node = context.diagram?.getNode(this.nodeId);
+  execute(context2) {
+    const node = context2.diagram?.getNode(this.nodeId);
     if (!node) {
       throw new Error(`Node ${this.nodeId} not found`);
     }
     if (node.getPort(this.portData.id)) return;
     node.addPort(PortModel.fromJSON(this.portData));
   }
-  undo(context) {
-    const node = context.diagram?.getNode(this.nodeId);
+  undo(context2) {
+    const node = context2.diagram?.getNode(this.nodeId);
     node?.removePort(this.portData.id);
   }
-  canExecute(context) {
-    return !!context.diagram?.getNode(this.nodeId);
+  canExecute(context2) {
+    return !!context2.diagram?.getNode(this.nodeId);
   }
   serialize() {
     return {
@@ -117587,21 +117588,21 @@ var RemovePortCommand = class extends Command {
     this.nodeId = nodeId;
     this.portId = portId;
   }
-  execute(context) {
-    const node = context.diagram?.getNode(this.nodeId);
+  execute(context2) {
+    const node = context2.diagram?.getNode(this.nodeId);
     const port = node?.getPort(this.portId);
     if (!node || !port) return;
     this.portData = port.serialize();
     node.removePort(this.portId);
   }
-  undo(context) {
-    const node = context.diagram?.getNode(this.nodeId);
+  undo(context2) {
+    const node = context2.diagram?.getNode(this.nodeId);
     if (!node || !this.portData) return;
     if (node.getPort(this.portData.id)) return;
     node.addPort(PortModel.fromJSON(this.portData));
   }
-  canExecute(context) {
-    return !!context.diagram?.getNode(this.nodeId)?.getPort(this.portId);
+  canExecute(context2) {
+    return !!context2.diagram?.getNode(this.nodeId)?.getPort(this.portId);
   }
   serialize() {
     return {
@@ -117620,8 +117621,8 @@ var NodeZOrderCommand = class extends Command {
     this.nodeId = nodeId;
     this.captured = false;
   }
-  resolve(context) {
-    const diagram = context.diagram;
+  resolve(context2) {
+    const diagram = context2.diagram;
     if (!diagram) {
       throw new Error("Diagram not found in context");
     }
@@ -117631,22 +117632,22 @@ var NodeZOrderCommand = class extends Command {
     }
     return node;
   }
-  execute(context) {
-    const node = this.resolve(context);
+  execute(context2) {
+    const node = this.resolve(context2);
     if (!this.captured) {
       this.oldZIndex = node.zIndex;
       this.captured = true;
     }
-    this.applyTo(node, context);
+    this.applyTo(node, context2);
   }
-  undo(context) {
-    this.resolve(context).setZIndex(this.oldZIndex);
+  undo(context2) {
+    this.resolve(context2).setZIndex(this.oldZIndex);
   }
-  canExecute(context) {
-    return context.diagram?.getNode?.(this.nodeId) !== void 0;
+  canExecute(context2) {
+    return context2.diagram?.getNode?.(this.nodeId) !== void 0;
   }
-  canUndo(context) {
-    return this.canExecute(context);
+  canUndo(context2) {
+    return this.canExecute(context2);
   }
 };
 var SetNodeZIndexCommand = class _SetNodeZIndexCommand extends NodeZOrderCommand {
@@ -117676,8 +117677,8 @@ var BringNodeToFrontCommand = class extends NodeZOrderCommand {
   constructor(nodeId) {
     super(nodeId, "Bring Node To Front");
   }
-  applyTo(node, context) {
-    node.bringToFront(context.diagram);
+  applyTo(node, context2) {
+    node.bringToFront(context2.diagram);
   }
   serialize() {
     return {
@@ -117695,8 +117696,8 @@ var SendNodeToBackCommand = class extends NodeZOrderCommand {
   constructor(nodeId) {
     super(nodeId, "Send Node To Back");
   }
-  applyTo(node, context) {
-    node.sendToBack(context.diagram);
+  applyTo(node, context2) {
+    node.sendToBack(context2.diagram);
   }
   serialize() {
     return {
@@ -117724,8 +117725,8 @@ var SetNodeDataCommand = class extends Command {
     this.templated = /* @__PURE__ */ new Map();
     this.nodeIds = typeof nodeId === "string" ? [nodeId] : [...nodeId];
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) throw new Error("Diagram not found in context");
     const nodes = this.nodeIds.map((id) => {
       const n3 = diagram.getNode(id);
@@ -117755,8 +117756,8 @@ var SetNodeDataCommand = class extends Command {
       }
     }
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram || !this.previous) throw new Error("Cannot undo: missing diagram or snapshot");
     for (const [id, change] of this.templated) {
       const node = diagram.getNode(id);
@@ -117774,11 +117775,11 @@ var SetNodeDataCommand = class extends Command {
       }
     }
   }
-  canExecute(context) {
-    return !!context.diagram && this.nodeIds.length > 0 && Object.keys(this.data).length > 0;
+  canExecute(context2) {
+    return !!context2.diagram && this.nodeIds.length > 0 && Object.keys(this.data).length > 0;
   }
-  canUndo(context) {
-    return !!context.diagram && !!this.previous;
+  canUndo(context2) {
+    return !!context2.diagram && !!this.previous;
   }
   serialize() {
     return {
@@ -117805,13 +117806,13 @@ var MultiNodeArrangeCommand = class extends Command {
   minNodes() {
     return 2;
   }
-  liveNodes(context) {
-    const diagram = context.diagram;
+  liveNodes(context2) {
+    const diagram = context2.diagram;
     if (!diagram) throw new Error("Diagram not found in context");
     return this.nodeIds.map((id) => diagram.getNode(id)).filter((n3) => !!n3 && !n3.state.locked);
   }
-  execute(context) {
-    const nodes = this.liveNodes(context);
+  execute(context2) {
+    const nodes = this.liveNodes(context2);
     if (this.before.size === 0) {
       for (const n3 of nodes) this.before.set(n3.id, { x: n3.position.x, y: n3.position.y });
     }
@@ -117821,19 +117822,19 @@ var MultiNodeArrangeCommand = class extends Command {
       if (t) n3.setPosition(t.x, t.y);
     }
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) throw new Error("Diagram not found in context");
     for (const [id, p] of this.before) {
       const n3 = diagram.getNode(id);
       if (n3) n3.setPosition(p.x, p.y);
     }
   }
-  canExecute(context) {
-    return !!context.diagram && this.nodeIds.length >= this.minNodes();
+  canExecute(context2) {
+    return !!context2.diagram && this.nodeIds.length >= this.minNodes();
   }
-  canUndo(context) {
-    return !!context.diagram && this.before.size > 0;
+  canUndo(context2) {
+    return !!context2.diagram && this.before.size > 0;
   }
   serialize() {
     return { id: this.id, name: this.name, timestamp: this.timestamp, data: { nodeIds: this.nodeIds } };
@@ -120146,9 +120147,9 @@ var OK = { ok: true };
 function no(reason, message) {
   return { ok: false, reason, message };
 }
-function evaluatePortConnection(source, target, context = {}) {
-  const sourceNode = context.sourceNode;
-  const targetNode = context.targetNode;
+function evaluatePortConnection(source, target, context2 = {}) {
+  const sourceNode = context2.sourceNode;
+  const targetNode = context2.targetNode;
   const sourceConfig = resolvePortConfig(source, sourceNode);
   const targetConfig = resolvePortConfig(target, targetNode);
   const sourceGating = sourceConfig.gating;
@@ -120201,24 +120202,24 @@ function evaluatePortConnection(source, target, context = {}) {
   if (targetGating.toMaxLinks !== null && target.getToLinkCount() >= targetGating.toMaxLinks) {
     return no("to-max-links", "That port has reached its incoming-link limit.");
   }
-  const rejectDuplicates = !sourceGating.allowDuplicateLinks || !targetGating.allowDuplicateLinks || context.rejectDuplicatesByDefault === true;
-  if (rejectDuplicates && context.links?.length) {
-    const already = context.links.some(
+  const rejectDuplicates = !sourceGating.allowDuplicateLinks || !targetGating.allowDuplicateLinks || context2.rejectDuplicatesByDefault === true;
+  if (rejectDuplicates && context2.links?.length) {
+    const already = context2.links.some(
       (link) => link.sourcePortId === source.id && link.targetPortId === target.id || link.sourcePortId === target.id && link.targetPortId === source.id
     );
     if (already) {
       return no("duplicate-link", "These ports are already connected.");
     }
   }
-  for (const validator of context.validators ?? []) {
+  for (const validator of context2.validators ?? []) {
     const verdict = validator(source, target);
     if (typeof verdict === "string" && verdict) return no("custom", verdict);
     if (!verdict) return no("custom", "This connection is not allowed.");
   }
   return OK;
 }
-function canConnectPortsWithRules(source, target, context = {}) {
-  return evaluatePortConnection(source, target, context).ok;
+function canConnectPortsWithRules(source, target, context2 = {}) {
+  return evaluatePortConnection(source, target, context2).ok;
 }
 
 // libs/engine/src/state/ConnectionStateManager.ts
@@ -121856,9 +121857,9 @@ var ModeManager = class {
    * @returns true if change allowed, false if prevented
    */
   runBeforeHooks(previousMode, nextMode) {
-    const context = this.getContext();
+    const context2 = this.getContext();
     for (const hook of this.beforeHooks) {
-      const result = hook(previousMode, nextMode, context);
+      const result = hook(previousMode, nextMode, context2);
       if (result === false) {
         return false;
       }
@@ -121869,9 +121870,9 @@ var ModeManager = class {
    * Run after mode change hooks
    */
   runAfterHooks(previousMode, nextMode) {
-    const context = this.getContext();
+    const context2 = this.getContext();
     for (const hook of this.afterHooks) {
-      hook(previousMode, nextMode, context);
+      hook(previousMode, nextMode, context2);
     }
   }
   // ============================================================================
@@ -131744,19 +131745,91 @@ function widestLine(lines, font, measure2) {
 
 // libs/engine/src/dsl/mermaid/import-layout.ts
 var dagreNs3 = __toESM(require_dagre(), 1);
+
+// libs/engine/src/routing/basis-spline.ts
+function basisSegments(points) {
+  const n3 = points.length;
+  if (n3 < 3) return points.slice(1).map((to) => ({ to: { x: to.x, y: to.y } }));
+  const mix = (a, wa, b, wb, c, wc = 0) => ({
+    x: (a.x * wa + b.x * wb + (c ? c.x * wc : 0)) / (wa + wb + wc),
+    y: (a.y * wa + b.y * wb + (c ? c.y * wc : 0)) / (wa + wb + wc)
+  });
+  const out = [{ to: mix(points[0], 5, points[1], 1) }];
+  for (let i = 2; i <= n3; i++) {
+    const a = points[i - 2];
+    const b = points[i - 1];
+    const p = points[i] ?? b;
+    out.push({ c1: mix(a, 2, b, 1), c2: mix(a, 1, b, 2), to: mix(a, 1, b, 4, p, 1) });
+  }
+  out.push({ to: { x: points[n3 - 1].x, y: points[n3 - 1].y } });
+  return out;
+}
+function sampleBasis(points, stepsPerSegment = 8) {
+  if (points.length < 3) return points.map((p) => ({ x: p.x, y: p.y }));
+  const out = [{ x: points[0].x, y: points[0].y }];
+  for (const seg of basisSegments(points)) {
+    const from = out[out.length - 1];
+    if (!seg.c1 || !seg.c2) {
+      out.push(seg.to);
+      continue;
+    }
+    for (let s = 1; s <= stepsPerSegment; s++) {
+      const t = s / stepsPerSegment;
+      const mt = 1 - t;
+      out.push({
+        x: mt * mt * mt * from.x + 3 * mt * mt * t * seg.c1.x + 3 * mt * t * t * seg.c2.x + t * t * t * seg.to.x,
+        y: mt * mt * mt * from.y + 3 * mt * mt * t * seg.c1.y + 3 * mt * t * t * seg.c2.y + t * t * t * seg.to.y
+      });
+    }
+  }
+  return out;
+}
+
+// libs/engine/src/dsl/mermaid/import-layout.ts
 var dagre3 = dagreNs3.default ?? dagreNs3;
-var IMPORT_NODE_FONT = 14;
+var IMPORT_NODE_FONT = 16;
 var IMPORT_LINE_HEIGHT = 1.2;
-var IMPORT_EDGE_FONT = 12;
+var IMPORT_LINE_PITCH = 24;
+var IMPORT_EDGE_FONT = IMPORT_NODE_FONT;
 var IMPORT_EDGE_PAD = 4;
+var RENDERER_EDGE_FONT = 12;
 var IMPORT_WRAP_WIDTH = 200;
+var MEASURED_TEXT_FLAG = "measuredText";
+var MEASURED_LABEL_FLAG = "labelMeasured";
+var glyphTextWidth = estimateTextWidth;
+var measureNow;
+function withImportTextMeasure(measure2, run) {
+  const was = measureNow;
+  measureNow = measure2;
+  try {
+    return run();
+  } finally {
+    measureNow = was;
+  }
+}
+function importMeasuresText() {
+  return measureNow !== void 0;
+}
+function textWidth(text, fontSize, weight) {
+  if (measureNow) return measureNow(text, { size: fontSize, ...weight ? { weight } : {} });
+  return Math.max(estimateLabelWidth(text, fontSize), estimateTextWidth(text, { size: fontSize, ...weight ? { weight } : {} }) * 1.15 + 2);
+}
+function importEdgeLabelProps() {
+  return { style: { fontSize: IMPORT_EDGE_FONT }, textWrap: true, maxWidth: IMPORT_WRAP_WIDTH };
+}
+function edgeLabelBox(text, fontSize = IMPORT_EDGE_FONT, padding = IMPORT_EDGE_PAD, maxWidth = IMPORT_WRAP_WIDTH) {
+  const lines = maxWidth ? wrapLabelLines(text, maxWidth, fontSize) : text.split("\n");
+  const w = Math.max(...lines.map((line) => textWidth(line, fontSize)));
+  const chip = (lines.length === 1 ? fontSize : lines.length * fontSize * IMPORT_LINE_HEIGHT) + 2 * padding;
+  return { w: w + (measureNow ? 0 : 2 * padding), h: Math.max(chip, lines.length * IMPORT_LINE_PITCH) };
+}
 function estimateLabelWidth(text, fontSize) {
   return text.length * fontSize * 0.6;
 }
-function wrapLabelLines(text, maxWidth, fontSize) {
+function wrapLabelLines(text, maxWidth, fontSize, weight) {
   const lines = [];
   for (const paragraph of text.split("\n")) {
-    const words = paragraph.split(/\s+/).filter((w) => w.length > 0).flatMap((w) => breakAtHyphens(w, maxWidth, fontSize));
+    const words = paragraph.split(/\s+/).filter((w) => w.length > 0).flatMap((w) => breakAtHyphens(w, maxWidth, fontSize, weight));
     if (words.length === 0) {
       lines.push("");
       continue;
@@ -131764,7 +131837,7 @@ function wrapLabelLines(text, maxWidth, fontSize) {
     let current = "";
     for (const word of words) {
       const test = current ? `${current} ${word}` : word;
-      if (estimateLabelWidth(test, fontSize) > maxWidth && current) {
+      if (textWidth(test, fontSize, weight) > maxWidth && current) {
         lines.push(current);
         current = word;
       } else {
@@ -131775,13 +131848,13 @@ function wrapLabelLines(text, maxWidth, fontSize) {
   }
   return lines.length > 0 ? lines : [text];
 }
-function breakAtHyphens(word, maxWidth, fontSize) {
-  if (estimateLabelWidth(word, fontSize) <= maxWidth || !word.includes("-")) return [word];
+function breakAtHyphens(word, maxWidth, fontSize, weight) {
+  if (textWidth(word, fontSize, weight) <= maxWidth || !word.includes("-")) return [word];
   const pieces = [];
   let current = "";
   for (const seg of word.split(/(?<=-)/)) {
     const test = current + seg;
-    if (current && estimateLabelWidth(test, fontSize) > maxWidth) {
+    if (current && textWidth(test, fontSize, weight) > maxWidth) {
       pieces.push(current);
       current = seg;
     } else {
@@ -131790,24 +131863,6 @@ function breakAtHyphens(word, maxWidth, fontSize) {
   }
   if (current) pieces.push(current);
   return pieces;
-}
-function importInnerBox(shape, w, h) {
-  switch (shape) {
-    case "circle": {
-      const d = Math.min(w, h);
-      return { w: 0.6 * d, h: 0.6 * d };
-    }
-    case "ellipse":
-      return { w: 0.6 * w, h: 0.6 * h };
-    case "diamond":
-      return { w: 0.5 * w, h: 0.5 * h };
-    case "stadium":
-      return { w: Math.max(0, w - h), h: 0.7 * h };
-    default: {
-      const pad = Math.max(0, Math.min(8, w / 2 - 1, h / 2 - 1));
-      return { w: w - 2 * pad, h: h - 2 * pad };
-    }
-  }
 }
 function outerForContent(shape, content) {
   switch (shape) {
@@ -131823,43 +131878,65 @@ function outerForContent(shape, content) {
       const h = content.h / 0.7;
       return { w: content.w + h, h };
     }
+    case "note":
+      return { w: content.w / 0.84, h: content.h / 0.84 };
     default:
       return { w: content.w + 16, h: content.h + 16 };
+  }
+}
+var NODE_WEIGHT = 500;
+function mermaidBox(node, shape, rounded, text) {
+  if (node.type === "state:note") return { w: text.w + 30, h: text.h + 30 };
+  if (String(node.type ?? "").startsWith("state:")) return { w: text.w + 16, h: text.h + 16 };
+  switch (shape) {
+    case "stadium":
+      return { w: text.w + 24, h: text.h + 15 };
+    case "diamond": {
+      const side = text.w + text.h + 30;
+      return { w: side, h: side };
+    }
+    case "circle": {
+      const d = Math.max(text.w, text.h) + 15;
+      return { w: d, h: d };
+    }
+    default:
+      return { w: text.w + (rounded ? 30 : 60), h: text.h + 30 };
   }
 }
 function fitNodeToLabel(node) {
   const label = String(node.getLabel?.() ?? "");
   if (!label.trim()) return;
-  const shape = String(node.getMetadata("shape")?.type ?? "rect");
-  const fontSize = node.style?.fontSize ?? IMPORT_NODE_FONT;
-  const lineHeight = fontSize * IMPORT_LINE_HEIGHT;
-  const { width, height } = node.size;
-  const inner = importInnerBox(shape, width, height);
-  const paragraphs = label.split("\n");
-  const oneLine = Math.max(...paragraphs.map((p) => estimateLabelWidth(p, fontSize)));
-  const longestWord = Math.max(
-    0,
-    ...label.split(/[\s-]+/).map((word) => estimateLabelWidth(word, fontSize))
-  );
-  let textWidth = inner.w;
-  if (oneLine > inner.w) textWidth = Math.max(inner.w, Math.min(oneLine, IMPORT_WRAP_WIDTH));
-  textWidth = Math.max(textWidth, longestWord);
-  const lines = wrapLabelLines(label, textWidth, fontSize).length;
-  const textHeight = Math.max(inner.h, lines * lineHeight + 1);
-  if (textWidth <= inner.w && textHeight <= inner.h) return;
-  const outer = outerForContent(shape, { w: textWidth, h: textHeight });
-  const w = Math.ceil(Math.max(width, outer.w));
-  const h = Math.ceil(Math.max(height, outer.h));
-  if (w !== width || h !== height) node.setSize(w, h, node.size.depth ?? 0);
+  const config = node.getMetadata("shape") ?? {};
+  const shape = String(config.type ?? "rect");
+  if (node.style?.fontSize === void 0) node.setStyle({ fontSize: IMPORT_NODE_FONT });
+  const fontSize = node.style.fontSize ?? IMPORT_NODE_FONT;
+  const lines = wrapLabelLines(label, IMPORT_WRAP_WIDTH, fontSize, NODE_WEIGHT);
+  const text = {
+    w: Math.max(...lines.map((line) => textWidth(line, fontSize, NODE_WEIGHT))),
+    h: lines.length * IMPORT_LINE_PITCH
+  };
+  const mermaid = mermaidBox(node, shape, shape === "rect" && !!config.cornerRadius, text);
+  const room = measureNow ? Math.ceil(text.w * 1.04 + 2) : Math.ceil(text.w);
+  const holds = outerForContent(shape, { w: room, h: lines.length * fontSize * IMPORT_LINE_HEIGHT + 1 });
+  const w = Math.ceil(Math.max(mermaid.w, holds.w));
+  const h = Math.ceil(Math.max(mermaid.h, holds.h));
+  if (w !== node.size.width || h !== node.size.height) node.setSize(w, h, node.size.depth ?? 0);
+  if (measureNow) node.setMetadata(MEASURED_LABEL_FLAG, lines);
+  else if (node.getMetadata(MEASURED_LABEL_FLAG) !== void 0) node.deleteMetadata(MEASURED_LABEL_FLAG);
 }
 function importEdgeLabelBox(link) {
   const label = link.labels?.[0];
-  const text = label?.text ?? link.getMetadata("label");
-  if (!text) return void 0;
-  const style = label?.style ?? {};
-  const fontSize = style.fontSize ?? IMPORT_EDGE_FONT;
-  const padding = style.padding ?? IMPORT_EDGE_PAD;
-  return { w: estimateLabelWidth(text, fontSize) + 2 * padding, h: fontSize + 2 * padding };
+  if (label?.text) {
+    const style = label.style ?? {};
+    return edgeLabelBox(
+      label.text,
+      style.fontSize ?? RENDERER_EDGE_FONT,
+      style.padding ?? IMPORT_EDGE_PAD,
+      label.textWrap ? label.maxWidth : void 0
+    );
+  }
+  const text = link.getMetadata("label");
+  return text ? edgeLabelBox(text) : void 0;
 }
 function layoutForImport(nodes, edges, options = {}) {
   const positions = /* @__PURE__ */ new Map();
@@ -131868,10 +131945,16 @@ function layoutForImport(nodes, edges, options = {}) {
   if (nodes.length === 0) return { positions, ranks, routes, width: 0, height: 0 };
   const parents = options.parents ?? /* @__PURE__ */ new Map();
   const g = new dagre3.graphlib.Graph({ multigraph: true, directed: true, compound: parents.size > 0 });
+  let depth = 0;
+  for (const id of parents.keys()) {
+    let d = 0;
+    for (let p = parents.get(id); p !== void 0; p = parents.get(p)) d++;
+    depth = Math.max(depth, d);
+  }
   g.setGraph({
     rankdir: dagreRankdir(options.direction),
     nodesep: options.nodeSpacing ?? 50,
-    ranksep: options.rankSpacing ?? 50,
+    ranksep: (options.rankSpacing ?? 50) / (2 * depth + 1),
     edgesep: 20,
     marginx: 0,
     marginy: 0
@@ -132040,12 +132123,13 @@ function cutsAny(a, b, boxes) {
   }
   return false;
 }
-function pickAnchor(node, toward, flowSide, dagreSide, obstacles) {
+function pickAnchor(node, toward, flowSide, own, obstacles) {
+  const dagreSide = own.side;
   const sides = [];
   for (const side of [flowSide, dagreSide, "right", "bottom", "left", "top"]) {
     if (side && !sides.includes(side)) sides.push(side);
   }
-  const candidates = [];
+  const candidates = [own];
   for (const side of sides) {
     candidates.push({ side, pct: aimedPct(node, side, toward) });
     if (side === flowSide || side === dagreSide) for (const pct of [50, 15, 85]) candidates.push({ side, pct });
@@ -132087,6 +132171,22 @@ function anchorPoint(node, side, pct) {
       return { x: x + t * w, y: y + h };
   }
 }
+function pointAlong(points, t) {
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) total += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+  let remaining = total * Math.max(0, Math.min(1, t));
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const len2 = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len2 > 0 && (remaining <= len2 || i === points.length - 2)) {
+      const u = Math.min(1, remaining / len2);
+      return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+    }
+    remaining -= len2;
+  }
+  return { ...points[points.length - 1] };
+}
 function fractionAlong(points, p) {
   let total = 0;
   const lengths = [];
@@ -132120,15 +132220,16 @@ function applyImportRoute(link, diagram, route, direction) {
   const next = points.length > 2 ? points[1] : points[points.length - 1];
   const prev = points.length > 2 ? points[points.length - 2] : points[0];
   const obstacles = diagram.getNodes().filter((n3) => n3 !== source && n3 !== target && !encloses(n3, source) && !encloses(n3, target));
-  const from = pickAnchor(source, next, forward ? flow.out : void 0, sideAnchor(source, points[0]).side, obstacles);
-  const to = pickAnchor(target, prev, forward ? flow.in : void 0, sideAnchor(target, points[points.length - 1]).side, obstacles);
+  const from = pickAnchor(source, next, forward ? flow.out : void 0, sideAnchor(source, points[0]), obstacles);
+  const to = pickAnchor(target, prev, forward ? flow.in : void 0, sideAnchor(target, points[points.length - 1]), obstacles);
   const sourcePort = ensureSideAnchorPort(source, `${from.side}@${from.pct}%`);
   const targetPort = ensureSideAnchorPort(target, `${to.side}@${to.pct}%`);
   if (!sourcePort || !targetPort) return;
   if (!link.getMetadata("importOriginal")) {
     const original = {
       ports: { source: link.sourcePortId, target: link.targetPortId },
-      ...link.labels?.length ? { labels: link.labels.map((l) => ({ ...l.slot ? { slot: l.slot } : {}, position: l.position })) } : route.label ? { added: true } : {}
+      spline: link.style?.spline ?? null,
+      ...link.labels?.length ? { labels: link.labels.map((l) => ({ ...l.slot ? { slot: l.slot } : {}, position: l.position, offset: l.offset })) } : route.label ? { added: true } : {}
     };
     link.setMetadata("importOriginal", original);
   }
@@ -132137,38 +132238,25 @@ function applyImportRoute(link, diagram, route, direction) {
   const start = anchorPoint(source, from.side, from.pct);
   const end = anchorPoint(target, to.side, to.pct);
   const interior = points.slice(1, -1);
-  const lead = (p, side, next2) => {
-    const n3 = NORMAL[side];
-    const room = Math.abs((next2.x - p.x) * n3.x + (next2.y - p.y) * n3.y);
-    const short = Math.min(10, room / 4);
-    if (short < 4) return [];
-    for (let d = short; d <= room * 0.8; d += 8) {
-      const q2 = { x: p.x + n3.x * d, y: p.y + n3.y * d };
-      if (!cutsAny(q2, next2, obstacles) && !cutsAny(p, q2, obstacles)) return [q2];
-    }
-    return [{ x: p.x + n3.x * short, y: p.y + n3.y * short }];
-  };
-  points = [
-    start,
-    ...lead(start, from.side, interior[0] ?? end),
-    ...interior,
-    ...lead(end, to.side, interior[interior.length - 1] ?? start).reverse(),
-    end
-  ];
+  points = [start, ...interior, end];
   link.setPoints(points);
+  link.updateStyle({ spline: "basis" });
   link.setMetadata("hasManualWaypoints", true);
   link.setMetadata("layoutAnchored", true);
   link.setMetadata("importRoute", true);
   diagram.noteImportRoute(link.id);
   if (route.label) {
-    const position = fractionAlong(points, route.label);
+    const curve = sampleBasis(points, 8);
+    const position = fractionAlong(curve, route.label);
+    const at = pointAlong(curve, position);
+    const offset = { x: route.label.x - at.x, y: route.label.y - at.y };
     const text = link.labels?.[0]?.text ?? link.getMetadata("label");
     if (link.labels?.length) {
       const [first, ...rest] = link.labels;
       const { slot: _slot, ...placed } = first;
-      link.setLabels([{ ...placed, position }, ...rest]);
+      link.setLabels([{ ...placed, position, offset }, ...rest]);
     } else if (text) {
-      link.addLabel({ text, position });
+      link.addLabel({ text, position, offset, ...importEdgeLabelProps() });
     }
   }
 }
@@ -134527,13 +134615,13 @@ var DiagramEngine = class {
       }),
       config.mode
     );
-    const context = {
+    const context2 = {
       diagram: this.diagram,
       eventBus: this.eventBus,
       store: this.store,
       engine: this
     };
-    this.commandManager = new CommandManager(context, this.eventBus);
+    this.commandManager = new CommandManager(context2, this.eventBus);
     this.pluginManager = new PluginManager(this, this.eventBus);
     this.typeRegistry = new TypeRegistry();
     this.validationEngine = new ValidationEngine(this.typeRegistry, this.eventBus);
@@ -138056,6 +138144,7 @@ var ASTTransformer = class {
     const placeable = diagram.getNodes().filter((node) => this.nodePositions.has(node.id));
     if (placeable.length === 0) return;
     for (const node of placeable) fitNodeToLabel(node);
+    if (importMeasuresText()) diagram.setMetadata(MEASURED_TEXT_FLAG, true);
     const idSet = new Set(placeable.map((n3) => n3.id));
     const links = diagram.getLinks().filter(
       (l) => l.sourceNodeId !== void 0 && l.targetNodeId !== void 0 && idSet.has(l.sourceNodeId) && idSet.has(l.targetNodeId)
@@ -138419,7 +138508,7 @@ var ASTTransformer = class {
     if (astEdge.label) {
       const text = readMermaidLabel(astEdge.label, false).text;
       link.setLabel(text);
-      if (!link.labels?.length) link.addLabel({ text, slot: "center" });
+      if (!link.labels?.length) link.addLabel({ text, slot: "center", ...importEdgeLabelProps() });
     }
     link.setMetadata("dslLinkType", astEdge.linkType);
     if (astEdge.style) {
@@ -139535,7 +139624,7 @@ var DSLGenerator = class {
     const nodes = diagram.getNodes();
     for (const node of nodes) {
       if ((node.getMetadata("dslStyled") || this.hasLookStyle(node)) && node.style) {
-        const styleProps = this.formatStyleProperties(node.style);
+        const styleProps = this.formatStyleProperties(this.ownNodeStyle(node.style));
         if (styleProps) {
           lines.push(`  style ${this.sanitizeId(node.id)} ${styleProps}`);
         }
@@ -139554,16 +139643,26 @@ var DSLGenerator = class {
       const labelStyle = link.labels?.[0]?.style;
       if (labelStyle?.["color"]) own["color"] = labelStyle["color"];
       if (labelStyle?.["fontWeight"]) own["fontWeight"] = labelStyle["fontWeight"];
-      if (labelStyle?.["fontSize"]) own["fontSize"] = labelStyle["fontSize"];
+      if (labelStyle?.["fontSize"] && labelStyle["fontSize"] !== IMPORT_EDGE_FONT) own["fontSize"] = labelStyle["fontSize"];
       const props = this.formatStyleProperties(own);
       const step = link.pathType === "orthogonal" ? "interpolate stepBefore " : "";
       if (props || step) lines.push(`  linkStyle ${i} ${step}${props}`.trimEnd());
     });
     return lines;
   }
+  /**
+   * A node's style as the author wrote it: Mermaid's own 16 px label size is
+   * how an import draws Mermaid's default (import-layout.ts), so it reads back
+   * the same without a `style` line.
+   */
+  ownNodeStyle(style) {
+    const own = { ...style };
+    if (own["fontSize"] === IMPORT_NODE_FONT) delete own["fontSize"];
+    return own;
+  }
   /** A node that carries the AI-diagram look — typography or the flat box. */
   hasLookStyle(node) {
-    const st = node.style;
+    const st = node.style ? this.ownNodeStyle(node.style) : void 0;
     if (!st) return false;
     return st["fontWeight"] !== void 0 || st["fontSize"] !== void 0 || st["fontFamily"] !== void 0 || st["shadow"] === false || st["color"] !== void 0;
   }
@@ -140837,10 +140936,6 @@ var STATE_BAR_THICKNESS = 8;
 var NOTE_FILL = "#fff5ad";
 var NOTE_STROKE = "#aaaa33";
 var NOTE_INK = "#1f2937";
-var NOTE_FONT = 14;
-var NOTE_TEXT_WIDTH = 190;
-var NOTE_INNER = 0.84;
-var NOTE_SLACK = 8;
 function stateFlowDirection(model, state) {
   const byId2 = new Map(model.states.map((s) => [s.id, s]));
   let parent = state.parent ? byId2.get(state.parent) : void 0;
@@ -140892,35 +140987,13 @@ function applyStateNodeLook(node, state, options) {
   node.setMetadata("dslShape", "rounded-rectangle");
   node.setMetadata("shape", { type: "rect", cornerRadius: 8 });
   if (state.composite) {
+    node.setStyle({ fontSize: IMPORT_NODE_FONT });
     node.setMetadata("labelPlacement", "header");
     node.setMetadata("headerHeight", options.headerHeight);
   }
 }
 function markCompositeGroup(diagram, groupId) {
   diagram.getGroup(groupId)?.setMetadata("frameChrome", "none");
-}
-function noteSize(text) {
-  const charW = NOTE_FONT * 0.6;
-  const words = text.split(/\s+/).filter(Boolean);
-  const longest = Math.max(0, ...words.map((w) => w.length)) * charW;
-  const natural = text.length * charW;
-  const inner = Math.max(longest, Math.min(NOTE_TEXT_WIDTH, Math.max(natural, 60)));
-  let lines = 1;
-  let line = 0;
-  for (const word of words) {
-    const w = word.length * charW;
-    const next = line === 0 ? w : line + charW + w;
-    if (next > inner && line > 0) {
-      lines++;
-      line = w;
-    } else {
-      line = next;
-    }
-  }
-  return {
-    width: Math.ceil(inner / NOTE_INNER) + NOTE_SLACK,
-    height: Math.max(30, Math.ceil(lines * NOTE_FONT * 1.2 / NOTE_INNER) + NOTE_SLACK)
-  };
 }
 function addStateNotes(diagram, model, nodes) {
   model.notes.forEach((note, i) => {
@@ -140930,7 +141003,7 @@ function addStateNotes(diagram, model, nodes) {
       id: `__note${i + 1}__`,
       type: "state:note",
       position: { x: 0, y: 0 },
-      size: noteSize(note.text)
+      size: { width: 120, height: 54 }
     });
     node.setLabel(note.text);
     node.setMetadata("stateNote", true);
@@ -140940,6 +141013,7 @@ function addStateNotes(diagram, model, nodes) {
     node.setMetadata("shape", { type: "note", fill: NOTE_FILL, stroke: NOTE_STROKE });
     node.style.color = NOTE_INK;
     node.style.shadow = false;
+    fitNodeToLabel(node);
     diagram.addNode(node);
     const link = diagram.createSmartLink(node, target, "direct");
     if (!link) return;
@@ -141264,7 +141338,7 @@ function layoutStateModel(model, nodes, start, notesOf = /* @__PURE__ */ new Map
         key: String(index),
         from,
         to,
-        ...direct && t.label ? { label: { w: estimateLabelWidth(t.label, IMPORT_EDGE_FONT) + 2 * IMPORT_EDGE_PAD, h: IMPORT_EDGE_FONT + 2 * IMPORT_EDGE_PAD } } : {}
+        ...direct && t.label ? { label: edgeLabelBox(t.label) } : {}
       });
     });
     return edges;
@@ -141429,6 +141503,7 @@ function stateModelToDiagram(model) {
     notesOf.set(target, [...notesOf.get(target) ?? [], node]);
   }
   const routes = layoutStateModel(model, nodes, { x: 80, y: 60 }, notesOf);
+  if (importMeasuresText()) diagram.setMetadata(MEASURED_TEXT_FLAG, true);
   for (const link of diagram.getLinks()) {
     if (link.getMetadata("noteLink") !== true) continue;
     const note = diagram.getNode(link.sourceNodeId ?? "");
@@ -141986,7 +142061,10 @@ var TEXT_GRAMMAR_METADATA_KEYS = [
   // renderer names and describes the SVG with (lines.ts readDiagramMetadata).
   "title",
   "accTitle",
-  "accDescr"
+  "accDescr",
+  // A flowchart / stateDiagram import that sized its boxes to MEASURED text: the
+  // renderer wraps the labels with the same measure (import-layout.ts).
+  "measuredText"
 ];
 function adoptTextGrammarMetadata(target, source) {
   for (const key of TEXT_GRAMMAR_METADATA_KEYS) {
@@ -142967,6 +143045,9 @@ function sanitizeForSidecar(doc) {
   return { ...doc, nodes, links };
 }
 function importDiagramText(text, options = {}) {
+  return withImportTextMeasure(options.measureText, () => importDiagramTextNow(text, options));
+}
+function importDiagramTextNow(text, options) {
   const prefer = options.prefer ?? "auto";
   const normalized = text.replace(/\r\n?/g, "\n");
   let documentJson;
@@ -171669,7 +171750,7 @@ var ELLIPSIS = "\u2026";
 function estimateTextWidth2(text, fontSize) {
   return text.length * fontSize * 0.6;
 }
-function wrapText(text, maxWidth, fontSize) {
+function wrapText(text, maxWidth, fontSize, measure2 = (t) => estimateTextWidth2(t, fontSize)) {
   const wrap = typeof maxWidth === "number" && isFinite(maxWidth) && maxWidth > 0;
   const lines = [];
   for (const paragraph of text.split("\n")) {
@@ -171677,7 +171758,7 @@ function wrapText(text, maxWidth, fontSize) {
       lines.push(paragraph);
       continue;
     }
-    const words = paragraph.split(/\s+/).filter((w) => w.length > 0).flatMap((w) => breakOversizedWord(w, maxWidth, fontSize));
+    const words = paragraph.split(/\s+/).filter((w) => w.length > 0).flatMap((w) => breakOversizedWord(w, maxWidth, measure2));
     if (words.length === 0) {
       lines.push("");
       continue;
@@ -171685,7 +171766,7 @@ function wrapText(text, maxWidth, fontSize) {
     let current = "";
     for (const word of words) {
       const test = current ? `${current} ${word}` : word;
-      if (estimateTextWidth2(test, fontSize) > maxWidth && current) {
+      if (measure2(test) > maxWidth && current) {
         lines.push(current);
         current = word;
       } else {
@@ -171696,14 +171777,14 @@ function wrapText(text, maxWidth, fontSize) {
   }
   return lines.length > 0 ? lines : [text];
 }
-function breakOversizedWord(word, maxWidth, fontSize) {
-  if (estimateTextWidth2(word, fontSize) <= maxWidth || !word.includes("-")) return [word];
+function breakOversizedWord(word, maxWidth, measure2) {
+  if (measure2(word) <= maxWidth || !word.includes("-")) return [word];
   const segments = word.split(/(?<=-)/);
   const pieces = [];
   let current = "";
   for (const seg of segments) {
     const test = current + seg;
-    if (current && estimateTextWidth2(test, fontSize) > maxWidth) {
+    if (current && measure2(test) > maxWidth) {
       pieces.push(current);
       current = seg;
     } else {
@@ -171713,11 +171794,11 @@ function breakOversizedWord(word, maxWidth, fontSize) {
   if (current) pieces.push(current);
   return pieces;
 }
-function truncateLines(lines, maxLines, maxWidth, fontSize) {
+function truncateLines(lines, maxLines, maxWidth, measure2) {
   if (!maxLines || maxLines < 1 || lines.length <= maxLines) return lines;
   const kept = lines.slice(0, maxLines);
   let last = kept[maxLines - 1] ?? "";
-  const fits = (s) => !(typeof maxWidth === "number" && isFinite(maxWidth) && maxWidth > 0) || estimateTextWidth2(s + ELLIPSIS, fontSize) <= maxWidth;
+  const fits = (s) => !(typeof maxWidth === "number" && isFinite(maxWidth) && maxWidth > 0) || measure2(s + ELLIPSIS) <= maxWidth;
   while (last.length > 0 && !fits(last)) {
     last = last.slice(0, -1).replace(/\s+$/, "");
   }
@@ -171741,8 +171822,9 @@ function renderTextBlock(opts) {
   const valign = opts.valign ?? "middle";
   const lineHeightPx = fontSize * (opts.lineHeight ?? DEFAULT_LINE_HEIGHT);
   const emitFontSize = opts.emitFontSize !== false;
-  const wrapped = wrapText(opts.text, opts.maxWidth, fontSize);
-  const lines = truncateLines(wrapped, opts.maxLines, opts.maxWidth, fontSize);
+  const measure2 = opts.measure ?? ((t) => estimateTextWidth2(t, fontSize));
+  const wrapped = wrapText(opts.text, opts.maxWidth, fontSize, measure2);
+  const lines = truncateLines(wrapped, opts.maxLines, opts.maxWidth, measure2);
   const baseProps = {
     x: opts.x,
     y: opts.y,
@@ -173119,6 +173201,129 @@ var DiagramRegistry = class {
 };
 var GLOBAL_DIAGRAM_REGISTRY = new DiagramRegistry(null);
 
+// libs/renderer/src/svg/text-measure.ts
+var DEFAULT_FAMILY = "Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+var context;
+function canMeasureText() {
+  return canvasContext() !== null;
+}
+function sizedLines(metadata, label) {
+  if (!Array.isArray(metadata) || !metadata.every((l) => typeof l === "string")) return void 0;
+  const words = (s) => s.split(/\s+/).filter(Boolean).join(" ");
+  return words(metadata.join(" ")) === words(label) ? metadata : void 0;
+}
+var byFamily = /* @__PURE__ */ new Map();
+function canvasTextMeasure(family = DEFAULT_FAMILY) {
+  const known = byFamily.get(family);
+  if (known) return known;
+  const c = canvasContext();
+  if (!c) return void 0;
+  const measure2 = (text, font) => {
+    const face = /mono/i.test(font.family ?? "") ? "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" : font.family ?? family;
+    c.font = `${font.weight ?? 400} ${font.size}px ${face}`;
+    return c.measureText(text).width + (font.letterSpacing ?? 0) * Array.from(text).length;
+  };
+  byFamily.set(family, measure2);
+  return measure2;
+}
+function canvasContext() {
+  if (context !== void 0) return context;
+  context = null;
+  if (typeof document === "undefined") return null;
+  if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent ?? "")) return null;
+  try {
+    context = document.createElement("canvas").getContext("2d");
+  } catch {
+    context = null;
+  }
+  return context;
+}
+function labelMeasureFor(diagram, font, sizedToMeasuredText = false) {
+  if (!sizedToMeasuredText && diagram?.getMetadata(MEASURED_TEXT_FLAG) !== true) return void 0;
+  const measure2 = canvasTextMeasure() ?? glyphTextWidth;
+  return (text, size) => measure2(text, size === void 0 ? font : { ...font, size });
+}
+
+// libs/renderer/src/svg/label-paint-order.ts
+function labelsOverLines(links, vnodes) {
+  const n3 = vnodes.length;
+  const chips = vnodes.map(labelChips);
+  if (chips.every((c) => c.length === 0)) return [...vnodes];
+  const lines = links.map((l) => l.style?.spline === "basis" && l.points.length > 2 ? sampleBasis(l.points, 8) : l.points);
+  const after = Array.from({ length: n3 }, () => /* @__PURE__ */ new Set());
+  const before = new Array(n3).fill(0);
+  for (let a = 0; a < n3; a++) {
+    for (let b = 0; b < n3; b++) {
+      if (a === b || chips[b].length === 0 || after[a].has(b)) continue;
+      if (chips[b].some((r) => crosses(lines[a], r))) {
+        after[a].add(b);
+        before[b]++;
+      }
+    }
+  }
+  const order = [];
+  const placed = new Array(n3).fill(false);
+  for (; ; ) {
+    let next = -1;
+    for (let i = 0; i < n3; i++) {
+      if (!placed[i] && before[i] === 0) {
+        next = i;
+        break;
+      }
+    }
+    if (next < 0) break;
+    placed[next] = true;
+    order.push(next);
+    for (const b of after[next]) before[b]--;
+  }
+  for (let i = 0; i < n3; i++) if (!placed[i]) order.push(i);
+  return order.map((i) => vnodes[i]);
+}
+function labelChips(vnode) {
+  const out = [];
+  const walk3 = (v) => {
+    if (!v || typeof v !== "object") return;
+    const cls = String(v.props?.["className"] ?? "");
+    if (cls.split(/\s+/).includes("link-label-group")) {
+      const m = /translate\(\s*(-?[\d.e]+)[ ,]+(-?[\d.e]+)\s*\)/.exec(String(v.props?.["transform"] ?? ""));
+      const bg = (v.children ?? []).find((c) => c && typeof c === "object" && c.type === "rect");
+      if (m && bg) {
+        const p = bg.props ?? {};
+        out.push({ x: Number(m[1]) + Number(p["x"] ?? 0), y: Number(m[2]) + Number(p["y"] ?? 0), w: Number(p["width"] ?? 0), h: Number(p["height"] ?? 0) });
+      }
+      return;
+    }
+    for (const c of v.children ?? []) walk3(c);
+  };
+  walk3(vnode);
+  return out.filter((r) => r.w > 0 && r.h > 0);
+}
+function crosses(line, r) {
+  const box = { x0: r.x + 2, y0: r.y + 2, x1: r.x + r.w - 2, y1: r.y + r.h - 2 };
+  if (box.x1 <= box.x0 || box.y1 <= box.y0) return false;
+  for (let i = 0; i + 1 < line.length; i++) if (segmentHitsBox(line[i], line[i + 1], box)) return true;
+  return false;
+}
+function segmentHitsBox(a, b, box) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const clip = (p, q2) => {
+    if (p === 0) return q2 >= 0;
+    const t = q2 / p;
+    if (p < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
+    }
+    return true;
+  };
+  return clip(-dx, a.x - box.x0) && clip(dx, box.x1 - a.x) && clip(-dy, a.y - box.y0) && clip(dy, box.y1 - a.y) && t0 <= t1;
+}
+
 // libs/renderer/src/svg/auto-size.ts
 var DEFAULT_FONT_SIZE3 = 14;
 var DEFAULT_LINE_HEIGHT2 = 1.2;
@@ -174224,6 +174429,7 @@ var LINK_LABEL_BACKGROUND_VAR = `var(${THEME_VARS["linkLabel.background"].cssVar
 var isCssVar = (paint2) => typeof paint2 === "string" && paint2.trim().startsWith("var(");
 var DEFAULT_HTML_LABEL_WIDTH = 120;
 var DEFAULT_HTML_LABEL_HEIGHT = 28;
+var TEXT_LINE_HEIGHT = 1.2;
 function alongPolyline(pts, t) {
   if (pts.length < 2) return null;
   let total = 0;
@@ -174255,14 +174461,14 @@ var LabelRenderer = class {
    * @param context Per-frame extras (optimizer offset, theme)
    * @returns VNode representing the label, or null if invalid
    */
-  renderLabel(label, link, context = {}) {
+  renderLabel(label, link, context2 = {}) {
     const position = linkLabelPosition(label);
-    const along = context.path ? alongPolyline(context.path, position) : null;
+    const along = context2.path ? alongPolyline(context2.path, position) : null;
     const point = along ? along.point : link.getPointAtPosition(position);
     if (!point) {
       return null;
     }
-    const offset = context.offset ?? label.offset ?? { x: 0, y: 0 };
+    const offset = context2.offset ?? label.offset ?? { x: 0, y: 0 };
     const finalX = point.x + offset.x;
     const finalY = point.y + offset.y;
     const rotation2 = this.resolveRotation(label, link, position, along?.angle);
@@ -174276,7 +174482,7 @@ var LabelRenderer = class {
           rotation: rotation2,
           // The theme is optional on this path only because renderLabel is a
           // public API older than themes-on-labels; the renderer always passes it.
-          theme: context.theme
+          theme: context2.theme
         };
         const produced = template(ctx);
         if (!produced) return null;
@@ -174315,24 +174521,24 @@ var LabelRenderer = class {
     }
     const fontSize = label.style?.fontSize ?? this.defaultFontSize;
     const fontFamily = label.style?.fontFamily;
-    const theme = context.theme;
-    const cssDefaults = !!context.cssMode && !!theme;
+    const theme = context2.theme;
+    const cssDefaults = !!context2.cssMode && !!theme;
     const color = label.style?.color ?? (cssDefaults ? LINK_LABEL_COLOR_VAR : theme?.colors?.text?.primary ?? this.defaultColor);
     const themedSurface = theme ? cssDefaults ? LINK_LABEL_BACKGROUND_VAR : theme.colors?.background?.surface : void 0;
     const rawBackground = label.style?.background ?? themedSurface;
     const background = rawBackground === "none" ? void 0 : rawBackground;
     const padding = label.style?.padding ?? this.defaultPadding;
     const borderRadius = label.style?.borderRadius ?? 3;
+    const measure2 = this.measureFor(label, link, fontSize, theme);
     const children = [];
     if (background) {
-      const textWidth = this.estimateTextWidth(label.text, fontSize);
-      const textHeight = fontSize;
+      const { width: textWidth2, height: textHeight } = this.textBlockSize(label, fontSize, measure2);
       const bgRect = {
         type: "rect",
         props: {
-          x: this.getBackgroundX(label.textAnchor, textWidth, padding),
+          x: this.getBackgroundX(label.textAnchor, textWidth2, padding),
           y: -textHeight / 2 - padding,
-          width: textWidth + padding * 2,
+          width: textWidth2 + padding * 2,
           height: textHeight + padding * 2,
           // A `var()` paint must be inline style: as an attribute it is invalid
           // and the chip would paint black.
@@ -174344,7 +174550,7 @@ var LabelRenderer = class {
       };
       children.push(bgRect);
     }
-    const textVNode2 = this.renderText(label, fontSize, fontFamily, color);
+    const textVNode2 = this.renderText(label, fontSize, fontFamily, color, measure2);
     children.push(textVNode2);
     return {
       type: "g",
@@ -174362,7 +174568,7 @@ var LabelRenderer = class {
    * against; HTML/template labels declare their own, and text labels are
    * measured with the same estimator the background rect already uses.
    */
-  labelBox(label) {
+  labelBox(label, link, theme) {
     if (label.html !== void 0 || label.template) {
       return {
         width: label.width ?? DEFAULT_HTML_LABEL_WIDTH,
@@ -174371,10 +174577,28 @@ var LabelRenderer = class {
     }
     const fontSize = label.style?.fontSize ?? this.defaultFontSize;
     const padding = label.style?.padding ?? this.defaultPadding;
-    return {
-      width: this.estimateTextWidth(label.text, fontSize) + padding * 2,
-      height: fontSize + padding * 2
-    };
+    const text = this.textBlockSize(label, fontSize, link ? this.measureFor(label, link, fontSize, theme) : void 0);
+    return { width: text.width + padding * 2, height: text.height + padding * 2 };
+  }
+  /** The canvas measure for a label of a MEASURED diagram (svg/text-measure.ts), else none. */
+  measureFor(label, link, fontSize, theme) {
+    const measureAt = labelMeasureFor(link.diagram, {
+      size: fontSize,
+      family: label.style?.fontFamily ?? theme?.typography?.fontFamily?.default,
+      ...label.style?.fontWeight !== void 0 ? { weight: label.style.fontWeight } : {}
+    });
+    return measureAt ? (t) => measureAt(t) : void 0;
+  }
+  /**
+   * The text block's size: its widest line and its lines at the text block's
+   * 1.2 line height — the lines renderTextBlock draws (wrapped at `maxWidth`
+   * when `textWrap`, else at hard breaks only). One line keeps the historical
+   * height of one font size.
+   */
+  textBlockSize(label, fontSize, measure2 = (t) => this.estimateTextWidth(t, fontSize)) {
+    const lines = wrapText(label.text, label.textWrap ? label.maxWidth : void 0, fontSize, measure2);
+    const width = Math.max(...lines.map((line) => measure2(line)));
+    return { width, height: lines.length === 1 ? fontSize : lines.length * fontSize * TEXT_LINE_HEIGHT };
   }
   /** Resolve `rotation: 'auto' | number` against the path, honouring keepUpright. */
   resolveRotation(label, link, position, paintedAngle) {
@@ -174409,12 +174633,13 @@ var LabelRenderer = class {
    * alignment behave identically for both. The link label is drawn at the group
    * origin (0,0); the enclosing <g> carries the position + rotation transform.
    */
-  renderText(label, fontSize, fontFamily, color) {
+  renderText(label, fontSize, fontFamily, color, measure2) {
     const block = renderTextBlock({
       text: label.text,
       x: 0,
       y: 0,
       maxWidth: label.textWrap ? label.maxWidth : void 0,
+      measure: measure2,
       align: label.textAnchor ?? "middle",
       valign: label.textBaseline ?? "middle",
       fontSize,
@@ -174425,6 +174650,9 @@ var LabelRenderer = class {
       color: isCssVar(color) ? void 0 : color,
       className: "link-label-text"
     });
+    for (const line of block.children ?? []) {
+      if (line && typeof line === "object") line.props = { ...line.props, dominantBaseline: "middle" };
+    }
     if (isCssVar(color)) {
       const props = block.props;
       props["style"] = { ...props["style"] ?? {}, fill: color };
@@ -174451,15 +174679,15 @@ var LabelRenderer = class {
   /**
    * Calculate background X position based on text anchor
    */
-  getBackgroundX(textAnchor, textWidth, padding) {
+  getBackgroundX(textAnchor, textWidth2, padding) {
     switch (textAnchor) {
       case "start":
         return -padding;
       case "end":
-        return -textWidth - padding;
+        return -textWidth2 - padding;
       case "middle":
       default:
-        return -textWidth / 2 - padding;
+        return -textWidth2 / 2 - padding;
     }
   }
 };
@@ -176985,8 +177213,14 @@ function hoistVarPaintsDeep(vnode) {
   return vnode;
 }
 var MIN_LABEL_FONT_PX = 8;
-function fitFontSize(text, maxWidth, base) {
+function fitFontSize(text, maxWidth, base, measureAt) {
   if (!text || !isFinite(maxWidth) || maxWidth <= 0) return base;
+  if (measureAt) {
+    let widest = 0;
+    for (const token of text.split(/[\s-]+/)) if (token) widest = Math.max(widest, measureAt(token, base));
+    if (widest <= maxWidth) return base;
+    return Math.max(MIN_LABEL_FONT_PX, Math.floor(base * maxWidth / widest));
+  }
   let longest = 0;
   for (const token of text.split(/[\s-]+/)) longest = Math.max(longest, token.length);
   if (longest === 0) return base;
@@ -177965,7 +178199,7 @@ var _SVGRenderer = class _SVGRenderer {
         }
       }
       const candidates = diagram.getVisibleNodes({ x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) });
-      const crosses = candidates.some((n3) => {
+      const crosses2 = candidates.some((n3) => {
         if (own.has(n3.id) || !n3.size || n3.state?.visible === false) return false;
         const at = n3.getWorldPosition?.() ?? n3.position;
         const r = { minX: at.x + INSET, minY: at.y + INSET, maxX: at.x + n3.size.width - INSET, maxY: at.y + n3.size.height - INSET };
@@ -177973,7 +178207,7 @@ var _SVGRenderer = class _SVGRenderer {
         for (let i = 1; i < pts.length; i++) if (this.segmentIntersectsRect(pts[i - 1], pts[i], r)) return true;
         return false;
       });
-      if (crosses) this.frameCrossings.add(link.id);
+      if (crosses2) this.frameCrossings.add(link.id);
     }
   }
   /**
@@ -178822,7 +179056,9 @@ var _SVGRenderer = class _SVGRenderer {
     }
     this.markLinksWhoseFrameChanged(sortedLinks);
     this.computeFrameCrossings(sortedLinks);
-    const children = sortedLinks.map((link) => this.renderLink(link, lod));
+    const rendered = sortedLinks.map((link) => this.renderLink(link, lod));
+    const imported = sortedLinks[0]?.diagram?.getMetadata(MEASURED_TEXT_FLAG) === true || sortedLinks.some((link) => link.getMetadata("importRoute") === true);
+    const children = imported ? labelsOverLines(sortedLinks, rendered) : rendered;
     this.frameOverlay = [];
     if (this.frameCrossings.size > 0) {
       for (const vnode of children) {
@@ -179257,7 +179493,7 @@ var _SVGRenderer = class _SVGRenderer {
       const position = linkLabelPosition(label);
       const anchor = link.getPointAtPosition(position) ?? points[0];
       const normal = link.getNormalAt(position) ?? { x: 0, y: -1 };
-      const box = this.labelRenderer.labelBox(label);
+      const box = this.labelRenderer.labelBox(label, link, this.theme);
       return {
         id: label.id,
         anchor,
@@ -181005,11 +181241,23 @@ var _SVGRenderer = class _SVGRenderer {
       width,
       height
     );
-    const label = String(node.getLabel());
+    const sized = canMeasureText() ? void 0 : sizedLines(node.getMetadata(MEASURED_LABEL_FLAG), String(node.getLabel()));
+    const label = sized ? sized.join("\n") : String(node.getLabel());
     const typo = this.nodeTextStyle(node);
     const sublabel = readSublabel(node.getMetadata("sublabel"));
     const baseFont = typo.fontSize ?? this.theme.typography.fontSize.md;
-    const fontSize = fitFontSize(label, inner.w, baseFont);
+    const measureAt = labelMeasureFor(
+      node.diagram,
+      {
+        size: baseFont,
+        family: typo.style.fontFamily ?? this.theme.typography.fontFamily.default,
+        weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : this.theme.typography.fontWeight.medium)
+      },
+      node.getMetadata(MEASURED_LABEL_FLAG) !== void 0
+    );
+    const fontSize = fitFontSize(label, inner.w, baseFont, measureAt);
+    const measure2 = measureAt ? (t) => measureAt(t, fontSize) : void 0;
+    const wrapWidth = sized ? Infinity : inner.w;
     const shrunk = fontSize < baseFont;
     const lineHeight = fontSize * 1.2;
     const clipId = `node-clip-${node.id}`;
@@ -181027,7 +181275,7 @@ var _SVGRenderer = class _SVGRenderer {
     const subFont = sublabel ? fitFontSize(sublabel.text, inner.w, sublabel.fontSize ?? Math.round(fontSize * 0.85)) : 0;
     const subLineHeight = subFont * 1.2;
     const GAP = sublabel ? 3 : 0;
-    const titleLines = Math.max(1, Math.min(wrapText(label, inner.w, fontSize).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
+    const titleLines = Math.max(1, Math.min(wrapText(label, wrapWidth, fontSize, measure2).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
     const subLines = sublabel ? Math.max(1, Math.min(wrapText(sublabel.text, inner.w, subFont).length, Math.floor((inner.h - titleLines * lineHeight - GAP) / subLineHeight))) : 0;
     const titleH = titleLines * lineHeight;
     const blockH = titleH + (sublabel ? GAP + subLines * subLineHeight : 0);
@@ -181036,11 +181284,12 @@ var _SVGRenderer = class _SVGRenderer {
       text: label,
       x: inner.x + inner.w / 2,
       y: sublabel ? top + titleH / 2 : inner.y + inner.h / 2,
-      maxWidth: inner.w,
+      maxWidth: wrapWidth,
       align: "middle",
       valign: "middle",
       fontSize,
       lineHeight: 1.2,
+      measure: measure2,
       maxLines: sublabel ? titleLines : Math.max(1, Math.floor(inner.h / lineHeight)),
       clipId,
       nonInteractive: true,
@@ -181252,7 +181501,16 @@ var _SVGRenderer = class _SVGRenderer {
     const typo = this.nodeTextStyle(node);
     const baseFont = typo.fontSize ?? this.theme.typography.fontSize.md;
     const maxWidth = Math.max(1, width - 16);
-    const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont), Math.max(8, Math.floor(band / 1.3)));
+    const measureAt = labelMeasureFor(
+      node.diagram,
+      {
+        size: baseFont,
+        family: typo.style.fontFamily ?? this.theme.typography.fontFamily.default,
+        weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : this.theme.typography.fontWeight.medium)
+      },
+      node.getMetadata(MEASURED_LABEL_FLAG) !== void 0
+    );
+    const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont, measureAt), Math.max(8, Math.floor(band / 1.3)));
     const shrunk = fontSize < baseFont;
     const css = this.config.useCSSMode;
     const text = renderTextBlock({
@@ -182123,7 +182381,7 @@ var _SVGRenderer = class _SVGRenderer {
       if (distance2 < 1) return routePoints;
       return this.twoPointSmoothCurve(p0, p1, style, sourceDirection, targetDirection, avoidNodes).samples;
     }
-    const samples = this.sampleCatmullRom(routePoints, 8);
+    const samples = this.sampleSpline(routePoints, style, 8);
     const mustClear = this.splineClearanceNodes(samples, avoidNodes);
     if (mustClear.length === 0 || this.penetrationLength(samples, mustClear) <= 2) {
       return samples;
@@ -182158,8 +182416,8 @@ var _SVGRenderer = class _SVGRenderer {
           path2 += ` L ${points[1].x} ${points[1].y}`;
         }
       } else {
-        const spline = this.catmullRomPath(points);
-        const samples = this.sampleCatmullRom(points, 8);
+        const spline = this.splinePath(points, style);
+        const samples = this.sampleSpline(points, style, 8);
         const avoid = this.splineClearanceNodes(samples, avoidNodes ?? []);
         if (avoid.length === 0 || this.penetrationLength(samples, avoid) <= 2) {
           return spline;
@@ -182879,7 +183137,7 @@ var _SVGRenderer = class _SVGRenderer {
       return this.convertOrthogonalPathWithBends(points, this.resolveCornerRadius(style, pathType));
     }
     if ((pathType === "smooth" || pathType === "bezier") && points.length > 2) {
-      return this.catmullRomPath(points);
+      return this.splinePath(points, style);
     }
     let path = `M ${points[0].x} ${points[0].y}`;
     for (let i = 1; i < points.length; i++) {
@@ -184142,6 +184400,23 @@ var _SVGRenderer = class _SVGRenderer {
     }
     return nodes;
   }
+  /** The curve a multi-point smooth link draws through its route — its `style.spline`. */
+  splinePath(points, style) {
+    return style?.spline === "basis" ? this.basisPath(points) : this.catmullRomPath(points);
+  }
+  /** {@link splinePath} as a polyline, for hit shapes and clearance checks. */
+  sampleSpline(points, style, stepsPerSegment = 8) {
+    return style?.spline === "basis" ? sampleBasis(points, stepsPerSegment) : this.sampleCatmullRom(points, stepsPerSegment);
+  }
+  basisPath(points) {
+    if (points.length === 0) return "";
+    const fmt2 = (v) => +v.toFixed(2);
+    let d = `M ${fmt2(points[0].x)} ${fmt2(points[0].y)}`;
+    for (const seg of basisSegments(points)) {
+      d += seg.c1 && seg.c2 ? ` C ${fmt2(seg.c1.x)} ${fmt2(seg.c1.y)}, ${fmt2(seg.c2.x)} ${fmt2(seg.c2.y)}, ${fmt2(seg.to.x)} ${fmt2(seg.to.y)}` : ` L ${fmt2(seg.to.x)} ${fmt2(seg.to.y)}`;
+    }
+    return d;
+  }
   /**
    * Smooth cubic spline (Catmull-Rom) through every route point — used so a
    * smooth/bezier link keeps its curved identity on multi-point detours
@@ -185395,9 +185670,9 @@ function tryCanvasInline(el2, ctx) {
     const canvas = doc.createElement("canvas");
     canvas.width = nw;
     canvas.height = nh;
-    const context = canvas.getContext("2d");
-    if (!context) return null;
-    context.drawImage(el2, 0, 0);
+    const context2 = canvas.getContext("2d");
+    if (!context2) return null;
+    context2.drawImage(el2, 0, 0);
     return canvas.toDataURL("image/png");
   } catch {
     ctx.warnings.push(
@@ -190900,11 +191175,11 @@ var KeyboardNavigationController = class {
   }
   /** Announce where we are in the graph. Bound to a key in the host. */
   announcePosition(engine) {
-    const context = this.positionContextOfFocus(engine);
-    if (!context) return null;
+    const context2 = this.positionContextOfFocus(engine);
+    if (!context2) return null;
     const diagram = diagramOf(engine);
     const node = diagram?.getNode(this.focused.id);
-    return this.announce(`${node ? this.nodeName(node) : ""}, ${context}`);
+    return this.announce(`${node ? this.nodeName(node) : ""}, ${context2}`);
   }
   /** The whole-diagram natural-language summary, announced on entry. */
   announceSummary(engine) {
@@ -193142,7 +193417,8 @@ function textKitFor(diagramType) {
 }
 
 // libs/renderer/src/instance/content-bounds.ts
-function contentBounds(model) {
+var LABELS = new LabelRenderer();
+function contentBounds(model, theme) {
   const nodes = model.getNodes().filter((n3) => n3.state?.visible !== false);
   if (nodes.length === 0 && groupFrameRects(model).length === 0) return null;
   let left = Infinity;
@@ -193161,6 +193437,19 @@ function contentBounds(model) {
       top = Math.min(top, p.y);
       right = Math.max(right, p.x);
       bottom = Math.max(bottom, p.y);
+    }
+  }
+  for (const link of model.getLinks()) {
+    for (const label of link.labels ?? []) {
+      const at = link.getPointAtPosition?.(linkLabelPosition(label));
+      if (!at) continue;
+      const { width, height } = LABELS.labelBox(label, link, theme);
+      const x = at.x + (label.offset?.x ?? 0);
+      const y = at.y + (label.offset?.y ?? 0);
+      left = Math.min(left, x - width / 2);
+      top = Math.min(top, y - height / 2);
+      right = Math.max(right, x + width / 2);
+      bottom = Math.max(bottom, y + height / 2);
     }
   }
   for (const frame of groupFrameRects(model)) {
@@ -196604,7 +196893,7 @@ function loadTextInto(model, text, options, hooks = {}) {
   if (typeof text !== "string" || stripGrafloriaSidecar(text).trim() === "") {
     refuse("the text is empty \u2014 there is no diagram in it. (To clear the canvas, call setNodes([]) and setEdges([]).)");
   }
-  const result = importDiagramText(text, options);
+  const result = importDiagramText(text, { measureText: canvasTextMeasure(), ...options });
   if (result.unsupported) {
     refuse(
       `"${result.unsupported}" diagrams cannot be drawn on the canvas. Supported: ${DSL.SUPPORTED_TEXT_TYPES.join(", ")}.`
@@ -197378,7 +197667,7 @@ function createDiagram(container, options = {}) {
     scheduler.flush();
   }
   function fitView(padding = 40) {
-    const bounds = contentBounds(model);
+    const bounds = contentBounds(model, renderer.getTheme());
     if (bounds) viewport.fitToBounds(bounds, padding, { maxZoom: 1 });
   }
   const instance = {
@@ -197452,7 +197741,8 @@ function createDiagram(container, options = {}) {
     exportPdf: (exportOptions) => exportPipeline.exportPdf(exportOptions),
     exportText: (textOptions) => exportDiagramText(model, textOptions),
     loadText: (text, textOptions) => asInput(() => {
-      const result = loadTextInto(model, text, textOptions, {
+      const face = renderer.getTheme().typography?.fontFamily?.default;
+      const result = loadTextInto(model, text, { measureText: canvasTextMeasure(face), ...textOptions }, {
         beforeNodes: templatedData,
         afterNodes: (before) => rederiveTemplates(before),
         warnEdge: (w) => warnEdge(w),
@@ -197473,6 +197763,7 @@ function createDiagram(container, options = {}) {
     /** Animation policy (global toggle, speed, reduced-motion, battery-saver opt-out). */
     animations: renderer.getAnimationService(),
     fitView,
+    getContentBounds: () => contentBounds(model, renderer.getTheme()),
     render: () => scheduler.schedule(),
     renderNow: () => {
       forceFullPaint = true;
@@ -197565,23 +197856,6 @@ function ensureLayers(container, doc, hydration) {
   container.appendChild(root);
   return { root, svg, html };
 }
-function canvasTextMeasure() {
-  if (typeof document === "undefined") return void 0;
-  if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent ?? "")) return void 0;
-  let ctx = null;
-  try {
-    ctx = document.createElement("canvas").getContext("2d");
-  } catch {
-    return void 0;
-  }
-  if (!ctx) return void 0;
-  const c = ctx;
-  return (text, font) => {
-    const family = /mono/i.test(font.family ?? "") ? "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" : font.family ?? "Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    c.font = `${font.weight ?? 400} ${font.size}px ${family}`;
-    return c.measureText(text).width + (font.letterSpacing ?? 0) * Array.from(text).length;
-  };
-}
 
 // libs/renderer/src/ssr/render-to-static.ts
 function renderToStaticSVG(options = {}) {
@@ -197606,7 +197880,7 @@ function renderStaticNow(options) {
     zoom: options.zoom ?? 1
   });
   if (options.fitView) {
-    const bounds = contentBounds(model);
+    const bounds = contentBounds(model, options.theme);
     if (bounds) viewport.fitToBounds(bounds, options.fitPadding ?? 40);
   }
   const renderer = new SVGRenderer(engine, { instanceId, lod: options.lod }, options.theme);
@@ -198791,14 +199065,14 @@ var ExtensionHost = class {
       this.bindings,
       entry.store
     );
-    const context = {
+    const context2 = {
       id: entry.manifest.id,
       capabilities,
       onDispose: (disposer) => {
         entry.store.add(disposer);
       }
     };
-    const result = extension.activate(context);
+    const result = extension.activate(context2);
     const finish = (returned) => {
       if (typeof returned === "function") entry.store.add(returned);
       entry.active = true;
@@ -202092,8 +202366,8 @@ var UpdateCardCommand = class extends Command {
     this.build = build;
     this.captured = false;
   }
-  execute(context) {
-    const model = context.diagram;
+  execute(context2) {
+    const model = context2.diagram;
     const node = model.getNode(this.nodeId);
     if (!node) return;
     const kitKey = this.kind === "er" ? "kitEntity" : "kitClass";
@@ -202142,8 +202416,8 @@ var UpdateCardCommand = class extends Command {
     node.setSize(newWidth, result.height);
     if (this.before) this.before.links = removedLinks;
   }
-  undo(context) {
-    const model = context.diagram;
+  undo(context2) {
+    const model = context2.diagram;
     const node = model.getNode(this.nodeId);
     if (!node || !this.before) return;
     node.setMetadata("html", this.before.html);
@@ -202164,8 +202438,8 @@ var UpdateCardCommand = class extends Command {
       if (!model.getLink(sl["id"])) model.addLink(LinkModel.fromJSON(sl));
     }
   }
-  canExecute(context) {
-    return !!context.diagram?.getNode(this.nodeId);
+  canExecute(context2) {
+    return !!context2.diagram?.getNode(this.nodeId);
   }
   serialize() {
     return { id: this.id, name: this.name, timestamp: this.timestamp, data: { nodeId: this.nodeId, kind: this.kind } };
@@ -204195,18 +204469,18 @@ var SetGroupCellCommand = class extends Command {
     this.frameBefore = frameBefore;
     this.frameAfter = frameAfter;
   }
-  apply(context, cell, frame) {
-    const diagram = context.diagram;
+  apply(context2, cell, frame) {
+    const diagram = context2.diagram;
     const grp = diagram?.getGroup(this.groupId);
     if (!grp) return;
     grp.setMetadata("gridItem", gridItemFromCell(cell));
     grp.setFrame({ ...frame });
   }
-  execute(context) {
-    this.apply(context, this.cellAfter, this.frameAfter);
+  execute(context2) {
+    this.apply(context2, this.cellAfter, this.frameAfter);
   }
-  undo(context) {
-    this.apply(context, this.cellBefore, this.frameBefore);
+  undo(context2) {
+    this.apply(context2, this.cellBefore, this.frameBefore);
   }
   serialize() {
     return {
@@ -204228,11 +204502,11 @@ var SequenceCommand = class extends Command {
     super(name);
     this.steps = steps;
   }
-  execute(context) {
-    for (const c of this.steps) c.execute(context);
+  execute(context2) {
+    for (const c of this.steps) c.execute(context2);
   }
-  undo(context) {
-    for (let i = this.steps.length - 1; i >= 0; i--) this.steps[i].undo(context);
+  undo(context2) {
+    for (let i = this.steps.length - 1; i >= 0; i--) this.steps[i].undo(context2);
   }
   canExecute() {
     return true;
@@ -208643,17 +208917,17 @@ var SetSplitTreeCommand = class extends Command {
     this.before = before;
     this.after = after;
   }
-  apply(context, tree) {
-    const diagram = context.diagram;
+  apply(context2, tree) {
+    const diagram = context2.diagram;
     const grp = diagram?.getGroup(this.groupId);
     if (!grp) return;
     grp.setMetadata(SPLIT_TREE_KEY, tree ? cloneSplit(tree) : null);
   }
-  execute(context) {
-    this.apply(context, this.after);
+  execute(context2) {
+    this.apply(context2, this.after);
   }
-  undo(context) {
-    this.apply(context, this.before);
+  undo(context2) {
+    this.apply(context2, this.before);
   }
   serialize() {
     return {
@@ -209217,14 +209491,14 @@ function bindDashboardSplit(api, group, options = {}) {
   };
   let grown = null;
   class GrownTreeCommand extends SetSplitTreeCommand {
-    execute(context) {
-      super.execute(context);
+    execute(context2) {
+      super.execute(context2);
       grown = null;
       if (!disposed) project(readTree());
       api.render();
     }
-    undo(context) {
-      super.undo(context);
+    undo(context2) {
+      super.undo(context2);
       grown = null;
       if (!disposed) project(readTree());
       api.render();
@@ -210877,15 +211151,15 @@ var AddSectionCommand = class extends Command {
     this.boardId = boardId;
     this.registry = registry5;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return;
     this.registry.register();
     if (!diagram.getGroup(this.group.id)) diagram.addGroup(this.group);
     diagram.getGroup(this.boardId)?.addMember(this.group.id);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return;
     diagram.getGroup(this.boardId)?.removeMember(this.group.id);
     diagram.removeGroup(this.group.id);
@@ -210917,15 +211191,15 @@ var AddWidgetCommand = class extends Command {
     this.registry = registry5;
     this.nodeWasInModel = nodeWasInModel;
   }
-  execute(context) {
-    const diagram = context.diagram;
+  execute(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return;
     this.registry?.register();
     if (!this.nodeWasInModel && !diagram.getNode(this.node.id)) diagram.addNode(this.node);
     diagram.getGroup(this.groupId)?.addMember(this.node.id);
   }
-  undo(context) {
-    const diagram = context.diagram;
+  undo(context2) {
+    const diagram = context2.diagram;
     if (!diagram) return;
     diagram.getGroup(this.groupId)?.removeMember(this.node.id);
     if (!this.nodeWasInModel) diagram.removeNode(this.node.id);
@@ -210965,15 +211239,15 @@ var SetWidgetLockCommand = class extends Command {
     this.before = before;
     this.after = after;
   }
-  apply(context, locked) {
-    const diagram = context.diagram;
+  apply(context2, locked) {
+    const diagram = context2.diagram;
     diagram?.getNode(this.nodeId)?.setState({ locked });
   }
-  execute(context) {
-    this.apply(context, this.after);
+  execute(context2) {
+    this.apply(context2, this.after);
   }
-  undo(context) {
-    this.apply(context, this.before);
+  undo(context2) {
+    this.apply(context2, this.before);
   }
   serialize() {
     return {
@@ -215102,6 +215376,8 @@ export {
   LiveReroutingEngine,
   LwwRegistry,
   MARKERS,
+  MEASURED_LABEL_FLAG,
+  MEASURED_TEXT_FLAG,
   MEDIA_FORCED_COLORS,
   MEDIA_PREFERS_CONTRAST,
   MEDIA_PREFERS_DARK,
@@ -215303,6 +215579,7 @@ export {
   autoSizeNode,
   bandsOf,
   base64ToBytes,
+  basisSegments,
   beginIncrementalCapture,
   bindCardEditing,
   bindDashboardGrid,
@@ -215583,6 +215860,7 @@ export {
   getTool,
   getUnregisteredTemplates,
   glyphHalfExtents,
+  glyphTextWidth,
   gridItemFromCell,
   gridLayout,
   groupDragContents,
@@ -215890,6 +216168,7 @@ export {
   runInRegistryScope,
   runLayout,
   runPortLayout,
+  sampleBasis,
   sampleOutlineFromData,
   sampleOutlinePoints,
   sanitizeAssetUrl,
