@@ -16,6 +16,8 @@ import {
   repointLinkEnd,
   importEdgeLabelBox,
   importEdgeLabelProps,
+  importMeasuresText,
+  MEASURED_TEXT_FLAG,
   layoutForImport,
 } from '../mermaid/import-layout';
 import { readMermaidLabel } from '../mermaid/rich-label';
@@ -182,6 +184,8 @@ export class ASTTransformer {
       .filter((node) => this.nodePositions.has(node.id));
     if (placeable.length === 0) return;
     for (const node of placeable) fitNodeToLabel(node);
+    // Sized to MEASURED text: the renderer wraps it with the same measure.
+    if (importMeasuresText()) diagram.setMetadata(MEASURED_TEXT_FLAG, true);
 
     const idSet = new Set(placeable.map((n) => n.id));
     const links = diagram

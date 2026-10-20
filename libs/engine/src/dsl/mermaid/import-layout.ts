@@ -26,6 +26,7 @@ import type { DiagramModel } from '../../models/DiagramModel';
 import type { NodeModel } from '../../models/NodeModel';
 import type { LinkModel } from '../../models/LinkModel';
 import type { LinkLabel } from '../../types/model.types';
+import type { MeasureText } from '../../layout/architecture/text-metrics';
 import { ensureSideAnchorPort } from '../../ports/side-anchor';
 import { dropImportRoute, type ImportRouteOriginal } from '../../models/import-route';
 
@@ -33,21 +34,23 @@ import { dropImportRoute, type ImportRouteOriginal } from '../../models/import-r
 // dagre's API only on `.default`.
 const dagre: typeof dagreNs = (dagreNs as unknown as { default?: typeof dagreNs }).default ?? dagreNs;
 
-// ── The renderer's text metrics ──────────────────────────────────────────────
-// A box sized here must hold its label THERE, so these are the renderer's own
-// numbers (libs/renderer/src/svg/text-block.ts and LabelRenderer.ts): node
-// labels at the theme's md size, 1.2 line height, an average glyph of 0.6 em;
-// edge labels with LabelRenderer's 4 px of padding. A renderer spec
+// ── Mermaid's sizes, the renderer's text ─────────────────────────────────────
+// An imported diagram comes out the size Mermaid draws it: Mermaid's label size
+// (16 px, node and edge alike), its wrap width (200 px), its padding around each
+// shape's text — and the text MEASURED, as Mermaid measures it, when the host can
+// (createDiagram passes the renderer's canvas; see withImportTextMeasure). A box
+// must also hold its label as the RENDERER draws it (libs/renderer/src/svg/
+// text-block.ts and LabelRenderer.ts: 1.2 line height, LabelRenderer's 4 px of
+// padding, an average glyph of 0.6 em where nothing measures). A renderer spec
 // (libs/renderer/src/svg/mermaid-import-layout.spec.ts) fails if the two ever disagree.
 
-/** Node label font size (the default theme's `typography.fontSize.md`). */
-export const IMPORT_NODE_FONT = 14;
-/** Node label line height, as a multiple of the font size. */
+/** Node label font size: Mermaid's default (16 px), carried on each imported node's style. */
+export const IMPORT_NODE_FONT = 16;
+/** Node label line height, as a multiple of the font size — how the renderer sets the lines. */
 export const IMPORT_LINE_HEIGHT = 1.2;
-/**
- * Edge label font size: Mermaid draws an edge label at its node text's size, so
- * an import does too (the renderer's own default for a label is 12 px).
- */
+/** Mermaid's line box (16 px × 1.5): what its boxes and label spaces are sized by. */
+export const IMPORT_LINE_PITCH = 24;
+/** Edge label font size: Mermaid's, the same as its node text. */
 export const IMPORT_EDGE_FONT = IMPORT_NODE_FONT;
 /** Edge label padding (LabelRenderer's default). */
 export const IMPORT_EDGE_PAD = 4;
@@ -55,6 +58,40 @@ export const IMPORT_EDGE_PAD = 4;
 const RENDERER_EDGE_FONT = 12;
 /** Mermaid's wrapping width: a label wider than this wraps, then the box grows taller. */
 export const IMPORT_WRAP_WIDTH = 200;
+/**
+ * Diagram metadata an import sets when it MEASURED its text: the renderer then
+ * wraps that diagram's labels with the same measure, so the lines it draws are
+ * the lines the boxes were sized for.
+ */
+export const MEASURED_TEXT_FLAG = 'measuredText';
+
+// The measure an import runs with — the renderer's canvas while createDiagram
+// loads text, nothing (the estimate) on a server or in a test.
+let measureNow: MeasureText | undefined;
+
+/**
+ * Run an import with a real text measure, so its boxes fit the words as they
+ * will draw (Mermaid sizes its boxes from text measured in the page, too).
+ */
+export function withImportTextMeasure<T>(measure: MeasureText | undefined, run: () => T): T {
+  const was = measureNow;
+  measureNow = measure;
+  try {
+    return run();
+  } finally {
+    measureNow = was;
+  }
+}
+
+/** True while an import measures real text (see withImportTextMeasure). */
+export function importMeasuresText(): boolean {
+  return measureNow !== undefined;
+}
+
+/** How wide a line draws: measured when the import can, else the renderer's estimate. */
+function textWidth(text: string, fontSize: number, weight?: number): number {
+  return measureNow ? measureNow(text, { size: fontSize, ...(weight ? { weight } : {}) }) : estimateLabelWidth(text, fontSize);
+}
 
 /**
  * What an imported edge label carries so it draws as Mermaid draws it: at the
@@ -76,9 +113,13 @@ export function edgeLabelBox(
   maxWidth: number | undefined = IMPORT_WRAP_WIDTH
 ): Box {
   const lines = maxWidth ? wrapLabelLines(text, maxWidth, fontSize) : text.split('\n');
-  const w = Math.max(...lines.map((line) => estimateLabelWidth(line, fontSize)));
-  const h = lines.length === 1 ? fontSize : lines.length * fontSize * IMPORT_LINE_HEIGHT;
-  return { w: w + 2 * padding, h: h + 2 * padding };
+  const w = Math.max(...lines.map((line) => textWidth(line, fontSize)));
+  // Measured, its width is the text's own, as Mermaid reserves it: the chip's
+  // padding draws into the gap's margin (half a rank gap each side), so the
+  // ranks stand as far apart as Mermaid's. Its height: the chip or Mermaid's
+  // line boxes, whichever is taller.
+  const chip = (lines.length === 1 ? fontSize : lines.length * fontSize * IMPORT_LINE_HEIGHT) + 2 * padding;
+  return { w: w + (measureNow ? 0 : 2 * padding), h: Math.max(chip, lines.length * IMPORT_LINE_PITCH) };
 }
 
 /** The renderer's width estimate: an average glyph is ~0.6 em. */
@@ -91,13 +132,13 @@ export function estimateLabelWidth(text: string, fontSize: number): number {
  * breaks first, then greedy words; a word wider than the line breaks at its
  * hyphens, and one with none stays whole.
  */
-export function wrapLabelLines(text: string, maxWidth: number, fontSize: number): string[] {
+export function wrapLabelLines(text: string, maxWidth: number, fontSize: number, weight?: number): string[] {
   const lines: string[] = [];
   for (const paragraph of text.split('\n')) {
     const words = paragraph
       .split(/\s+/)
       .filter((w) => w.length > 0)
-      .flatMap((w) => breakAtHyphens(w, maxWidth, fontSize));
+      .flatMap((w) => breakAtHyphens(w, maxWidth, fontSize, weight));
     if (words.length === 0) {
       lines.push('');
       continue;
@@ -105,7 +146,7 @@ export function wrapLabelLines(text: string, maxWidth: number, fontSize: number)
     let current = '';
     for (const word of words) {
       const test = current ? `${current} ${word}` : word;
-      if (estimateLabelWidth(test, fontSize) > maxWidth && current) {
+      if (textWidth(test, fontSize, weight) > maxWidth && current) {
         lines.push(current);
         current = word;
       } else {
@@ -117,13 +158,13 @@ export function wrapLabelLines(text: string, maxWidth: number, fontSize: number)
   return lines.length > 0 ? lines : [text];
 }
 
-function breakAtHyphens(word: string, maxWidth: number, fontSize: number): string[] {
-  if (estimateLabelWidth(word, fontSize) <= maxWidth || !word.includes('-')) return [word];
+function breakAtHyphens(word: string, maxWidth: number, fontSize: number, weight?: number): string[] {
+  if (textWidth(word, fontSize, weight) <= maxWidth || !word.includes('-')) return [word];
   const pieces: string[] = [];
   let current = '';
   for (const seg of word.split(/(?<=-)/)) {
     const test = current + seg;
-    if (current && estimateLabelWidth(test, fontSize) > maxWidth) {
+    if (current && textWidth(test, fontSize, weight) > maxWidth) {
       pieces.push(current);
       current = seg;
     } else {
@@ -153,6 +194,8 @@ export function importInnerBox(shape: string, w: number, h: number): Box {
       return { w: 0.5 * w, h: 0.5 * h };
     case 'stadium':
       return { w: Math.max(0, w - h), h: 0.7 * h };
+    case 'note':
+      return { w: 0.84 * w, h: 0.84 * h };
     default: {
       const pad = Math.max(0, Math.min(8, w / 2 - 1, h / 2 - 1));
       return { w: w - 2 * pad, h: h - 2 * pad };
@@ -175,45 +218,70 @@ function outerForContent(shape: string, content: Box): Box {
       const h = content.h / 0.7;
       return { w: content.w + h, h };
     }
+    case 'note':
+      return { w: content.w / 0.84, h: content.h / 0.84 };
     default:
       return { w: content.w + 16, h: content.h + 16 };
   }
 }
 
+/** The weight a node label is measured at: the renderer's medium, so a box is never tight. */
+const NODE_WEIGHT = 500;
+
+/** The box Mermaid draws around `text` (its measured width, its lines × 24 px) for a shape. */
+function mermaidBox(node: NodeModel, shape: string, rounded: boolean, text: Box): Box {
+  // stateDiagram-v2: a note is its text with 15 px all round; a state, with 8.
+  if (node.type === 'state:note') return { w: text.w + 30, h: text.h + 30 };
+  if (String(node.type ?? '').startsWith('state:')) return { w: text.w + 16, h: text.h + 16 };
+  switch (shape) {
+    case 'stadium':
+      return { w: text.w + 24, h: text.h + 15 };
+    case 'diamond': {
+      const side = text.w + text.h + 30;
+      return { w: side, h: side };
+    }
+    case 'circle': {
+      const d = Math.max(text.w, text.h) + 15;
+      return { w: d, h: d };
+    }
+    default:
+      // `[text]` has 30 px each side, `(text)` 15; 15 above and below.
+      return { w: text.w + (rounded ? 30 : 60), h: text.h + 30 };
+  }
+}
+
 /**
- * Grow a node so the renderer draws ALL of its label: Mermaid's rule — wrap at
- * 200 px, then grow taller — and never narrower than the longest word, so a
- * long single-word name widens its box instead of shrinking to a few pixels.
- * A box only grows: the shape's own default size stays the floor.
+ * Size an imported node as Mermaid sizes it: its label at Mermaid's 16 px,
+ * wrapped at 200 px, measured as it will draw (see withImportTextMeasure), with
+ * Mermaid's padding for its shape — and never smaller than the renderer's shape
+ * needs to hold that text (its inner rect, 1.2 line height), so a long one-word
+ * name widens its box instead of shrinking to a few pixels. The parser's
+ * placeholder size is not kept: Mermaid has none. An author's own size
+ * (`%%grafloria:at … WxH`) is applied after this, and wins.
  */
 export function fitNodeToLabel(node: NodeModel): void {
   const label = String(node.getLabel?.() ?? '');
   if (!label.trim()) return;
-  const shape = String((node.getMetadata('shape') as { type?: string } | undefined)?.type ?? 'rect');
-  const fontSize =
-    (node.style as { fontSize?: number } | undefined)?.fontSize ?? IMPORT_NODE_FONT;
-  const lineHeight = fontSize * IMPORT_LINE_HEIGHT;
-  const { width, height } = node.size;
-  const inner = importInnerBox(shape, width, height);
-
-  const paragraphs = label.split('\n');
-  const oneLine = Math.max(...paragraphs.map((p) => estimateLabelWidth(p, fontSize)));
-  const longestWord = Math.max(
-    0,
-    ...label.split(/[\s-]+/).map((word) => estimateLabelWidth(word, fontSize))
-  );
-  let textWidth = inner.w;
-  if (oneLine > inner.w) textWidth = Math.max(inner.w, Math.min(oneLine, IMPORT_WRAP_WIDTH));
-  textWidth = Math.max(textWidth, longestWord);
-  const lines = wrapLabelLines(label, textWidth, fontSize).length;
-  // +1: the renderer counts the lines that FIT as floor(inner height / line height).
-  const textHeight = Math.max(inner.h, lines * lineHeight + 1);
-  if (textWidth <= inner.w && textHeight <= inner.h) return;
-
-  const outer = outerForContent(shape, { w: textWidth, h: textHeight });
-  const w = Math.ceil(Math.max(width, outer.w));
-  const h = Math.ceil(Math.max(height, outer.h));
-  if (w !== width || h !== height) node.setSize(w, h, node.size.depth ?? 0);
+  const config = (node.getMetadata('shape') as { type?: string; cornerRadius?: number } | undefined) ?? {};
+  const shape = String(config.type ?? 'rect');
+  // The label draws at Mermaid's size unless the author (a classDef) set one.
+  if ((node.style as { fontSize?: number } | undefined)?.fontSize === undefined) node.setStyle({ fontSize: IMPORT_NODE_FONT });
+  const fontSize = (node.style as { fontSize?: number }).fontSize ?? IMPORT_NODE_FONT;
+  const lines = wrapLabelLines(label, IMPORT_WRAP_WIDTH, fontSize, NODE_WEIGHT);
+  const text = {
+    w: Math.max(...lines.map((line) => textWidth(line, fontSize, NODE_WEIGHT))),
+    h: lines.length * IMPORT_LINE_PITCH,
+  };
+  const mermaid = mermaidBox(node, shape, shape === 'rect' && !!config.cornerRadius, text);
+  // MEASURED text draws up to ~4% wider at a reader's small zooms (hinted
+  // glyphs: "RegrettedToOffer" is 136 px on the canvas, 141 at zoom 0.17), so
+  // the shape keeps that much room. +1: the renderer counts the lines that FIT
+  // as floor(inner height / line height).
+  const room = measureNow ? Math.ceil(text.w * 1.04 + 2) : Math.ceil(text.w);
+  const holds = outerForContent(shape, { w: room, h: lines.length * fontSize * IMPORT_LINE_HEIGHT + 1 });
+  const w = Math.ceil(Math.max(mermaid.w, holds.w));
+  const h = Math.ceil(Math.max(mermaid.h, holds.h));
+  if (w !== node.size.width || h !== node.size.height) node.setSize(w, h, node.size.depth ?? 0);
 }
 
 /** The box the renderer draws for a link's label (LabelRenderer.labelBox), or undefined for none. */

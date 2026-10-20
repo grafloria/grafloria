@@ -26,6 +26,8 @@ import type { NodeModel } from '../models/NodeModel';
 import type { PortModel } from '../models/PortModel';
 import { DSL } from '../dsl/DSL';
 import { canonicalStringify, fnv1aHex } from './DocumentEnvelope';
+import { withImportTextMeasure } from '../dsl/mermaid/import-layout';
+import type { MeasureText } from '../layout/architecture/text-metrics';
 
 export const GRAFLORIA_DOC_PREFIX = '%%grafloria:document ';
 export const GRAFLORIA_HASH_PREFIX = '%%grafloria:body-hash ';
@@ -54,6 +56,13 @@ export interface ImportTextOptions extends DiagramLoadOptions {
    *  - 'text': always parse the body text (ignore the sidecar).
    */
   prefer?: 'auto' | 'sidecar' | 'text';
+  /**
+   * How wide text draws, for a Mermaid import that sizes its boxes to their
+   * words as Mermaid does. The renderer's `loadText` passes its canvas; without
+   * one the import estimates (an average glyph of 0.6 em, as the renderer does
+   * where nothing measures).
+   */
+  measureText?: MeasureText;
 }
 
 export interface ImportTextResult {
@@ -172,6 +181,10 @@ export function importDiagramText(
   text: string,
   options: ImportTextOptions = {}
 ): ImportTextResult {
+  return withImportTextMeasure(options.measureText, () => importDiagramTextNow(text, options));
+}
+
+function importDiagramTextNow(text: string, options: ImportTextOptions): ImportTextResult {
   const prefer = options.prefer ?? 'auto';
 
   // Line endings are TRANSPORT, not content. A file that crossed a Windows

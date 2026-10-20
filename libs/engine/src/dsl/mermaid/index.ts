@@ -80,3 +80,10 @@ export {
 // The diagram-level keys the grammars write and read back — what a host loading text
 // INTO an existing model must carry across for the text to export as it came in.
 export { TEXT_GRAMMAR_METADATA_KEYS, adoptTextGrammarMetadata } from './text-metadata';
+
+/**
+ * An imported Mermaid diagram's text, as Mermaid sizes it: the flag a measured
+ * import leaves on the diagram, so the renderer wraps its labels with the same
+ * measure.
+ */
+export { MEASURED_TEXT_FLAG } from './import-layout';

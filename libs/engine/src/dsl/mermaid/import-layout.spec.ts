@@ -31,7 +31,7 @@ describe('imported Mermaid layout', () => {
   it("an edge label draws at the node text's size, wrapped at 200 px; the export says nothing about it", () => {
     const d = importDiagramText(LR).diagram;
     for (const link of d.getLinks().filter((l) => l.labels.length)) {
-      expect(link.labels[0]).toMatchObject({ style: { fontSize: 14 }, textWrap: true, maxWidth: 200 });
+      expect(link.labels[0]).toMatchObject({ style: { fontSize: 16 }, textWrap: true, maxWidth: 200 }); // Mermaid's
     }
     expect(exportDiagramText(d, { lossless: false })).not.toMatch(/linkStyle/);
     // An author's own size is theirs, and travels.
@@ -95,23 +95,40 @@ describe('imported Mermaid layout', () => {
     expect(picture(state)).toBe(picture(state));
   });
 
-  it('a box grows to hold its label: wrap at 200 px, then taller; a long word widens it', () => {
-    const node = (label: string) => {
-      const n = new NodeModel({ id: 'n', type: 'rect', position: { x: 0, y: 0 }, size: { width: 120, height: 80, depth: 0 } });
+  it("a box is Mermaid's: its text at 16 px, wrapped at 200, with Mermaid's padding — and it holds its words", () => {
+    const node = (label: string, shape: Record<string, unknown> = { type: 'rect' }, type = 'rect') => {
+      const n = new NodeModel({ id: 'n', type, position: { x: 0, y: 0 }, size: { width: 120, height: 80, depth: 0 } });
       n.setLabel(label);
-      n.setMetadata('shape', { type: 'rect' });
+      n.setMetadata('shape', shape);
       fitNodeToLabel(n);
-      return n.size;
+      return n;
     };
-    expect(node('Short')).toMatchObject({ width: 120, height: 80 });
+    const text = (label: string) => estimateLabelWidth(label, 16); // no canvas here: the renderer's estimate
+    // `[Short]`: 30 px each side, 15 above and below one 24 px line — the placeholder 120×80 goes.
+    const short = node('Short');
+    expect(short.style.fontSize).toBe(16);
+    expect(short.size).toMatchObject({ width: Math.ceil(text('Short') + 60), height: 24 + 30 });
+    // `(Short)`: 15 px each side; a state: 8 all round; a note: 15 all round.
+    expect(node('Short', { type: 'rect', cornerRadius: 10 }).size.width).toBe(Math.ceil(text('Short') + 30));
+    expect(node('Draft', { type: 'rect', cornerRadius: 8 }, 'state:state').size).toMatchObject({ width: Math.ceil(text('Draft') + 16), height: 24 + 16 });
+    // A long label wraps at 200 px and the box grows taller, a line at a time.
     const long = 'Warehouse detailed delivery work for each of the delivered items and their packaging';
-    const size = node(long);
-    expect(size.width).toBeLessThanOrEqual(216);
-    const lines = wrapLabelLines(long, size.width - 16, 14).length;
-    expect(Math.floor((size.height - 16) / 16.8)).toBeGreaterThanOrEqual(lines);
-    expect(node('GoodsReleasedForShipmentToTheCustomer').width).toBeGreaterThanOrEqual(
-      estimateLabelWidth('GoodsReleasedForShipmentToTheCustomer', 14) + 16
-    );
+    const lines = wrapLabelLines(long, 200, 16);
+    expect(lines.length).toBeGreaterThan(2);
+    const box = node(long).size;
+    expect(box.width).toBeLessThanOrEqual(200 + 60);
+    expect(box.height).toBe(lines.length * 24 + 30);
+    // …and the renderer, wrapping at the box's inner width, never needs more lines than it has room for.
+    expect(wrapLabelLines(long, box.width - 16, 16).length).toBeLessThanOrEqual(Math.floor((box.height - 16) / (16 * 1.2)));
+    // A word wider than 200 px widens its box rather than shrinking.
+    expect(node('GoodsReleasedForShipmentToTheCustomer').size.width).toBeGreaterThanOrEqual(text('GoodsReleasedForShipmentToTheCustomer') + 16);
+    // A classDef's own size is the author's, and stays.
+    const sized = new NodeModel({ id: 's', type: 'rect', position: { x: 0, y: 0 }, size: { width: 120, height: 80, depth: 0 } });
+    sized.setLabel('Short');
+    sized.setStyle({ fontSize: 20 });
+    fitNodeToLabel(sized);
+    expect(sized.style.fontSize).toBe(20);
+    expect(sized.size.width).toBe(Math.ceil(estimateLabelWidth('Short', 20) + 60));
   });
 
   it('a state note sits on the side the author named, beside its own state, on nothing else', () => {
@@ -169,6 +186,29 @@ describe('imported Mermaid layout', () => {
     expect(loaded.getLinks().every((l) => l.getMetadata('importRoute') === true)).toBe(true);
     loaded.getNode('Delivered')!.setPosition(0, 500);
     expect(loaded.getLinks().map((l) => l.getMetadata('importRoute'))).toEqual([true, true, false]);
+  });
+
+  it('measures the words as they will draw when the host can, and tells the renderer it did', () => {
+    // A stand-in for the renderer's canvas: a face narrower than the estimate.
+    const measureText = (text: string, font: { size: number }) => text.length * font.size * 0.5;
+    const flow = 'flowchart LR\n  A[Short] -->|go on| B[Longer name]';
+    const measured = importDiagramText(flow, { measureText }).diagram;
+    expect(measured.getMetadata('measuredText')).toBe(true);
+    expect(measured.getNode('A')!.size.width).toBe(Math.ceil('Short'.length * 16 * 0.5 + 60));
+    // Without one (a server, a test), the renderer's own estimate — and no flag.
+    const estimated = importDiagramText(flow).diagram;
+    expect(estimated.getMetadata('measuredText')).toBeUndefined();
+    expect(estimated.getNode('A')!.size.width).toBe(Math.ceil('Short'.length * 16 * 0.6 + 60));
+    // A state diagram the same.
+    const state = importDiagramText('stateDiagram-v2\n  Draft --> Sent: send', { measureText }).diagram;
+    expect(state.getMetadata('measuredText')).toBe(true);
+    // Mermaid's 8 px each side — and measured text keeps ~4% room, as it draws
+    // wider at a reader's small zooms (hinting).
+    const draft = 'Draft'.length * 16 * 0.5;
+    expect(state.getNode('Draft')!.size.width).toBe(Math.max(Math.ceil(draft + 16), Math.ceil(draft * 1.04 + 2) + 16));
+    // …and a native diagram never carries it: it draws exactly as it always has.
+    const native = new DiagramModel();
+    expect(native.getMetadata('measuredText')).toBeUndefined();
   });
 
   it('taking a route back restores the label too: its slot, or no added label at all', () => {

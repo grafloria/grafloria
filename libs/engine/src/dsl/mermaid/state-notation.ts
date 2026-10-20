@@ -26,6 +26,7 @@ import { NodeModel } from '../../models/NodeModel';
 import type { DiagramModel } from '../../models/DiagramModel';
 import type { ArrowStyle } from '../../types/model.types';
 import type { MermaidStateModel, MermaidStateNode } from './MermaidState';
+import { fitNodeToLabel, IMPORT_NODE_FONT } from './import-layout';
 
 /** A fork/join bar: its length across the flow and its thickness along it. */
 export const STATE_BAR_LENGTH = 70;
@@ -35,13 +36,6 @@ export const STATE_BAR_THICKNESS = 8;
 const NOTE_FILL = '#fff5ad';
 const NOTE_STROKE = '#aaaa33';
 const NOTE_INK = '#1f2937';
-const NOTE_FONT = 14;
-/** Widest line of note text before it wraps (Mermaid wraps notes too). */
-const NOTE_TEXT_WIDTH = 190;
-/** The share of a note shape's box its text may use (its inner rect). */
-const NOTE_INNER = 0.84;
-/** Rounding room, so an estimate a pixel short never costs a line. */
-const NOTE_SLACK = 8;
 
 /** The flow direction a state sits in: its nearest composite's, else the diagram's. */
 export function stateFlowDirection(model: MermaidStateModel, state: MermaidStateNode): string {
@@ -114,7 +108,9 @@ export function applyStateNodeLook(
   node.setMetadata('shape', { type: 'rect', cornerRadius: 8 });
   if (state.composite) {
     // A container: the name in a caption band across its top, the body
-    // see-through so the transitions inside it stay visible.
+    // see-through so the transitions inside it stay visible. The caption at
+    // Mermaid's label size, as every imported label is.
+    node.setStyle({ fontSize: IMPORT_NODE_FONT });
     node.setMetadata('labelPlacement', 'header');
     node.setMetadata('headerHeight', options.headerHeight);
   }
@@ -132,40 +128,6 @@ export function markCompositeGroup(diagram: DiagramModel, groupId: string): void
 // ── Notes ───────────────────────────────────────────────────────────────────
 
 /**
- * A note's box: wrap at NOTE_MAX_WIDTH, then grow downwards.
- *
- * The renderer draws a note's text inside the note shape's INNER box — 84% of
- * each side (the folded corner) — at the theme's 14 px, measured at 0.6 em a
- * glyph. The box is sized so that inner box holds the wrapped text whole: a
- * note sized to the bare text width wrapped one word early and lost its last
- * line to an ellipsis.
- */
-function noteSize(text: string): { width: number; height: number } {
-  const charW = NOTE_FONT * 0.6;
-  const words = text.split(/\s+/).filter(Boolean);
-  const longest = Math.max(0, ...words.map((w) => w.length)) * charW;
-  const natural = text.length * charW;
-  const inner = Math.max(longest, Math.min(NOTE_TEXT_WIDTH, Math.max(natural, 60)));
-  // Greedy wrap at that width, as the label engine wraps.
-  let lines = 1;
-  let line = 0;
-  for (const word of words) {
-    const w = word.length * charW;
-    const next = line === 0 ? w : line + charW + w;
-    if (next > inner && line > 0) {
-      lines++;
-      line = w;
-    } else {
-      line = next;
-    }
-  }
-  return {
-    width: Math.ceil(inner / NOTE_INNER) + NOTE_SLACK,
-    height: Math.max(30, Math.ceil((lines * NOTE_FONT * 1.2) / NOTE_INNER) + NOTE_SLACK),
-  };
-}
-
-/**
  * One note node per `note … of X`, joined to X by a dashed, arrowless line.
  *
  * The note node carries `stateNote: true`, `noteTarget` and `notePosition`; the
@@ -181,7 +143,7 @@ export function addStateNotes(diagram: DiagramModel, model: MermaidStateModel, n
       id: `__note${i + 1}__`,
       type: 'state:note',
       position: { x: 0, y: 0 },
-      size: noteSize(note.text),
+      size: { width: 120, height: 54 },
     });
     node.setLabel(note.text);
     node.setMetadata('stateNote', true);
@@ -193,6 +155,8 @@ export function addStateNotes(diagram: DiagramModel, model: MermaidStateModel, n
     // dark page and would vanish on yellow.
     node.style.color = NOTE_INK;
     node.style.shadow = false;
+    // Mermaid's note: its text at 16 px, wrapped at 200, with 15 px all round.
+    fitNodeToLabel(node);
     diagram.addNode(node);
 
     const link = diagram.createSmartLink(node, target, 'direct');
