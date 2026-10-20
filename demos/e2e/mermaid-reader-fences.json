@@ -62,5 +62,13 @@
  {
   "id": "state-notes",
   "source": "stateDiagram-v2\n    [*] --> Draft\n    Draft --> Sent: send\n    note right of Draft : Only the owner edits a draft\n    note left of Sent\n        A sent record is read only\n    end note\n"
+ },
+ {
+  "id": "flow-capitals-wrapped",
+  "source": "flowchart LR\n    A[WAITING FOR THE WAREHOUSE SUPERVISOR TO SIGN OFF] -->|FORWARD TO FINANCE FOR APPROVAL| B[PAYMENT RECEIVED AND VERIFIED BY FINANCE]\n    B --> C([MMMM WWWW QQQQ])\n    C --> D{WWW MMM?}\n    D -->|YES| E((OK))\n    D -->|NO WAY| A\n"
+ },
+ {
+  "id": "state-capitals-wrapped",
+  "source": "stateDiagram-v2\n    state \"ORDER CONFIRMED BY THE CUSTOMER\" as Confirmed\n    state \"PAYMENT RECEIVED AND VERIFIED\" as Paid\n    state \"MAXIMUM WAIT WINDOW WAS MISSED\" as Missed\n    [*] --> Confirmed\n    Confirmed --> Paid: PAYMENT RECORDED\n    Confirmed --> Missed: WINDOW EXPIRED\n    Paid --> [*]\n"
  }
 ]
