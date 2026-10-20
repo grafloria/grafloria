@@ -11,7 +11,7 @@
 // rect, the wrap the node label engine runs, the point a label is drawn at — so
 // it fails exactly when the picture would.
 
-import { importDiagramText, linkLabelPosition, type DiagramModel, type LinkModel, type NodeModel } from '@grafloria/engine';
+import { importDiagramText, linkLabelPosition, glyphTextWidth, type DiagramModel, type LinkModel, type NodeModel } from '@grafloria/engine';
 import { LabelRenderer } from './LabelRenderer';
 import { getShape, getInnerRect } from './shape-registry';
 import { wrapText } from './text-block';
@@ -198,7 +198,9 @@ describe("imported Mermaid: boxes are Mermaid's, and hold their text", () => {
       A[Short] --> B[A label of a dozen or so words that is far too long for one line of the box]
       B --> C[A label twice as long again, a label of a couple of dozen words that has to wrap onto many lines of the box before it fits]`);
     const [a, b, c] = ['A', 'B', 'C'].map((id) => d.getNode(id)!);
-    expect(a.size).toMatchObject({ width: Math.ceil('Short'.length * 16 * 0.6 + 60), height: 54 }); // Mermaid's [Short]
+    // Mermaid's [Short]: its text (here, with no canvas, the server-side estimate) + 60, by 54.
+    const short = Math.max('Short'.length * 16 * 0.6, glyphTextWidth('Short', { size: 16 }) * 1.15 + 2);
+    expect(a.size).toMatchObject({ width: Math.ceil(short + 60), height: 54 });
     expect(b.size.width).toBeLessThanOrEqual(200 + 60);
     expect(c.size.width).toBeLessThanOrEqual(200 + 60);
     expect(c.size.height).toBeGreaterThan(b.size.height); // more lines, a taller box

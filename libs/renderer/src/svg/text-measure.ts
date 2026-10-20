@@ -12,7 +12,7 @@
 //     (MEASURED_TEXT_FLAG), so the lines it draws are the lines the boxes hold.
 // Every other diagram keeps the estimate, and draws exactly as it always has.
 
-import { MEASURED_TEXT_FLAG, type DiagramModel, type MeasureText, type TextFont } from '@grafloria/engine';
+import { MEASURED_TEXT_FLAG, glyphTextWidth, type DiagramModel, type MeasureText, type TextFont } from '@grafloria/engine';
 
 /** The theme's default face (LIGHT_THEME / DARK_THEME `typography.fontFamily.default`). */
 const DEFAULT_FAMILY = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
@@ -56,16 +56,21 @@ function canvasContext(): CanvasRenderingContext2D | null {
 }
 
 /**
- * How a diagram's label of this font is measured: by the canvas when an import
- * sized the diagram to measured text (MEASURED_TEXT_FLAG), else undefined — the
- * text engine's estimate, as for every other diagram.
+ * How a label of this font is measured: when an import sized it to MEASURED
+ * text — the diagram says so (MEASURED_TEXT_FLAG), or the node does
+ * (`sizedToMeasuredText`: MEASURED_LABEL_FLAG, which a saved document keeps) —
+ * by the canvas, or where there is none (a server rendering a saved diagram)
+ * by the engine's per-glyph estimate, which tracks real faces closely: the 0.6 em
+ * estimate runs ~20% wide on lowercase and wrapped a measured one-line box onto
+ * two lines, cut short ("Awaiting…"). Otherwise undefined: the text engine's
+ * estimate, as for every other diagram.
  */
 export function labelMeasureFor(
   diagram: Pick<DiagramModel, 'getMetadata'> | null | undefined,
-  font: TextFont
+  font: TextFont,
+  sizedToMeasuredText = false
 ): ((text: string, size?: number) => number) | undefined {
-  if (!diagram || diagram.getMetadata(MEASURED_TEXT_FLAG) !== true) return undefined;
-  const measure = canvasTextMeasure();
-  if (!measure) return undefined;
+  if (!sizedToMeasuredText && diagram?.getMetadata(MEASURED_TEXT_FLAG) !== true) return undefined;
+  const measure = canvasTextMeasure() ?? glyphTextWidth;
   return (text, size) => measure(text, size === undefined ? font : { ...font, size });
 }

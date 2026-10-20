@@ -41,3 +41,26 @@ describe('labelsOverLines', () => {
     expect(ids(out)).toEqual(['a', 'b']);
   });
 });
+
+describe('the renderer paints an import\'s labels over its lines — without a canvas too', () => {
+  it('a server render of imported routes (no measured flag) orders a crossing line first', async () => {
+    const { importDiagramText, runDeterministic } = await import('@grafloria/engine');
+    const { renderToStaticSVG } = await import('../ssr/render-to-static');
+    const order = runDeterministic(() => {
+      const d = importDiagramText(`flowchart LR
+        Offer -->|Valid Offer| Valid[Valid offer]
+        Offer -->|Alternative Offer| Alternative[Alternative offer]
+        Offer -->|Revision| Revision
+        Offer -->|Rejected Offer| Rejected[Rejected offer]
+        Offer -->|Cancel RFQ| Cancelled[Cancelled RFQ]
+        Offer -->|Regretted To Offer| Regretted[Regretted offer]`).diagram;
+      expect(d.getMetadata('measuredText')).toBeUndefined(); // a server: nothing measured
+      const svg = renderToStaticSVG({ nodes: d.getNodes() as never, edges: d.getLinks() as never, width: 900, height: 600, fitView: true, lod: 'document' }).svg;
+      const ids = [...svg.matchAll(/class="link-group[^"]*"[^>]*data-link-id="([^"]+)"|data-link-id="([^"]+)"[^>]*class="link-group/g)].map((m) => m[1] ?? m[2]);
+      return { ids, model: d.getLinks().map((l) => l.id) };
+    });
+    expect(new Set(order.ids)).toEqual(new Set(order.model));
+    // A fan crosses its neighbours' labels: some line was moved before a label it crosses.
+    expect(order.ids).not.toEqual(order.model);
+  });
+});

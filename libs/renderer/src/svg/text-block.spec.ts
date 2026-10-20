@@ -9,6 +9,7 @@ import { renderTextBlock, wrapText, estimateTextWidth } from './text-block';
 import { SVGRenderer } from './svg-renderer';
 import { DiagramEngine, NodeModel } from '@grafloria/engine';
 import { labelMeasureFor } from './text-measure';
+import { glyphTextWidth } from '@grafloria/engine';
 
 describe('text-block engine (Card 2)', () => {
   describe('wrapText', () => {
@@ -209,8 +210,16 @@ describe('text-block: a measured wrap', () => {
   it('a diagram that was not measured gets no measure: it draws as it always has', () => {
     const plain = { getMetadata: () => undefined };
     expect(labelMeasureFor(plain, { size: 16 })).toBeUndefined();
-    // Measured, but no canvas here (jsdom): the estimate, rather than a guess.
+  });
+
+  it('measured text with no canvas (a server) wraps by glyphs, which track real faces — not the 0.6 em estimate', () => {
     const measured = { getMetadata: (key: string) => (key === 'measuredText' ? true : undefined) };
-    expect(labelMeasureFor(measured, { size: 16 })).toBeUndefined();
+    const byDiagram = labelMeasureFor(measured, { size: 16 })!;
+    const byNode = labelMeasureFor({ getMetadata: () => undefined }, { size: 16 }, true)!;
+    expect(byDiagram('Awaiting approval')).toBeCloseTo(glyphTextWidth('Awaiting approval', { size: 16 }));
+    expect(byNode('Awaiting approval')).toBeCloseTo(byDiagram('Awaiting approval'));
+    // The 0.6 em estimate runs ~18% wider on this lowercase text: a box sized to it
+    // measured in a page would wrap onto two lines here, and cut short.
+    expect(estimateTextWidth('Awaiting approval', 16)).toBeGreaterThan(byNode('Awaiting approval') * 1.15);
   });
 });

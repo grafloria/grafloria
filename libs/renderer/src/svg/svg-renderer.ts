@@ -187,7 +187,7 @@ import {
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock, wrapText } from './text-block';
 import { labelMeasureFor } from './text-measure';
-import { basisSegments, sampleBasis, MEASURED_TEXT_FLAG } from '@grafloria/engine';
+import { basisSegments, sampleBasis, MEASURED_TEXT_FLAG, MEASURED_LABEL_FLAG } from '@grafloria/engine';
 import { labelsOverLines } from './label-paint-order';
 
 /** A 'text' note: words on the canvas with no box of their own. */
@@ -3131,11 +3131,15 @@ export class SVGRenderer implements IRenderer {
     this.computeFrameCrossings(sortedLinks);
 
     const rendered = sortedLinks.map(link => this.renderLink(link, lod));
-    // A measured Mermaid import paints its labels over the lines, as Mermaid
-    // does: a line that crosses another link's label paints first (see
-    // label-paint-order.ts). Any other diagram paints in its own order.
-    const children =
-      sortedLinks[0]?.diagram?.getMetadata(MEASURED_TEXT_FLAG) === true ? labelsOverLines(sortedLinks, rendered) : rendered;
+    // A Mermaid import paints its labels over the lines, as Mermaid does: a
+    // line that crosses another link's label paints first (see
+    // label-paint-order.ts). An import is known by its routes (`importRoute`) —
+    // a server's fresh model has no measured flag — or by that flag. Any other
+    // diagram paints in its own order.
+    const imported =
+      sortedLinks[0]?.diagram?.getMetadata(MEASURED_TEXT_FLAG) === true ||
+      sortedLinks.some((link) => link.getMetadata('importRoute') === true);
+    const children = imported ? labelsOverLines(sortedLinks, rendered) : rendered;
     this.frameOverlay = [];
     if (this.frameCrossings.size > 0) {
       for (const vnode of children) {
@@ -6006,11 +6010,15 @@ export class SVGRenderer implements IRenderer {
     const baseFont = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
     // A diagram an import sized to MEASURED text wraps with the same measure, in
     // the face and weight the label draws in; any other keeps the estimate.
-    const measureAt = labelMeasureFor(node.diagram, {
-      size: baseFont,
-      family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
-      weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
-    });
+    const measureAt = labelMeasureFor(
+      node.diagram,
+      {
+        size: baseFont,
+        family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
+        weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
+      },
+      node.getMetadata(MEASURED_LABEL_FLAG) === true
+    );
     const fontSize = fitFontSize(label, inner.w, baseFont, measureAt);
     const measure = measureAt ? (t: string) => measureAt(t, fontSize) : undefined;
     const shrunk = fontSize < baseFont;
@@ -6298,11 +6306,15 @@ export class SVGRenderer implements IRenderer {
     const baseFont = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
     // One line: it shrinks to the band's width rather than wrapping out of it.
     const maxWidth = Math.max(1, width - 16);
-    const measureAt = labelMeasureFor(node.diagram, {
-      size: baseFont,
-      family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
-      weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
-    });
+    const measureAt = labelMeasureFor(
+      node.diagram,
+      {
+        size: baseFont,
+        family: typo.style.fontFamily ?? (this.theme.typography.fontFamily.default as string),
+        weight: typo.style.fontWeight ?? (this.config.useCSSMode ? 400 : (this.theme.typography.fontWeight.medium as number)),
+      },
+      node.getMetadata(MEASURED_LABEL_FLAG) === true
+    );
     const fontSize = Math.min(fitFontSize(label, maxWidth, baseFont, measureAt), Math.max(8, Math.floor(band / 1.3)));
     const shrunk = fontSize < baseFont;
     const css = this.config.useCSSMode;
