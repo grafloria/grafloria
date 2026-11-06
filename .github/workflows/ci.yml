@@ -8,7 +8,7 @@ on:
 jobs:
   units:
     name: Unit batteries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
 
   gates:
     name: Demo gates (browser)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 40 minutes cancelled a green run: the job took 38.7 of them on 2026-10-14
     # and every new demo adds to it.
     timeout-minutes: 60
