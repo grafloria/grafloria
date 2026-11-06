@@ -131,7 +131,7 @@ export function createProjection(ctx: BoardCtx, deps: { afterProject(): void }):
       const ghost = ctx.ghostId();
       for (const item of ctx.engine().getItems()) {
         if (item.id === ghost) continue; // the ghost — this board's own, or one adopted from another binder
-        writeRect(item.id, cellToRect(item, f, g, r));
+        writeRect(item.id, cellToRect(ctx.drawnCell(item), f, g, r));
       }
     });
     syncPlaceholder();

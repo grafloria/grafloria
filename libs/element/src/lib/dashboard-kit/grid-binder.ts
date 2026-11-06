@@ -237,6 +237,18 @@ export interface DashboardGridOptions {
   /** A LIST board: gravity packs the dragged tile too (the engine's `packActive`) — a drop below the last tile lands right after it. */
   stack?: boolean;
   /**
+   * A nested board that HUGS its members, as a `stack` list hugs its cards:
+   * after any change the history brings it takes exactly the rows its tallest
+   * member needs from its parent, never fewer than its design (`maxRows`).
+   */
+  hug?: boolean;
+  /**
+   * Member SECTIONS are drawn down to this board's last row, whatever their
+   * cells say (the cells stay their own): a taskboard row's lists line up as
+   * a table's cells, and a drop anywhere in a cell's column lands in it.
+   */
+  stretch?: boolean;
+  /**
    * KEYBOARD MOVES BETWEEN LISTS, on a `stack` list: Ctrl+← and Ctrl+→ (Alt
    * as an alias) move the focused card to the next list on its row — or stop
    * there, with the reason, when it refuses the card — and Ctrl+↑ and Ctrl+↓
@@ -585,7 +597,10 @@ interface BinderPeer {
    * Grow/shrink a member's row span by `dRows` — the parent half of nested
    * HEIGHT ESCALATION: pulling a KPI taller than its one-row strip grows the
    * STRIP's slab in the board that contains it (live report: "i cant
-   * increase height"). Returns the cell+frame before/after when accepted.
+   * increase height"). A board with no row left asks ITS parent in turn, up
+   * to a view, pushing what is below at every level; a shrink gives the rows
+   * that growth took back up. Returns the cell+frame before/after when
+   * accepted.
    */
   resizeMemberBy(id: string, dRows: number): {
     changed: boolean;
@@ -594,13 +609,18 @@ interface BinderPeer {
     frameBefore?: WorldRect;
     frameAfter?: WorldRect;
     /**
-     * The parent's OWN commit for the growth so far, when a cell command
-     * cannot carry it — a SPLIT parent's tree with the pane's new share
-     * (0.4.71). Supersedes what an earlier ask answered; the arriving
-     * board's `finalize` carries it instead of a `SetGroupCellCommand`.
+     * The parent's OWN commit for the growth so far: on a grid parent, the
+     * member's cell, the tiles that growth pushed and the parent's own growth
+     * in ITS parent, every level up; on a SPLIT parent, its tree with the
+     * pane's new share (0.4.71). Supersedes what an earlier ask answered; the
+     * arriving board's `finalize` carries it instead of a `SetGroupCellCommand`.
      */
     commands?: Command[];
   };
+  /** One row of this board, px: a row's height plus the gap. */
+  rowUnit?(): number;
+  /** Does this board draw its member sections down to its last row (`stretch`)? */
+  stretches?(): boolean;
   containsWorld(x: number, y: number): boolean;
   /** Write the engine's live cells to the model and the layout cache — the history-free half of `fitRows` escalation. */
   persistCells?(): void;
@@ -952,6 +972,8 @@ interface GestureState {
     frameBefore: WorldRect;
     cellAfter: CellRect;
     frameAfter: WorldRect;
+    /** The parent's latest answer: our rows there and whatever they pushed, every level up. */
+    commands?: Command[];
   } | null;
   chip: HTMLElement | null;
 }
@@ -1023,6 +1045,8 @@ export function bindDashboardGrid(
   /** May a pull past the bound grow the slab in the parent? `false` = the pane is the bound. */
   const escalate = options.escalate !== false;
   const stack = options.stack === true;
+  const hug = options.hug === true;
+  const stretch = options.stretch === true;
   const dragOut = options.dragOut ?? 'cancel';
   const wantHandles = options.resizeHandles !== false;
   const fluid = options.fluid === true;
@@ -1230,7 +1254,19 @@ export function bindDashboardGrid(
    * (each row it gave up made the remaining rows taller, so the same pixel
    * height quantised to fewer rows on the next move — kit lab L37).
    */
-  const rows = (): number => Math.max(1, engine.rows(), maxRows ?? 0);
+  const rows = (): number => Math.max(1, engine.rows(), maxRows ?? 0, stretchedRows());
+  /**
+   * A member section of a `stretch` board is drawn past its cells, to the
+   * board's last row: it lays out the rows that frame holds at its parent's
+   * row, so its cards keep their height and the rows below them stay empty.
+   */
+  const stretchedRows = (): number => {
+    if (designRows === undefined) return 0;
+    const parent = parentPeerOf(api.container, group.id);
+    if (!parent?.stretches?.()) return 0;
+    const unit = parent.rowUnit?.() ?? baseRowHeight + gap;
+    return unit > 0 ? Math.round((frame().height + gap) / unit) : 0;
+  };
 
   const htmlLayer = (): HTMLElement | null => api.container.querySelector('.grafloria-html-layer');
 
@@ -1349,6 +1385,8 @@ export function bindDashboardGrid(
     frame,
     geom,
     rows,
+    // A `stretch` board draws its member sections to its last row; their cells stay their own.
+    drawnCell: (item) => (stretch && isGroupMember(item.id) ? { ...item, h: Math.max(item.h, rows() - item.y) } : item),
     sizing: () => sizing,
     designH: () => designH,
     rtl: () => rtl,
@@ -2267,13 +2305,15 @@ export function bindDashboardGrid(
     endBeside(false);
     if (g.esc && g.esc.rowsAdded !== 0) {
       commands.push(
-        new SetGroupCellCommand(
-          group.id,
-          g.esc.cellBefore,
-          g.esc.cellAfter,
-          g.esc.frameBefore,
-          g.esc.frameAfter
-        )
+        ...(g.esc.commands ?? [
+          new SetGroupCellCommand(
+            group.id,
+            g.esc.cellBefore,
+            g.esc.cellAfter,
+            g.esc.frameBefore,
+            g.esc.frameAfter
+          ),
+        ])
       );
     }
     const changed = execute(g.kind === 'resize' ? 'Resize widget' : 'Move widget', commands);
@@ -2745,6 +2785,7 @@ export function bindDashboardGrid(
           g.esc.rowsAdded += d;
           g.esc.cellAfter = res.cellAfter;
           g.esc.frameAfter = res.frameAfter;
+          if (res.commands) g.esc.commands = res.commands; // every level the growth reached, so far
         };
         const setInnerRows = (n: number): void => {
           maxRows = n;
@@ -3129,15 +3170,20 @@ export function bindDashboardGrid(
    * (the way autoHeight writes a height): no undo step. Escalation only ever
    * grew a section; a list a card had left kept the hole at its bottom, and an
    * undo that brought the card back to a list that had shrunk overflowed it.
+   * A `hug` section does the same for its members: a taskboard's row, as tall
+   * as its fullest list.
    */
   const hugContent = (): void => {
-    if (!stack || !escalate || designRows === undefined || disposed || gesture || slabGesture) return;
+    if (!(stack || hug) || !escalate || designRows === undefined || disposed || gesture || slabGesture) return;
     const parent = parentPeer();
-    if (!parent) return;
-    // Counted in the BOARD's row unit: this list's own rows are squeezed to
-    // whatever frame it has now, so they cannot say how far off the frame is.
-    const unit = baseRowHeight + gap;
-    const have = Math.round((frame().height + gap) / unit);
+    const cell = parent?.memberCell(group.id);
+    if (!parent || !cell) return;
+    // Counted in the PARENT's cells: this list's own rows are squeezed to
+    // whatever frame it has now, so they cannot say how far off the frame is,
+    // and a frame a `stretch` row draws past the cell is not rows it holds.
+    // The caption and footer bands take their share of those cells.
+    const unit = parent.rowUnit?.() ?? baseRowHeight + gap;
+    const have = cell.h - Math.round((ownReserve() + ownFooter()) / unit);
     const want = Math.max(designRows, extentOf(engine.getItems()));
     if (have === want || have <= 0) return;
     if (!parent.resizeMemberBy(group.id, want - have).changed) return;
@@ -3752,6 +3798,129 @@ export function bindDashboardGrid(
     };
   };
 
+  /**
+   * GROWTH ESCALATES THROUGH EVERY LEVEL. A member asking for rows this board
+   * cannot give — its bound is a section's slab — makes the board ask ITS
+   * parent for them, a row at a time, and so on up to a view, which grows
+   * downward: a full list in a taskboard row grows the row, and the rows below
+   * move down. Each level pushes what is below it, as one level always did.
+   * The reverse too: rows above the design that nothing needs any more go back
+   * up, so a row is only as tall as its fullest list.
+   *
+   * THE LEDGER is the board as it was before the first row a member asked of
+   * it since the board last matched the model. Every answer carries the
+   * commands for ALL of it — the member's cell, the tiles its growth pushed
+   * here, and this board's own rows in its parent with what THOSE pushed — so
+   * the caller folds one list into its own step (one undo restores every
+   * level) or writes it as layout. It closes when the model holds it: a
+   * rebuild, a history-free persist, or a net change of nothing.
+   */
+  interface Ledger {
+    cells: Map<string, CellRect>;
+    geoms: Map<string, GeomSnapshot>;
+    /** OUR rows in our parent, taken or given back for it: the first and last cell, and the parent's latest answer. */
+    up: { peer: BinderPeer; first: { cell: CellRect; frame: WorldRect }; last: { cell: CellRect; frame: WorldRect }; commands?: Command[] } | null;
+    /** The ledger began the engine's push memory (no gesture of this board was live), so it ends it too. */
+    own: boolean;
+  }
+  let ledger: Ledger | null = null;
+  const quiet = (): boolean => !gesture && !slabGesture && adoptedGhostId === null;
+  const openLedger = (): void => {
+    if (ledger) return;
+    const snap = snapshotAll();
+    const own = quiet();
+    // A request of its own: what it pushes remembers where THIS request found
+    // it, and comes home when the request is reversed — not where an older
+    // one did (the memory outlives a request outside a gesture).
+    if (own) engine.beginGesture();
+    ledger = { cells: snap.cells, geoms: snap.geoms, up: null, own };
+  };
+  const closeLedger = (): void => {
+    if (!ledger) return;
+    if (ledger.own && quiet()) engine.endGesture();
+    ledger = null;
+  };
+  /** What the parent answered for OUR rows. */
+  const noteUp = (peer: BinderPeer, res: ReturnType<BinderPeer['resizeMemberBy']>): void => {
+    if (!ledger || !res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter) return;
+    ledger.up = {
+      peer,
+      first: ledger.up?.first ?? { cell: res.cellBefore, frame: res.frameBefore },
+      last: { cell: res.cellAfter, frame: res.frameAfter },
+      commands: res.commands ?? ledger.up?.commands,
+    };
+  };
+  const sameCellRect = (a: CellRect, b: CellRect): boolean => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+  /** The commands for everything the ledger saw — this board's tiles, then our rows in the parent. A ledger that saw no net change closes. */
+  const ledgerCommands = (): Command[] => {
+    if (!ledger) return [];
+    const mine = tileCommands(deltasSince(ledger.cells, ledger.geoms));
+    const up = ledger.up;
+    const moved = !!up && !sameCellRect(up.first.cell, up.last.cell);
+    if (mine.length === 0 && !moved) {
+      closeLedger();
+      return [];
+    }
+    const above = up ? (up.commands ?? (moved ? [new SetGroupCellCommand(group.id, up.first.cell, up.last.cell, up.first.frame, up.last.frame)] : [])) : [];
+    return [...mine, ...above];
+  };
+  /**
+   * Take rows for OUR slab from the parent, one at a time, until `fits()` —
+   * at most `most`. Every row goes back when it never fits.
+   */
+  const growThroughParent = (most: number, fits: () => boolean): boolean => {
+    const parent = parentPeer();
+    if (!parent || !escalate || designRows === undefined) return false;
+    let took = 0;
+    while (took < most) {
+      const res = parent.resizeMemberBy(group.id, +1);
+      if (!res.changed) break;
+      noteUp(parent, res);
+      took += 1;
+      setLiveBound((maxRows ?? 0) + 1);
+      if (fits()) return true;
+    }
+    if (took > 0) {
+      noteUp(parent, parent.resizeMemberBy(group.id, -took));
+      setLiveBound(Math.max(1, (maxRows ?? 1) - took));
+    }
+    return false;
+  };
+  /**
+   * A SHRINK UNDOES ITS PUSH. Gravity climbs a tile into rows that free up,
+   * but a section is solid and never packs (its zones must hold still under a
+   * hand), so the row under a taskboard row that gave its rows back stayed
+   * where the growth had pushed it. The tiles that sat right under the member
+   * climb as far as it shrank — no further, so a gap that was there stays —
+   * and those right under them as far as they climbed.
+   */
+  const pullUpBelow = (above: CellRect & { id: string }, oldBottom: number, most: number): void => {
+    if (most <= 0) return;
+    const items = engine.getItems();
+    const hits = (a: CellRect, b: CellRect): boolean => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const under = items
+      .filter((o) => o.id !== above.id && !o.locked && o.y === oldBottom && o.x < above.x + above.w && above.x < o.x + o.w)
+      .sort((a, b) => a.x - b.x);
+    for (const o of under) {
+      let k = 0;
+      while (k < most && o.y - k - 1 >= 0 && !items.some((p) => p.id !== o.id && hits({ x: o.x, y: o.y - k - 1, w: o.w, h: o.h }, p))) k += 1;
+      if (k === 0) continue;
+      const was = o.y + o.h;
+      if (engine.moveCheck(o.id, o.x, o.y - k, { gate: false }).changed) pullUpBelow({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h }, was, k);
+    }
+  };
+  /** Rows above the design that nothing here needs any more go back to the parent. */
+  const giveBack = (): void => {
+    const parent = parentPeer();
+    if (!parent || !escalate || designRows === undefined || maxRows === undefined) return;
+    const spare = maxRows - Math.max(designRows, extentOf(engine.getItems()));
+    if (spare <= 0) return;
+    const res = parent.resizeMemberBy(group.id, -spare);
+    if (!res.changed) return;
+    noteUp(parent, res);
+    setLiveBound(maxRows - spare);
+  };
+
   const selfPeer: BinderPeer = {
     group,
     isStatic: () => isStatic,
@@ -3827,36 +3996,61 @@ export function bindDashboardGrid(
     },
     resizeMemberBy: (id, dRows) => {
       const item = engine.getItem(id);
-      if (!item || disposed) return { changed: false };
+      if (!item || disposed || dRows === 0) return { changed: false };
       const grp = diagram.getGroup(id);
+      const frameNow = (): WorldRect | undefined =>
+        grp ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height } : undefined;
+      // The engine resizes this very item object: read its cell before asking.
       const cellBefore: CellRect = { x: item.x, y: item.y, w: item.w, h: item.h };
-      const fb = grp
-        ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height }
-        : undefined;
+      const fb = frameNow();
+      openLedger();
+      const want = Math.max(1, cellBefore.h + dRows);
+      const reached = (): boolean => engine.getItem(id)?.h === want;
       // A member grows because something INSIDE it needs the row (a child pulled
       // past the section's rows, content, an adoption) — that is intent, so the
       // growth pushes SOLID neighbours (another section, a tab container) as it
       // pushes plain tiles. Without it the section clamped at the first section
       // below it and the pull capped at its rows (S13).
-      const r = engine.resizeCheck(id, item.w, item.h + dRows, { pushSolid: dRows > 0 });
-      if (!r.changed) return { changed: false };
-      project();
+      let r = engine.resizeCheck(id, cellBefore.w, want, { pushSolid: dRows > 0 });
+      if (dRows > 0 && !reached()) {
+        // No row left here: THIS board asks its own parent (escalation). The
+        // bound clamps a growth short and still calls it a change — the height
+        // reached is the answer — so a short one is taken back first.
+        const short = r.changed;
+        if (short) engine.resizeCheck(id, cellBefore.w, cellBefore.h);
+        const fits = (): boolean => {
+          engine.resizeCheck(id, cellBefore.w, want, { pushSolid: true });
+          if (reached()) return true;
+          engine.resizeCheck(id, cellBefore.w, cellBefore.h);
+          return false;
+        };
+        if (growThroughParent(dRows, fits)) r = { changed: true };
+        else if (short) r = engine.resizeCheck(id, cellBefore.w, want, { pushSolid: true }); // as far as the bound goes, as before
+      }
+      if (dRows < 0 && r.changed) {
+        const now = engine.getItem(id)!;
+        pullUpBelow({ id, x: now.x, y: now.y, w: now.w, h: now.h }, cellBefore.y + cellBefore.h, cellBefore.y + cellBefore.h - (now.y + now.h));
+        giveBack();
+      }
       const after = engine.getItem(id)!;
-      const fa = grp
-        ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height }
-        : undefined;
-      return {
-        changed: true,
-        cellBefore,
-        cellAfter: { x: after.x, y: after.y, w: after.w, h: after.h },
-        frameBefore: fb,
-        frameAfter: fa,
-      };
+      const cellAfter: CellRect = { x: after.x, y: after.y, w: after.w, h: after.h };
+      if (sameCellRect(cellBefore, cellAfter)) {
+        ledgerCommands(); // closes a ledger that saw nothing
+        return { changed: false };
+      }
+      project();
+      return { changed: true, cellBefore, cellAfter, frameBefore: fb, frameAfter: frameNow(), commands: ledgerCommands() };
     },
+    rowUnit: () => rowHeightFor(geom(), rows()) + gap,
+    stretches: () => stretch,
     containsWorld: worldInsideBoard,
     persistCells: () => {
       persistLiveCells();
       persistLayouts();
+      // The rows this board took from ITS parent are layout there too.
+      const up = ledger?.up?.peer;
+      closeLedger();
+      up?.persistCells?.();
     },
     isList: () => isList(),
     containsWorldExtended: worldInsideBoardExtended,
@@ -4388,6 +4582,7 @@ export function bindDashboardGrid(
     }
     applyFluidFrame();
     pendingDrop = null; // rebuilt from the members: a phantom is gone with the engine
+    ledger = null; // the model is the truth again: what a member asked for is in it, or gone with it
     const items: GridPackItem[] = [];
     for (const id of group.members ?? []) {
       if (!memberEntity(id)) continue;
@@ -4594,6 +4789,9 @@ export function bindDashboardGrid(
     },
     resizeTo(id, w, h) {
       const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h; // a section: never below its children
+      // A SECTION made taller from code means it, as one moved by hand does
+      // (0.4.44): it pushes the sections below it rather than stopping at them.
+      const opts = { pushSolid: isGroupMember(id) };
       // Past the section's rows, the SECTION grows — the ratchet a hand pull and
       // content height (`fitRows`) use: one parent row at a time while the tile
       // still needs it and the parent can give it, the parent's change committed
@@ -4603,7 +4801,7 @@ export function bindDashboardGrid(
         'Resize widget',
         id,
         () => {
-          let changed = engine.resizeCheck(id, w, hh).changed;
+          let changed = engine.resizeCheck(id, w, hh, opts).changed;
           const parent = parentPeer();
           let grownBy = 0;
           while (
@@ -4619,7 +4817,7 @@ export function bindDashboardGrid(
               commands: res.commands ?? grown?.commands,
             };
             setLiveBound((maxRows ?? 0) + 1);
-            changed = engine.resizeCheck(id, w, hh).changed || changed;
+            changed = engine.resizeCheck(id, w, hh, opts).changed || changed;
           }
           // No parent.persistCells(): the parent's change rides in the undo step
           // (below); persisting its pushed tiles outside it left them pushed on undo.

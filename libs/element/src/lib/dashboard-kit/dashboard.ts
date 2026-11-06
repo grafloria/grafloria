@@ -206,6 +206,20 @@ export interface DashboardWidgetSpec {
    */
   stack?: boolean;
   /**
+   * Container only: the section HUGS its members — it takes exactly the rows
+   * its tallest member needs, never fewer than its design (`maxRows`), as a
+   * `stack` list does for its cards. A row of a taskboard: as tall as its
+   * fullest list, and no taller once a card leaves it. Needs `sizing: 'grow'`.
+   */
+  hug?: boolean;
+  /**
+   * Container only: the member SECTIONS keep the section's height — each is
+   * drawn (and takes drops) down to the section's last row, whatever it holds,
+   * so a row's lists line up as a table's cells do. Their cards keep their own
+   * height, and their cells (what a save writes) stay their own.
+   */
+  stretch?: boolean;
+  /**
    * Container only: a FOOTER band at the bottom of the section, `height` px,
    * painted by the dashboard's `renderFooter` — a Kanban list's "Add a card".
    * The children's board stops above it; presses on it are the page's (its
@@ -3530,6 +3544,10 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       // and every tab switch silently did nothing.)
       ctx.onTabChange = options.onTabChange;
       attachTabsRuntime(ctx, model, (a as unknown as { container?: HTMLElement }).container ?? null, handle);
+      // Lists and `hug` sections take the rows their content needs from the
+      // start, not only after the first change (before the reporter is primed:
+      // the boot layout is never news).
+      for (const b of binders.values()) b.fitToContent?.();
       ctx.attachHistory?.();
       return;
 
@@ -3560,6 +3578,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           ...(w.movable !== undefined ? { movable: w.movable } : {}),
           ...(w.background !== undefined ? { background: w.background } : {}),
           ...(w.stack ? { stack: true } : {}),
+          ...(w.hug ? { hug: true } : {}),
+          ...(w.stretch ? { stretch: true } : {}),
           ...(w.resizable === false ? { resizable: false } : {}),
           ...(w.footer ? { footer: { ...w.footer } } : {}),
         });
@@ -3582,6 +3602,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           layout: w.layout ?? 'grid',
           escalate: w.sizing !== 'fit',
           ...(w.stack ? { stack: true } : {}),
+          ...(w.hug ? { hug: true } : {}),
+          ...(w.stretch ? { stretch: true } : {}),
         });
         cg.size = { width: 100, height: rowHeight, depth: 0 };
         return cg;
@@ -3791,6 +3813,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             float: false,
             escalate: w.sizing !== 'fit',
             ...(w.stack ? { stack: true, ...(ctx.listMoves ? { lists: ctx.listMoves(w.id) } : {}) } : {}),
+            ...(w.hug ? { hug: true } : {}),
+            ...(w.stretch ? { stretch: true } : {}),
           })
         );
       }
