@@ -1,1 +1,0 @@
-import{v as t}from"./core.min-DSxUtzo6.js";import{x as v}from"./core.min-DSxUtzo6.js";import{m as e}from"./code-editor-DYkh7bDu.js";import"./preloader-D7tuiBjF.js";const i=()=>{const[o,r]=t();e(r.value,{language:"mermaid",host:o.value})};export{v as _hW,i as s_w77NvZrH57Q};

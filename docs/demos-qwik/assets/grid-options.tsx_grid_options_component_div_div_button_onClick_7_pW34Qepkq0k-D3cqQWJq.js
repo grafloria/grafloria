@@ -1,1 +1,0 @@
-import{v as i}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const d=async()=>{const[a,n,s,o,c]=i(),t=a.value?.handle;if(!t)return;const e=[12,6,3],l=e[(e.indexOf(n.value)+1)%e.length]??12;t.setColumns(l,void 0,c.value),await o(),await s(`${n.value} columns on this view — widening back restores the cached layout`)};export{d as s_pW34Qepkq0k};

@@ -1,0 +1,1 @@
+import{v as r}from"./core.min-C7M5tFMw.js";import{x as c}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const s=({cleanup:o})=>{const[t]=r();if(typeof window>"u")return;const e=t.value?.hookKeys();o(()=>e?.())};export{c as _hW,s as s_YPGhP3g01oU};

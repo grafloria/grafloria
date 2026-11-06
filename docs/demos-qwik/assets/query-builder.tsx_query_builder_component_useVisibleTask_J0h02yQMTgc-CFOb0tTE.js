@@ -1,0 +1,1 @@
+import{v as r}from"./core.min-C7M5tFMw.js";import{x as n}from"./core.min-C7M5tFMw.js";import{m as a}from"./code-editor-DYkh7bDu.js";import"./preloader-D7tuiBjF.js";const u=({cleanup:o})=>{const[t,e,s]=r();a(e.value,{language:"sql",readOnly:!0,host:t.value}),o(()=>s.value?.dispose())};export{n as _hW,u as s_J0h02yQMTgc};

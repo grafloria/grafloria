@@ -1,1 +1,0 @@
-import{v as r}from"./core.min-DSxUtzo6.js";import{x as f}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const i=({track:e})=>{const[o,n]=r(),s=e(()=>n.edges),t=e(()=>o.value);!s||!t||t.setEdges(s)};export{f as _hW,i as s_bxgWjpIADr0};

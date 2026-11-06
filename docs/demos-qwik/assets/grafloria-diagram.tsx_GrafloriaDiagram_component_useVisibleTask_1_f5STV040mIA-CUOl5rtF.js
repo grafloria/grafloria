@@ -1,0 +1,1 @@
+import{v as n}from"./core.min-C7M5tFMw.js";import{x as a}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const p=({track:t})=>{const[r,s]=n(),o=t(()=>s.colorMode),e=t(()=>r.value);!o||!e||e.getColorMode()===o||e.setColorMode(o)};export{a as _hW,p as s_f5STV040mIA};

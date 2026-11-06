@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const e=()=>{const[s,o]=t();s.value="grid",o("grid: cells, spans and push — the gridstack model")};export{e as s_h0gX0sBSOk0};

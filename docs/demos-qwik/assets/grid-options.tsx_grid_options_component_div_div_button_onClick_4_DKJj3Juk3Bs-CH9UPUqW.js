@@ -1,1 +1,0 @@
-import{v as l}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const i=async()=>{const[t,e,a,s]=l();t.value?.handle.setFloat(!a.value),await s(),await e(a.value?"Float ON: tiles stay wherever you put them — gaps are legal":"Float OFF: gravity packs tiles upward")};export{i as s_DKJj3Juk3Bs};

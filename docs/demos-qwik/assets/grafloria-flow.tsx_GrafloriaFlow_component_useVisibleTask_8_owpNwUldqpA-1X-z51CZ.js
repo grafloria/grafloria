@@ -1,0 +1,1 @@
+import{v as i}from"./core.min-C7M5tFMw.js";import{x as f}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const r=({track:e})=>{const[o,t]=i();e(()=>JSON.stringify(t.highlightConnected??!1));const n=e(()=>o.value);n&&n.setHighlightConnected(t.highlightConnected??!1)};export{f as _hW,r as s_owpNwUldqpA};

@@ -1,0 +1,1 @@
+import{v as r}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const c=(n,t)=>{const[e,o]=r();return e.value?.panelAct("add-after",o,t.getBoundingClientRect())};export{c as s_0NlIUSp4XBY};

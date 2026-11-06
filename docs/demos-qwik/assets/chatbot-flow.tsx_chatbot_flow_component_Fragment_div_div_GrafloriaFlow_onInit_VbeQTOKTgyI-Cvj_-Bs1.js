@@ -1,0 +1,1 @@
+import{v as m}from"./core.min-C7M5tFMw.js";import{x as u}from"./core.min-C7M5tFMw.js";import{m as s}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";const l=o=>{const[r,a,e]=m(),t=r.value;t.bump=()=>{e.value++},t.init(o,a.value),s()};export{u as _hW,l as s_VbeQTOKTgyI};

@@ -1,0 +1,1 @@
+import{v as r}from"./core.min-C7M5tFMw.js";import{x}from"./core.min-C7M5tFMw.js";import{w as p}from"./custom-nodes-CTa84_93.js";import"./preloader-D7tuiBjF.js";const c=({track:o})=>{const[n,s]=r(),t=o(()=>s.nodes),e=o(()=>n.value);!t||!e||e.setNodes(p(t,s.nodeTypes))};export{x as _hW,c as s_EpYzA2vKajo};

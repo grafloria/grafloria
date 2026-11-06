@@ -1,1 +1,0 @@
-import{v as m}from"./core.min-DSxUtzo6.js";import{x as p}from"./core.min-DSxUtzo6.js";import{m as a}from"./code-editor-DYkh7bDu.js";import"./preloader-D7tuiBjF.js";const v=({cleanup:o})=>{const[e,r,t]=m();a(r.value,{language:"mermaid",host:e.value}),o(()=>clearTimeout(t.value))};export{p as _hW,v as s_nL7zCDgvLzU};

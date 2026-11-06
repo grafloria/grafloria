@@ -204661,7 +204661,7 @@ function createProjection(ctx, deps) {
       const ghost = ctx.ghostId();
       for (const item of ctx.engine().getItems()) {
         if (item.id === ghost) continue;
-        writeRect(item.id, cellToRect(item, f, g, r));
+        writeRect(item.id, cellToRect(ctx.drawnCell(item), f, g, r));
       }
     });
     syncPlaceholder();
@@ -206004,6 +206004,8 @@ function bindDashboardGrid(api, group, options = {}) {
   const liveBound = (items) => designRows === void 0 ? void 0 : Math.max(designRows, extentOf2(items));
   const escalate = options.escalate !== false;
   const stack = options.stack === true;
+  const hug = options.hug === true;
+  const stretch = options.stretch === true;
   const dragOut = options.dragOut ?? "cancel";
   const wantHandles = options.resizeHandles !== false;
   const fluid = options.fluid === true;
@@ -206114,7 +206116,11 @@ function bindDashboardGrid(api, group, options = {}) {
     designHeight: sizing === "fit" ? frame().height : designH,
     rtl
   });
-  const rows = () => Math.max(1, engine.rows(), maxRows ?? 0);
+  const rows = () => Math.max(1, engine.rows(), maxRows ?? 0, stretchedRows());
+  const stretchedRows = () => {
+    if (designRows === void 0 || !parentPeerOf(api.container, group.id)?.stretches?.()) return 0;
+    return Math.round((frame().height + gap) / (baseRowHeight + gap));
+  };
   const htmlLayer = () => api.container.querySelector(".grafloria-html-layer");
   const hostOf = (id) => {
     const esc3 = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
@@ -206193,6 +206199,8 @@ function bindDashboardGrid(api, group, options = {}) {
     frame,
     geom,
     rows,
+    // A `stretch` board draws its member sections to its last row; their cells stay their own.
+    drawnCell: (item) => stretch && isGroupMember(item.id) ? { ...item, h: Math.max(item.h, rows() - item.y) } : item,
     sizing: () => sizing,
     designH: () => designH,
     rtl: () => rtl,
@@ -206803,6 +206811,10 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const cleanupGestureVisuals = (g) => {
     idleSoon();
+    if (g.zone) {
+      g.zone = null;
+      options.dropOut?.onZoneHover?.(g.id, null);
+    }
     markDrop(null, false);
     showRefusal(null, 0, 0);
     if (g.kind !== "palette") {
@@ -206825,13 +206837,15 @@ function bindDashboardGrid(api, group, options = {}) {
     endBeside(false);
     if (g.esc && g.esc.rowsAdded !== 0) {
       commands.push(
-        new SetGroupCellCommand(
-          group.id,
-          g.esc.cellBefore,
-          g.esc.cellAfter,
-          g.esc.frameBefore,
-          g.esc.frameAfter
-        )
+        ...g.esc.commands ?? [
+          new SetGroupCellCommand(
+            group.id,
+            g.esc.cellBefore,
+            g.esc.cellAfter,
+            g.esc.frameBefore,
+            g.esc.frameAfter
+          )
+        ]
       );
     }
     const changed = execute(g.kind === "resize" ? "Resize widget" : "Move widget", commands);
@@ -206921,6 +206935,53 @@ function bindDashboardGrid(api, group, options = {}) {
     const policy = canDrop ? refusalFor(g.dropVerdicts ?? (g.dropVerdicts = /* @__PURE__ */ new Map()), board.id, () => canDrop({ nodeId: g.id, from: g.kind === "palette" ? null : group.id, to: board.id })) : null;
     return policy ?? (g.fullLists?.has(board.id) ? LIST_FULL : null);
   };
+  const clientOf = (ev) => {
+    const src = ev.source;
+    const cr = api.container.getBoundingClientRect();
+    return {
+      x: typeof src?.clientX === "number" ? src.clientX : cr.left + ev.screen.x,
+      y: typeof src?.clientY === "number" ? src.clientY : cr.top + ev.screen.y
+    };
+  };
+  const goesOut = (g) => !!options.dropOut && g.subject === "node" && g.kind === "move";
+  const carryChip = (g, ev) => {
+    if (!goesOut(g)) return;
+    const c = clientOf(ev);
+    const cr = api.container.getBoundingClientRect();
+    const outside = c.x < cr.left || c.x > cr.right || c.y < cr.top || c.y > cr.bottom;
+    if (!outside) {
+      if (g.chip) g.chip.style.display = "none";
+      return;
+    }
+    if (!g.chip) {
+      const doc = api.container.ownerDocument ?? document;
+      g.chip = doc.createElement("div");
+      g.chip.className = "axdb-drag-chip axdb-tab-chip";
+      g.chip.textContent = nameOf2(nodeOf(g));
+      doc.body.appendChild(g.chip);
+    }
+    g.chip.style.display = "";
+    g.chip.style.left = `${c.x + 6}px`;
+    g.chip.style.top = `${c.y + 6}px`;
+  };
+  const zoneUnder = (g, ev) => {
+    const out = options.dropOut;
+    if (!out || !goesOut(g)) return null;
+    const id = out.zoneAt(g.id, clientOf(ev));
+    if (typeof id !== "string") return null;
+    const ask = out.canDropOut;
+    const refusal = ask ? refusalFor(g.zoneVerdicts ?? (g.zoneVerdicts = /* @__PURE__ */ new Map()), id, () => ask(g.id, id)) : null;
+    return { id, refusal };
+  };
+  const hoverZone = (g, next) => {
+    const was = g.zone?.id ?? null;
+    g.zone = next;
+    if ((next?.id ?? null) === was) return;
+    if (next && next.refusal !== null) {
+      live.announce(next.refusal || `${nameOf2(nodeOf(g))} cannot go there`, "polite", true);
+    }
+    options.dropOut?.onZoneHover?.(g.id, next?.id ?? null, next?.refusal ?? void 0);
+  };
   const moveGhost = (g, ev) => {
     if (g.subject === "group" && g.row) {
       reorderRow(g, ev);
@@ -206935,6 +206996,13 @@ function bindDashboardGrid(api, group, options = {}) {
     prevWorld = g.lastWorld;
     g.lastWorld = { x: ev.world.x, y: ev.world.y };
     g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
+    if (g.subject === "node" && nodeOf(g).state?.locked === true) {
+      const zone2 = resolveTileZone(g, ev).kind === "off" ? zoneUnder(g, ev) : null;
+      hoverZone(g, zone2);
+      carryChip(g, ev);
+      setDim(g, !zone2 || zone2.refusal !== null);
+      return;
+    }
     const pxSize = () => {
       if (g.kind !== "palette") return sizeOf(g.entity);
       const f = frame();
@@ -206970,6 +207038,22 @@ function bindDashboardGrid(api, group, options = {}) {
       return true;
     };
     const z = resolveTileZone(g, ev);
+    const zone = z.kind === "off" ? zoneUnder(g, ev) : null;
+    hoverZone(g, zone);
+    carryChip(g, ev);
+    if (zone) {
+      if (g.strip) {
+        options.tabDrop?.markDrop(null, null);
+        g.strip = null;
+      }
+      endBeside(true);
+      leaveSelf();
+      g.refusedPeer = null;
+      showRefusal(null, 0, 0);
+      setDim(g, zone.refusal !== null);
+      syncPlaceholder();
+      return;
+    }
     const refuse = (to, refusal2) => {
       g.policyRefused = true;
       markDrop(to, true, refusal2);
@@ -207160,6 +207244,7 @@ function bindDashboardGrid(api, group, options = {}) {
           g.esc.rowsAdded += d;
           g.esc.cellAfter = res.cellAfter;
           g.esc.frameAfter = res.frameAfter;
+          if (res.commands) g.esc.commands = res.commands;
         };
         const setInnerRows = (n3) => {
           maxRows = n3;
@@ -207296,6 +207381,12 @@ function bindDashboardGrid(api, group, options = {}) {
       idleSoon();
       return;
     }
+    if (g.zone || g.subject === "node" && nodeOf(g).state?.locked === true) {
+      const zone = g.zone;
+      cancelActiveGesture();
+      if (zone && zone.refusal === null) options.dropOut?.onDropOut(g.id, zone.id);
+      return;
+    }
     if (g.strip && options.tabDrop) {
       const target = g.strip;
       g.strip = null;
@@ -207429,11 +207520,12 @@ function bindDashboardGrid(api, group, options = {}) {
   const zoneRoots = () => zoneRootsOf(peersOnCanvas(), diagram);
   const isList = () => stack && columns === 1;
   const hugContent = () => {
-    if (!stack || !escalate || designRows === void 0 || disposed || gesture || slabGesture) return;
+    if (!(stack || hug) || !escalate || designRows === void 0 || disposed || gesture || slabGesture) return;
     const parent = parentPeer();
-    if (!parent) return;
-    const unit = baseRowHeight + gap;
-    const have = Math.round((frame().height + gap) / unit);
+    const cell = parent?.memberCell(group.id);
+    if (!parent || !cell) return;
+    const unit = parent.rowUnit?.() ?? baseRowHeight + gap;
+    const have = cell.h - Math.round((ownReserve() + ownFooter()) / unit);
     const want = Math.max(designRows, extentOf2(engine.getItems()));
     if (have === want || have <= 0) return;
     if (!parent.resizeMemberBy(group.id, want - have).changed) return;
@@ -207873,6 +207965,83 @@ function bindDashboardGrid(api, group, options = {}) {
       }
     };
   };
+  let ledger = null;
+  const quiet = () => !gesture && !slabGesture && adoptedGhostId === null;
+  const openLedger = () => {
+    if (ledger) return;
+    const snap = snapshotAll();
+    const own = quiet();
+    if (own) engine.beginGesture();
+    ledger = { cells: snap.cells, geoms: snap.geoms, up: null, own };
+  };
+  const closeLedger = () => {
+    if (!ledger) return;
+    if (ledger.own && quiet()) engine.endGesture();
+    ledger = null;
+  };
+  const noteUp = (peer, res) => {
+    if (!ledger || !res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter) return;
+    ledger.up = {
+      peer,
+      first: ledger.up?.first ?? { cell: res.cellBefore, frame: res.frameBefore },
+      last: { cell: res.cellAfter, frame: res.frameAfter },
+      commands: res.commands ?? ledger.up?.commands
+    };
+  };
+  const sameCellRect = (a, b) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+  const ledgerCommands = () => {
+    if (!ledger) return [];
+    const mine = tileCommands(deltasSince(ledger.cells, ledger.geoms));
+    const up = ledger.up;
+    const moved = !!up && !sameCellRect(up.first.cell, up.last.cell);
+    if (mine.length === 0 && !moved) {
+      closeLedger();
+      return [];
+    }
+    const above = up ? up.commands ?? (moved ? [new SetGroupCellCommand(group.id, up.first.cell, up.last.cell, up.first.frame, up.last.frame)] : []) : [];
+    return [...mine, ...above];
+  };
+  const growThroughParent = (most, fits) => {
+    const parent = parentPeer();
+    if (!parent || !escalate || designRows === void 0) return false;
+    let took = 0;
+    while (took < most) {
+      const res = parent.resizeMemberBy(group.id, 1);
+      if (!res.changed) break;
+      noteUp(parent, res);
+      took += 1;
+      setLiveBound((maxRows ?? 0) + 1);
+      if (fits()) return true;
+    }
+    if (took > 0) {
+      noteUp(parent, parent.resizeMemberBy(group.id, -took));
+      setLiveBound(Math.max(1, (maxRows ?? 1) - took));
+    }
+    return false;
+  };
+  const pullUpBelow = (above, oldBottom, most) => {
+    if (most <= 0) return;
+    const items = engine.getItems();
+    const hits = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const under = items.filter((o) => o.id !== above.id && !o.locked && o.y === oldBottom && o.x < above.x + above.w && above.x < o.x + o.w).sort((a, b) => a.x - b.x);
+    for (const o of under) {
+      let k = 0;
+      while (k < most && o.y - k - 1 >= 0 && !items.some((p) => p.id !== o.id && hits({ x: o.x, y: o.y - k - 1, w: o.w, h: o.h }, p))) k += 1;
+      if (k === 0) continue;
+      const was = o.y + o.h;
+      if (engine.moveCheck(o.id, o.x, o.y - k, { gate: false }).changed) pullUpBelow({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h }, was, k);
+    }
+  };
+  const giveBack = () => {
+    const parent = parentPeer();
+    if (!parent || !escalate || designRows === void 0 || maxRows === void 0) return;
+    const spare = maxRows - Math.max(designRows, extentOf2(engine.getItems()));
+    if (spare <= 0) return;
+    const res = parent.resizeMemberBy(group.id, -spare);
+    if (!res.changed) return;
+    noteUp(parent, res);
+    setLiveBound(maxRows - spare);
+  };
   const selfPeer = {
     group,
     isStatic: () => isStatic,
@@ -207948,27 +208117,50 @@ function bindDashboardGrid(api, group, options = {}) {
     },
     resizeMemberBy: (id, dRows) => {
       const item = engine.getItem(id);
-      if (!item || disposed) return { changed: false };
+      if (!item || disposed || dRows === 0) return { changed: false };
       const grp = diagram.getGroup(id);
+      const frameNow = () => grp ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height } : void 0;
       const cellBefore = { x: item.x, y: item.y, w: item.w, h: item.h };
-      const fb = grp ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height } : void 0;
-      const r = engine.resizeCheck(id, item.w, item.h + dRows, { pushSolid: dRows > 0 });
-      if (!r.changed) return { changed: false };
-      project();
+      const fb = frameNow();
+      openLedger();
+      const want = Math.max(1, cellBefore.h + dRows);
+      const reached = () => engine.getItem(id)?.h === want;
+      let r = engine.resizeCheck(id, cellBefore.w, want, { pushSolid: dRows > 0 });
+      if (dRows > 0 && !reached() && escalate && designRows !== void 0 && parentPeer()) {
+        const short = r.changed;
+        if (short) engine.resizeCheck(id, cellBefore.w, cellBefore.h);
+        const fits = () => {
+          engine.resizeCheck(id, cellBefore.w, want, { pushSolid: true });
+          if (reached()) return true;
+          engine.resizeCheck(id, cellBefore.w, cellBefore.h);
+          return false;
+        };
+        if (growThroughParent(dRows, fits)) r = { changed: true };
+        else if (short) r = engine.resizeCheck(id, cellBefore.w, want, { pushSolid: true });
+      }
+      if (dRows < 0 && r.changed) {
+        const now3 = engine.getItem(id);
+        pullUpBelow({ id, x: now3.x, y: now3.y, w: now3.w, h: now3.h }, cellBefore.y + cellBefore.h, cellBefore.y + cellBefore.h - (now3.y + now3.h));
+        giveBack();
+      }
       const after = engine.getItem(id);
-      const fa = grp ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height } : void 0;
-      return {
-        changed: true,
-        cellBefore,
-        cellAfter: { x: after.x, y: after.y, w: after.w, h: after.h },
-        frameBefore: fb,
-        frameAfter: fa
-      };
+      const cellAfter = { x: after.x, y: after.y, w: after.w, h: after.h };
+      if (sameCellRect(cellBefore, cellAfter)) {
+        ledgerCommands();
+        return { changed: false };
+      }
+      project();
+      return { changed: true, cellBefore, cellAfter, frameBefore: fb, frameAfter: frameNow(), commands: ledgerCommands() };
     },
+    rowUnit: () => rowHeightFor(geom(), rows()) + gap,
+    stretches: () => stretch,
     containsWorld: worldInsideBoard,
     persistCells: () => {
       persistLiveCells();
       persistLayouts();
+      const up = ledger?.up?.peer;
+      closeLedger();
+      up?.persistCells?.();
     },
     isList: () => isList(),
     containsWorldExtended: worldInsideBoardExtended,
@@ -208058,11 +208250,11 @@ function bindDashboardGrid(api, group, options = {}) {
       const node = diagram.getNode(onGrip ? gripId : hit.node.id);
       if (!node) return;
       selectWidget(node.id);
-      if (node.state?.locked === true) return;
+      if (node.state?.locked === true && node.getMetadata?.("widgetMovable") !== true) return;
       if (isStatic) return;
       const onHandle = !!target?.closest?.(".axdb-rs");
       const hostEl = hostOf(node.id);
-      const resizable = node.getMetadata?.("widgetResizable") !== false;
+      const resizable = node.getMetadata?.("widgetResizable") !== false && node.state?.locked !== true;
       const movable = node.getMetadata?.("widgetMovable") !== false;
       const src = ev.source;
       const cr = api.container.getBoundingClientRect();
@@ -208341,6 +208533,7 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     applyFluidFrame();
     pendingDrop = null;
+    ledger = null;
     const items = [];
     for (const id of group.members ?? []) {
       if (!memberEntity(id)) continue;
@@ -208512,12 +208705,13 @@ function bindDashboardGrid(api, group, options = {}) {
     },
     resizeTo(id, w, h) {
       const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h;
+      const opts = { pushSolid: isGroupMember(id) };
       let grown = null;
       return programmatic(
         "Resize widget",
         id,
         () => {
-          let changed = engine.resizeCheck(id, w, hh).changed;
+          let changed = engine.resizeCheck(id, w, hh, opts).changed;
           const parent = parentPeer();
           let grownBy = 0;
           while (escalate && parent && designRows !== void 0 && (engine.getItem(id)?.h ?? hh) < hh && grownBy < hh) {
@@ -208530,7 +208724,7 @@ function bindDashboardGrid(api, group, options = {}) {
               commands: res.commands ?? grown?.commands
             };
             setLiveBound((maxRows ?? 0) + 1);
-            changed = engine.resizeCheck(id, w, hh).changed || changed;
+            changed = engine.resizeCheck(id, w, hh, opts).changed || changed;
           }
           return changed || grownBy > 0;
         },
@@ -211322,7 +211516,7 @@ function buildWidgetNode(w, rowHeight) {
   node.setMetadata("columnSpan", w.span ?? 3);
   node.setMetadata("rowSpan", w.rows ?? 1);
   if (w.limits !== void 0) node.setMetadata("widgetLimits", { ...w.limits });
-  if (w.movable === false) node.setMetadata("widgetMovable", false);
+  if (w.movable === false || w.movable === true) node.setMetadata("widgetMovable", w.movable);
   if (w.resizable === false) node.setMetadata("widgetResizable", false);
   if (w.autoHeight !== void 0) node.setMetadata("widgetAutoHeight", w.autoHeight);
   if (w.x !== void 0 && w.y !== void 0) {
@@ -212927,7 +213121,7 @@ function dashboard(options) {
           // comment on buildWidgetNode warns about — they must agree.
           ...w.title !== void 0 ? { widgetTitle: w.title } : {},
           ...w.limits !== void 0 ? { widgetLimits: { ...w.limits } } : {},
-          ...w.movable === false ? { widgetMovable: false } : {},
+          ...w.movable === false || w.movable === true ? { widgetMovable: w.movable } : {},
           ...w.resizable === false ? { widgetResizable: false } : {},
           ...w.autoHeight !== void 0 ? { widgetAutoHeight: w.autoHeight } : {},
           columnSpan: w.span,
@@ -213170,6 +213364,7 @@ function dashboard(options) {
       }
       ctx.onTabChange = options.onTabChange;
       attachTabsRuntime(ctx, model, a.container ?? null, handle);
+      for (const b of binders.values()) b.fitToContent?.();
       ctx.attachHistory?.();
       return;
       function sectionGroupOf(w) {
@@ -213190,6 +213385,8 @@ function dashboard(options) {
           ...w.movable !== void 0 ? { movable: w.movable } : {},
           ...w.background !== void 0 ? { background: w.background } : {},
           ...w.stack ? { stack: true } : {},
+          ...w.hug ? { hug: true } : {},
+          ...w.stretch ? { stretch: true } : {},
           ...w.resizable === false ? { resizable: false } : {},
           ...w.footer ? { footer: { ...w.footer } } : {}
         });
@@ -213210,7 +213407,9 @@ function dashboard(options) {
           rtl: options.rtl ?? false,
           layout: w.layout ?? "grid",
           escalate: w.sizing !== "fit",
-          ...w.stack ? { stack: true } : {}
+          ...w.stack ? { stack: true } : {},
+          ...w.hug ? { hug: true } : {},
+          ...w.stretch ? { stretch: true } : {}
         });
         cg.size = { width: 100, height: rowHeight, depth: 0 };
         return cg;
@@ -213251,6 +213450,18 @@ function dashboard(options) {
       function dropPolicy(viewId) {
         const canDrop = options.canDrop;
         return canDrop ? { canDrop: (e) => canDrop({ widgetId: e.nodeId, from: e.from, to: e.to, viewId }) } : {};
+      }
+      function dropOutHooks(viewId) {
+        const out = options.dropOut;
+        if (!out) return {};
+        return {
+          dropOut: {
+            zoneAt: (widgetId, client) => out.zoneAt({ widgetId, client }),
+            ...out.canDropOut ? { canDropOut: (widgetId, zone) => out.canDropOut({ widgetId, zone }) } : {},
+            onDropOut: (widgetId, zone) => out.onDropOut({ widgetId, zone, viewId }),
+            ...out.onZoneHover ? { onZoneHover: (widgetId, zone, refusal) => out.onZoneHover({ widgetId, zone, ...refusal !== void 0 ? { refusal } : {} }) } : {}
+          }
+        };
       }
       function captionHooks(viewId) {
         const render2 = options.renderCaption;
@@ -213295,7 +213506,8 @@ function dashboard(options) {
           onMemberLeaving: (memberId) => ctx.closePageIfEmptied?.(v.id, memberId) ?? [],
           onMemberMoving: (memberId, from, to) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {},
-          ...dropPolicy(v.id)
+          ...dropPolicy(v.id),
+          ...dropOutHooks(v.id)
         };
         if (viewLayout === "split") {
           return bindDashboardSplit(a, g, {
@@ -213342,7 +213554,8 @@ function dashboard(options) {
           onMemberLeaving: (memberId) => ctx.closePageIfEmptied?.(w.id, memberId) ?? [],
           onMemberMoving: (memberId, from, to) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {},
-          ...dropPolicy(ctx.viewOfBoard.get(w.id) ?? ctx.active)
+          ...dropPolicy(ctx.viewOfBoard.get(w.id) ?? ctx.active),
+          ...dropOutHooks(ctx.viewOfBoard.get(w.id) ?? ctx.active)
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === "split") {
           binders.set(w.id, bindDashboardSplit(a, cg, { ...inner, ...w.tree !== void 0 ? { tree: w.tree } : {} }));
@@ -213359,7 +213572,9 @@ function dashboard(options) {
             maxRows: innerRows ?? w.maxRows ?? cg.getMetadata("containerWidget")?.maxRows ?? rowExtentOf(w.widgets ?? []),
             float: false,
             escalate: w.sizing !== "fit",
-            ...w.stack ? { stack: true, ...ctx.listMoves ? { lists: ctx.listMoves(w.id) } : {} } : {}
+            ...w.stack ? { stack: true, ...ctx.listMoves ? { lists: ctx.listMoves(w.id) } : {} } : {},
+            ...w.hug ? { hug: true } : {},
+            ...w.stretch ? { stretch: true } : {}
           })
         );
       }
