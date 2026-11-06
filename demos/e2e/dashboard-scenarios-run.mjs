@@ -1712,6 +1712,122 @@ try {
   await page.close();
 }
 
+
+// ---- a TASKBOARD: rows of lists, page zones beside the canvas (Atloria S7) ----
+/** The taskboard fixture's cells, frames of the row sections and lists, and card hosts (px). */
+const taskboard = (page) => page.evaluate(() => {
+  const h = window.__demoCtx.handle;
+  const ids = ['r1', 'r2', 'r1a', 'r1b', 'r2a', 'r2b', 'a1', 'a2', 'b1', 'c1', 'd1', 'h1', 'h2'];
+  const cells = Object.fromEntries(ids.map((id) => [id, h.widget(id)?.cell ?? null]));
+  const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }; };
+  const slabs = Object.fromEntries(['r1', 'r2', 'r1a', 'r1b', 'r2a', 'r2b'].map((id) => [id, box(document.querySelector(`.axdb-slab[data-slab-id="${id}"]`))]));
+  const cards = Object.fromEntries(['a1', 'a2', 'b1', 'c1', 'd1', 'h1', 'h2'].map((id) => [id, box(document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`))]));
+  return { cells, slabs, cards, drops: [...window.__demoCtx.drops], hovered: [...window.__demoCtx.hovered] };
+});
+/** Every card inside its list's slab, every list inside its row, row 1 above row 2. */
+const taskboardHolds = (t) => {
+  const inside = (a, b) => a && b && a.y >= b.y - 1 && a.y + a.h <= b.y + b.h + 1;
+  const lists = { a1: 'r1a', a2: 'r1a', b1: 'r1b', c1: 'r2a', d1: 'r2b' };
+  const listOf = (card) => Object.entries(t.cells).length && (['r1a', 'r1b', 'r2a', 'r2b'].find((l) => {
+    const s = t.slabs[l], c = t.cards[card];
+    return s && c && c.x >= s.x - 1 && c.x + c.w <= s.x + s.w + 1 && c.y >= s.y - 1 && c.y < s.y + s.h;
+  }) ?? lists[card]);
+  const cardsIn = Object.keys(lists).every((c) => inside(t.cards[c], t.slabs[listOf(c)]));
+  const listsIn = ['r1a', 'r1b'].every((l) => inside(t.slabs[l], t.slabs.r1)) && ['r2a', 'r2b'].every((l) => inside(t.slabs[l], t.slabs.r2));
+  return cardsIn && listsIn && t.slabs.r1.y + t.slabs.r1.h <= t.slabs.r2.y;
+};
+const centreOfCard = async (page, id) => {
+  const r = await page.evaluate((id) => document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().toJSON(), id);
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+};
+const handDrag = async (page, from, path, release = true) => {
+  await page.mouse.move(from.x, from.y); await page.mouse.down();
+  await page.mouse.move(from.x + 6, from.y + 6, { steps: 2 });
+  for (const p of path) { await page.mouse.move(p.x, p.y, { steps: 12 }); await page.waitForTimeout(60); }
+  if (release) { await page.mouse.up(); await page.waitForTimeout(500); }
+};
+
+{
+  begin('s39-a-card-dropped-into-a-full-list-of-a-row-grows-the-row-and-pushes-the-next');
+  // A taskboard row (a section) holds a list per state column. A card dropped into a FULL list of row 1:
+  // the list asks its row for rows, the row asks the view, and row 2 moves down — nothing changes column,
+  // the row's lists stretch to its height, the cards keep theirs. One Ctrl+Z puts every level back.
+  const page = await freshPage('/e2e/taskboard.html');
+  const t0 = await taskboard(page);
+  const listA = t0.slabs.r1a;
+  await handDrag(page, await centreOfCard(page, 'd1'), [{ x: listA.x + listA.w / 2, y: listA.y + listA.h - 8 }]);
+  const t1 = await taskboard(page);
+  await shot(page, 'dropped-into-the-full-list');
+  const grew = t1.cells.r1.h === t0.cells.r1.h + 3 && t1.cells.r2.y === t0.cells.r2.y + 3 && t1.cells.r1a.h === 9;
+  const columns = ['r1a', 'r1b', 'r2a', 'r2b', 'h1', 'h2'].every((id) => t1.cells[id].x === t0.cells[id].x);
+  const stretched = t1.slabs.r1b.h === t1.slabs.r1.h && t1.slabs.r1a.h === t1.slabs.r1.h;
+  const cardsKeep = ['a1', 'a2', 'b1', 'd1'].every((id) => t1.cards[id].h === t0.cards.a1.h);
+  await page.mouse.click(1380, 880); await page.keyboard.press('Control+z'); await page.waitForTimeout(500);
+  const t2 = await taskboard(page);
+  await shot(page, 'undone');
+  const same = JSON.stringify(t2.cells) === JSON.stringify(t0.cells) && JSON.stringify(t2.cards) === JSON.stringify(t0.cards);
+  verdict(grew && columns && stretched && cardsKeep && taskboardHolds(t1) && same && taskboardHolds(t2),
+    `row 1 h ${t0.cells.r1.h}→${t1.cells.r1.h} · row 2 y ${t0.cells.r2.y}→${t1.cells.r2.y} · list h ${t0.cells.r1a.h}→${t1.cells.r1a.h} · columns kept ${columns} · lists as tall as the row ${stretched} · cards ${['a1', 'a2', 'b1', 'd1'].map((id) => t1.cards[id].h).join('/')} px · nothing overlaps ${taskboardHolds(t1)} · Ctrl+Z restores cells and cards ${same}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
+{
+  begin('s40-a-card-dragged-out-of-the-canvas-onto-a-release-in-the-planning-pane');
+  // dropOut: the planning pane beside the canvas is page markup. The hand leaves the canvas across a row that
+  // refuses cards; the release under it lights up (onZoneHover), a chip with the card's name follows the hand,
+  // and the release calls onDropOut — the card back home, nothing to undo. A closed release says why and takes
+  // nothing; the row's pinned head (movable: true) is lifted out the same way.
+  const page = await freshPage('/e2e/taskboard.html');
+  const t0 = await taskboard(page);
+  const rel = (id) => page.evaluate((id) => document.querySelector(`[data-release="${id}"]`).getBoundingClientRect().toJSON(), id);
+  const r2 = await rel('rel-2');
+  await handDrag(page, await centreOfCard(page, 'a1'), [{ x: t0.slabs.r1.x + 100, y: t0.slabs.r1.y + t0.slabs.r1.h - 10 }, { x: r2.x + r2.width / 2, y: r2.y + r2.height / 2 }], false);
+  const lit = await page.evaluate(() => document.querySelector('[data-release="rel-2"]').classList.contains('hover'));
+  const chip = await page.evaluate(() => { const c = document.querySelector('.axdb-drag-chip'); return c ? { text: c.textContent, out: c.classList.contains('axdb-out'), shown: c.style.display !== 'none' } : null; });
+  await shot(page, 'held-over-release-2');
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const t1 = await taskboard(page);
+  await page.mouse.click(1380, 880); await page.keyboard.press('Control+z'); await page.waitForTimeout(400);
+  const t1b = await taskboard(page);
+  const r3 = await rel('rel-3');
+  await handDrag(page, await centreOfCard(page, 'b1'), [{ x: r3.x + r3.width / 2, y: r3.y + r3.height / 2 }], false);
+  const said = await page.evaluate(() => [...document.querySelectorAll('[aria-live]')].map((e) => e.textContent).join(' '));
+  const refusedLit = await page.evaluate(() => document.querySelector('[data-release="rel-3"]').classList.contains('refused'));
+  await shot(page, 'held-over-the-closed-release');
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const t2 = await taskboard(page);
+  const r1 = await rel('rel-1');
+  await handDrag(page, await centreOfCard(page, 'h1'), [{ x: 600, y: t0.slabs.r1.y + 20 }, { x: r1.x + r1.width / 2, y: r1.y + r1.height / 2 }]);
+  const t3 = await taskboard(page);
+  const home = (t) => JSON.stringify(t.cells) === JSON.stringify(t0.cells) && JSON.stringify(t.cards) === JSON.stringify(t0.cards);
+  const chipGone = await page.evaluate(() => !document.querySelector('.axdb-drag-chip'));
+  const drops = JSON.stringify(t3.drops);
+  verdict(lit && chip?.text === 'A1' && chip.shown && !chip.out && JSON.stringify(t1.drops) === JSON.stringify([{ widgetId: 'a1', zone: 'rel-2', viewId: 'main' }]) && home(t1) && home(t1b)
+    && said.includes('Release 3 is closed') && refusedLit && t2.drops.length === 1 && home(t2)
+    && drops === JSON.stringify([{ widgetId: 'a1', zone: 'rel-2', viewId: 'main' }, { widgetId: 'h1', zone: 'rel-1', viewId: 'main' }]) && home(t3) && chipGone && t3.hovered.at(-1) === null,
+    `release 2 lit ${lit} · chip ${JSON.stringify(chip)} · drops ${drops} · home after each ${home(t1)}/${home(t1b)}/${home(t2)}/${home(t3)} · closed release said ${said.includes('Release 3 is closed')} and lit ${refusedLit} · chip gone ${chipGone} · hover ${JSON.stringify(t3.hovered)}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
+{
+  begin('s41-a-card-whose-content-grows-grows-its-list-and-its-row-and-gives-the-rows-back');
+  // autoHeight in a nested list: the content of A2 doubles, A2 takes the rows, its list and its row grow and row 2
+  // moves down — as layout, no undo step. Back to its size, the row (hug) gives the rows back and row 2 comes up.
+  const page = await freshPage('/e2e/taskboard.html');
+  const t0 = await taskboard(page);
+  await page.click('#longer'); await page.waitForTimeout(700);
+  const t1 = await taskboard(page);
+  await shot(page, 'a2-longer');
+  await page.click('#shorter'); await page.waitForTimeout(700);
+  const t2 = await taskboard(page);
+  await shot(page, 'a2-back');
+  verdict(t1.cards.a2.h === 88 && t1.cells.r1.h === 9 && t1.cells.r2.y === 9 && taskboardHolds(t1) && JSON.stringify(t2.cells) === JSON.stringify(t0.cells) && taskboardHolds(t2),
+    `a2 ${t0.cards.a2.h}→${t1.cards.a2.h}→${t2.cards.a2.h} px · row 1 h ${t0.cells.r1.h}→${t1.cells.r1.h}→${t2.cells.r1.h} · row 2 y ${t0.cells.r2.y}→${t1.cells.r2.y}→${t2.cells.r2.y} · nothing overlaps ${taskboardHolds(t1)}/${taskboardHolds(t2)}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
   await browser.close();
   server.close();
 }

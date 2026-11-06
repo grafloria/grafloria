@@ -1280,15 +1280,16 @@ export function bindDashboardGrid(
   const rows = (): number => Math.max(1, engine.rows(), maxRows ?? 0, stretchedRows());
   /**
    * A member section of a `stretch` board is drawn past its cells, to the
-   * board's last row: it lays out the rows that frame holds at its parent's
-   * row, so its cards keep their height and the rows below them stay empty.
+   * board's last row: it lays out the rows that frame holds at the board's
+   * own row (a section's rows are its parent's, as escalation counts them), so
+   * its cards keep their height and the rows below them stay empty. Not the
+   * parent's live row: right after an undo the parent holds its old row count
+   * against its restored height, and its re-projection then leaves this frame
+   * as it is — the rows read in that moment would stay.
    */
   const stretchedRows = (): number => {
-    if (designRows === undefined) return 0;
-    const parent = parentPeerOf(api.container, group.id);
-    if (!parent?.stretches?.()) return 0;
-    const unit = parent.rowUnit?.() ?? baseRowHeight + gap;
-    return unit > 0 ? Math.round((frame().height + gap) / unit) : 0;
+    if (designRows === undefined || !parentPeerOf(api.container, group.id)?.stretches?.()) return 0;
+    return Math.round((frame().height + gap) / (baseRowHeight + gap));
   };
 
   const htmlLayer = (): HTMLElement | null => api.container.querySelector('.grafloria-html-layer');
@@ -2451,17 +2452,47 @@ export function bindDashboardGrid(
     return policy ?? (g.fullLists?.has(board.id) ? LIST_FULL : null);
   };
 
-  /** The page's `dropOut` zone under the hand, with its verdict — null with no hooks, for a section or a palette chip, or when the page names none. */
-  const zoneUnder = (g: GestureState, ev: ToolPointerEvent): { id: string; refusal: string | null } | null => {
-    const out = options.dropOut;
-    if (!out || g.subject !== 'node' || g.kind !== 'move') return null;
+  /** The hand in viewport px: the source event's, else the container's origin plus the local offset. */
+  const clientOf = (ev: ToolPointerEvent): { x: number; y: number } => {
     const src = ev.source as { clientX?: number; clientY?: number } | undefined;
     const cr = api.container.getBoundingClientRect();
-    const client = {
+    return {
       x: typeof src?.clientX === 'number' ? src.clientX : cr.left + ev.screen.x,
       y: typeof src?.clientY === 'number' ? src.clientY : cr.top + ev.screen.y,
     };
-    const id = out.zoneAt(g.id, client);
+  };
+  /** May this gesture go out to a page zone? A widget moved by hand, on a board with `dropOut`. */
+  const goesOut = (g: GestureState): boolean => !!options.dropOut && g.subject === 'node' && g.kind === 'move';
+  /**
+   * Past the canvas edge the ghost is clipped by the canvas: a chip with the
+   * widget's name carries it to the page's zones (dimmed, as the ghost is,
+   * unless the zone under it takes the widget), and hides again over the canvas.
+   */
+  const carryChip = (g: GestureState, ev: ToolPointerEvent): void => {
+    if (!goesOut(g)) return;
+    const c = clientOf(ev);
+    const cr = api.container.getBoundingClientRect();
+    const outside = c.x < cr.left || c.x > cr.right || c.y < cr.top || c.y > cr.bottom;
+    if (!outside) {
+      if (g.chip) g.chip.style.display = 'none';
+      return;
+    }
+    if (!g.chip) {
+      const doc = api.container.ownerDocument ?? document;
+      g.chip = doc.createElement('div');
+      g.chip.className = 'axdb-drag-chip axdb-tab-chip';
+      g.chip.textContent = nameOf(nodeOf(g));
+      doc.body.appendChild(g.chip);
+    }
+    g.chip.style.display = '';
+    g.chip.style.left = `${c.x + 6}px`;
+    g.chip.style.top = `${c.y + 6}px`;
+  };
+  /** The page's `dropOut` zone under the hand, with its verdict — null with no hooks, for a section or a palette chip, or when the page names none. */
+  const zoneUnder = (g: GestureState, ev: ToolPointerEvent): { id: string; refusal: string | null } | null => {
+    const out = options.dropOut;
+    if (!out || !goesOut(g)) return null;
+    const id = out.zoneAt(g.id, clientOf(ev));
     if (typeof id !== 'string') return null;
     const ask = out.canDropOut;
     const refusal = ask ? refusalFor((g.zoneVerdicts ??= new Map()), id, () => ask(g.id, id)) : null;
@@ -2507,6 +2538,7 @@ export function bindDashboardGrid(
       // a page zone. Anywhere else a release snaps it home.
       const zone = resolveTileZone(g, ev).kind === 'off' ? zoneUnder(g, ev) : null;
       hoverZone(g, zone);
+      carryChip(g, ev);
       setDim(g, !zone || zone.refusal !== null);
       return;
     }
@@ -2559,6 +2591,7 @@ export function bindDashboardGrid(
     // anywhere outside, and dims only where the zone refuses it.
     const zone = z.kind === 'off' ? zoneUnder(g, ev) : null;
     hoverZone(g, zone);
+    carryChip(g, ev);
     if (zone) {
       if (g.strip) {
         options.tabDrop?.markDrop(null, null);
