@@ -16,6 +16,7 @@ import { splitLeaves, type SplitNode } from './split-layout';
 import { SPLIT_TREE_KEY } from './split-binder';
 import { createAutoHeight, rowsForHeight } from './auto-height';
 import type { DashboardGridHandle } from './grid-binder';
+import { LIST_FULL } from './drop-policy';
 
 // No renderer routes pointer events here: the binder's tool registration is
 // captured and the tool driven directly (as dashboard.tabs.spec.ts does).
@@ -114,6 +115,8 @@ const BOARD = (extra: Partial<DashboardOptions> = {}, aStack = false) =>
   });
 
 const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+/** What the board's live regions have said. */
+const liveTextOf = (api: { container: HTMLElement }) => Array.from(api.container.querySelectorAll('[aria-live]')).map((el) => el.textContent).join(' ');
 const centre = (model: DiagramModel, id: string) => {
   const e = model.getNode(id) ?? model.getGroup(id)!;
   return { x: e.position.x + e.size!.width / 2, y: e.position.y + e.size!.height / 2 };
@@ -1015,5 +1018,254 @@ describe('onLayoutChange reports a settled layout', () => {
     await settle();
     expect(reports).toEqual([{ A: ['a2', 'a3'], B: ['b1'], C: ['c1', 'a1'] }]);
     expect(lists(handle.toJSON().views[0]!.widgets)).toEqual({ A: ['b1', 'a2', 'a3'], B: [], C: ['c1', 'a1'] });
+  });
+});
+
+/**
+ * ROWS OF LISTS — a TASKBOARD (Atloria's Sprints taskboard). A view of one
+ * column holds a SECTION per row; each row holds a pinned head card and a
+ * `stack` list per column. A list that needs rows asks its row, and a row that
+ * has none asks the view: growth ESCALATES through every level, pushing what is
+ * below at each one — for a drop, a list hugging its cards, a card's
+ * autoHeight, a resize from code and the history-free `place`/`addWidget`.
+ */
+describe('rows of lists (a taskboard): growth escalates through every level', () => {
+  const card = (id: string, rows = 3): DashboardWidgetSpec => ({ id, kind: 'card', span: 1, rows });
+  /** One cell of a row: a `stack` list, pinned, as tall as the row. */
+  const cell = (id: string, x: number, cards: DashboardWidgetSpec[]): DashboardWidgetSpec => ({
+    id, span: 1, rows: 6, x, y: 0, columns: 1, maxRows: 6, pinned: true, movable: false, stack: true, widgets: cards,
+  });
+  /** Two rows of 6; row 1's first list is full (3 + 3 rows). Cards go into lists only, so a hand crosses a refusing row on its way. */
+  const TASKBOARD = (extra: Partial<DashboardOptions> = {}, row: Partial<DashboardWidgetSpec> = {}, r1a: DashboardWidgetSpec[] = [card('a1'), card('a2')]) =>
+    dashboard({
+      columns: 1, gap: 8, width: 1200, height: 800, sizing: 'grow', rowHeight: 8, float: false,
+      widgets: [
+        { id: 'r1', span: 1, rows: 6, x: 0, y: 0, columns: 3, maxRows: 6, pinned: true, movable: false, ...row, widgets: [
+          { id: 'h1', kind: 'card', span: 1, rows: 3, x: 0, y: 0, pinned: true },
+          cell('r1a', 1, r1a),
+          cell('r1b', 2, [card('b1')]),
+        ] },
+        { id: 'r2', span: 1, rows: 6, x: 0, y: 6, columns: 3, maxRows: 6, pinned: true, movable: false, ...row, widgets: [
+          { id: 'h2', kind: 'card', span: 1, rows: 3, x: 0, y: 0, pinned: true },
+          cell('r2a', 1, [card('c1')]),
+          cell('r2b', 2, [card('d1')]),
+        ] },
+      ],
+      canDrop: ({ to }) => /^r\d[ab]$/.test(to),
+      ...extra,
+    });
+  const on = (h: DashboardHandle, board: string, id: string) => (h.binderOf(board) as DashboardGridHandle).cellOf(id);
+  const orderOf = (model: DiagramModel, h: DashboardHandle, list: string) =>
+    [...model.getGroup(list)!.members].sort((p, q) => h.widget(p)!.cell!.y - h.widget(q)!.cell!.y);
+  /** Low in a list's last card: the hand means "at the end". */
+  const endOf = (model: DiagramModel, id: string) => {
+    const g = model.getGroup(id)!;
+    return { x: g.position.x + g.size!.width / 2, y: g.position.y + g.size!.height - 6 };
+  };
+  const box = (model: DiagramModel, id: string) => {
+    const e = model.getNode(id) ?? model.getGroup(id)!;
+    return { x: e.position.x, y: e.position.y, w: e.size!.width, h: e.size!.height };
+  };
+  /** Every list inside its row, every card inside its list, row 1 above row 2: nothing overlaps. */
+  const nothingOverlaps = (model: DiagramModel) => {
+    const inside = (inner: string, outer: string) => {
+      const i = box(model, inner), o = box(model, outer);
+      expect(i.y).toBeGreaterThanOrEqual(o.y - 0.5);
+      expect(i.y + i.h).toBeLessThanOrEqual(o.y + o.h + 0.5);
+    };
+    for (const row of ['r1', 'r2']) {
+      for (const list of [...model.getGroup(row)!.members].filter((m) => model.getGroup(m))) {
+        inside(list, row);
+        for (const c of model.getGroup(list)!.members) inside(c, list);
+      }
+    }
+    expect(box(model, 'r1').y + box(model, 'r1').h).toBeLessThanOrEqual(box(model, 'r2').y);
+  };
+  /** Row 1 grew by one card (3 rows) and row 2 moved down as much; no list or head changed column. */
+  const rowOneGrew = (h: DashboardHandle) => {
+    expect(on(h, 'main', 'r1')).toEqual({ x: 0, y: 0, w: 1, h: 9 });
+    expect(on(h, 'main', 'r2')).toEqual({ x: 0, y: 9, w: 1, h: 6 });
+    expect(on(h, 'r1', 'r1a')).toEqual({ x: 1, y: 0, w: 1, h: 9 });
+    expect(on(h, 'r1', 'r1b')).toEqual({ x: 2, y: 0, w: 1, h: 6 });
+    expect(on(h, 'r1', 'h1')).toEqual({ x: 0, y: 0, w: 1, h: 3 });
+    expect(on(h, 'r2', 'h2')).toEqual({ x: 0, y: 0, w: 1, h: 3 });
+    expect(on(h, 'r2', 'r2a')).toEqual({ x: 1, y: 0, w: 1, h: 6 });
+    expect(on(h, 'r2', 'r2b')).toEqual({ x: 2, y: 0, w: 1, h: 6 });
+  };
+  const atRest = (h: DashboardHandle) => {
+    expect(on(h, 'main', 'r1')).toEqual({ x: 0, y: 0, w: 1, h: 6 });
+    expect(on(h, 'main', 'r2')).toEqual({ x: 0, y: 6, w: 1, h: 6 });
+    expect(on(h, 'r1', 'r1a')).toEqual({ x: 1, y: 0, w: 1, h: 6 });
+  };
+
+  it('a card dropped by hand into a FULL list of row 1 lands: row 1 grows by its rows, row 2 moves down as much, nothing changes column', async () => {
+    const { model, api, handle } = mount(TASKBOARD());
+    atRest(handle);
+    await drag(model, 'r2b', 'd1', endOf(model, 'r1a'));
+    expect(orderOf(model, handle, 'r1a')).toEqual(['a1', 'a2', 'd1']);
+    rowOneGrew(handle);
+    nothingOverlaps(model);
+    // the push is in the MODEL, not only on screen: a re-read keeps it
+    handle.refresh();
+    await settle();
+    rowOneGrew(handle);
+    expect(api.getEngine().commandManager.canUndo()).toBe(true);
+    expect(liveTextOf(api)).not.toContain(LIST_FULL);
+  });
+
+  it('place(…, { history: false }) into the full list makes the room the same way: true, no undo step, no onLayoutChange', async () => {
+    const onLayoutChange = jest.fn();
+    const { model, api, handle } = mount(TASKBOARD({ onLayoutChange }));
+    expect(handle.isSettled()).toBe(true);
+    expect(await handle.place('d1', 'r1a', 2, { history: false })).toBe(true);
+    await settle();
+    expect(orderOf(model, handle, 'r1a')).toEqual(['a1', 'a2', 'd1']);
+    rowOneGrew(handle);
+    nothingOverlaps(model);
+    handle.refresh();
+    await settle();
+    rowOneGrew(handle);
+    expect(api.getEngine().commandManager.canUndo()).toBe(false);
+    expect(onLayoutChange).not.toHaveBeenCalled();
+  });
+
+  it('addWidget(…, { index, history: false }) into the full list makes the room: added, no undo step, no onLayoutChange', async () => {
+    const onLayoutChange = jest.fn();
+    const { model, api, handle } = mount(TASKBOARD({ onLayoutChange }));
+    expect(handle.addWidget(card('n'), 'r1a', { index: 1, history: false })).toBeDefined();
+    await settle();
+    expect(orderOf(model, handle, 'r1a')).toEqual(['a1', 'n', 'a2']);
+    rowOneGrew(handle);
+    nothingOverlaps(model);
+    handle.refresh();
+    await settle();
+    rowOneGrew(handle);
+    expect(api.getEngine().commandManager.canUndo()).toBe(false);
+    expect(onLayoutChange).not.toHaveBeenCalled();
+  });
+
+  it('an autoHeight card that grows in a nested list grows its list and its row, and nothing overlaps', async () => {
+    const spec = TASKBOARD({ autoHeight: true });
+    const { model, api, handle } = mount(spec);
+    const heights: Record<string, number> = { a1: 40, a2: 40 };
+    for (const id of ['a1', 'a2']) {
+      const host = document.createElement('div');
+      host.className = 'grafloria-node-host';
+      host.dataset['nodeId'] = id;
+      api.layer.appendChild(host);
+      Object.defineProperty(host, 'offsetHeight', { configurable: true, get: () => (host.style.height === 'auto' ? heights[id]! : parseFloat(host.style.height) || 0) });
+      Object.defineProperty(host, 'offsetWidth', { configurable: true, get: () => model.getNode(id)!.size.width });
+      spec.renderCustomNode(model.getNode(id), host);
+    }
+    await new Promise<void>((r) => setTimeout(r, 60));
+    atRest(handle);
+    heights['a2'] = 88; // six rows: the list needs nine
+    handle.widget('a2')!.repaint();
+    await new Promise<void>((r) => setTimeout(r, 60));
+    expect(handle.widget('a2')!.cell).toEqual({ x: 0, y: 3, w: 1, h: 6 });
+    rowOneGrew(handle);
+    nothingOverlaps(model);
+    expect(api.getEngine().commandManager.canUndo()).toBe(false);
+    // …and it gives them back when the content shrinks
+    heights['a2'] = 40;
+    handle.widget('a2')!.repaint();
+    await new Promise<void>((r) => setTimeout(r, 60));
+    atRest(handle);
+    nothingOverlaps(model);
+  });
+
+  it('resize() of a card in a nested list, or of a row, from code grows what holds it and pushes what is below', async () => {
+    const { model, api, handle } = mount(TASKBOARD());
+    expect(await handle.widget('b1')!.resize(1, 9)).toBe(true);
+    expect(handle.widget('b1')!.cell).toEqual({ x: 0, y: 0, w: 1, h: 9 });
+    expect(on(handle, 'r1', 'r1b')).toEqual({ x: 2, y: 0, w: 1, h: 9 });
+    expect(on(handle, 'main', 'r1')).toEqual({ x: 0, y: 0, w: 1, h: 9 });
+    expect(on(handle, 'main', 'r2')).toEqual({ x: 0, y: 9, w: 1, h: 6 });
+    nothingOverlaps(model);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    atRest(handle);
+    expect(await handle.widget('r2')!.resize(1, 8)).toBe(true);
+    expect(on(handle, 'main', 'r2')).toEqual({ x: 0, y: 6, w: 1, h: 8 });
+    expect(await handle.widget('r1')!.resize(1, 8)).toBe(true);
+    expect(on(handle, 'main', 'r1')).toEqual({ x: 0, y: 0, w: 1, h: 8 });
+    expect(on(handle, 'main', 'r2')).toEqual({ x: 0, y: 8, w: 1, h: 8 });
+    nothingOverlaps(model);
+  });
+
+  it('hug: a card leaving the fullest list gives the rows back, and the next row moves up', async () => {
+    const { model, handle } = mount(TASKBOARD({}, { hug: true }, [card('a1'), card('a2'), card('a3')]));
+    // the list holds nine rows of cards: the row hugs it from the start
+    expect(on(handle, 'main', 'r1')).toEqual({ x: 0, y: 0, w: 1, h: 9 });
+    expect(on(handle, 'main', 'r2')).toEqual({ x: 0, y: 9, w: 1, h: 6 });
+    nothingOverlaps(model);
+    await drag(model, 'r1a', 'a3', endOf(model, 'r2b'));
+    expect(orderOf(model, handle, 'r2b')).toEqual(['d1', 'a3']);
+    expect(on(handle, 'r1', 'r1a')).toEqual({ x: 1, y: 0, w: 1, h: 6 });
+    expect(on(handle, 'main', 'r1')).toEqual({ x: 0, y: 0, w: 1, h: 6 });
+    expect(on(handle, 'main', 'r2')).toEqual({ x: 0, y: 6, w: 1, h: 6 });
+    nothingOverlaps(model);
+  });
+
+  it('hug: never below the design, and a row resized taller by code hugs back to its tallest member', async () => {
+    const { handle } = mount(TASKBOARD({}, { hug: true }));
+    expect(on(handle, 'main', 'r1')!.h).toBe(6);
+    expect(await handle.widget('r1')!.resize(1, 10)).toBe(true);
+    handle.refresh();
+    await settle();
+    expect(on(handle, 'main', 'r1')!.h).toBe(6);
+    expect(on(handle, 'main', 'r2')!.y).toBe(6);
+  });
+
+  it('one undo of the drop restores both levels exactly, and redo replays them', async () => {
+    const { model, api, handle } = mount(TASKBOARD());
+    const before = (['r1', 'r2'] as const).map((r) => on(handle, 'main', r));
+    const cards = ['a1', 'a2', 'b1', 'c1', 'd1'].map((id) => handle.widget(id)!.cell);
+    const boxes = ['r1', 'r2', 'r1a', 'r1b', 'r2a', 'r2b', 'a1', 'a2', 'd1'].map((id) => box(model, id));
+    await drag(model, 'r2b', 'd1', endOf(model, 'r1a'));
+    rowOneGrew(handle);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(model.getGroup('r2b')!.members.has('d1')).toBe(true);
+    expect((['r1', 'r2'] as const).map((r) => on(handle, 'main', r))).toEqual(before);
+    atRest(handle);
+    expect(['a1', 'a2', 'b1', 'c1', 'd1'].map((id) => handle.widget(id)!.cell)).toEqual(cards);
+    expect(['r1', 'r2', 'r1a', 'r1b', 'r2a', 'r2b', 'a1', 'a2', 'd1'].map((id) => box(model, id))).toEqual(boxes);
+    expect(api.getEngine().commandManager.canUndo()).toBe(false);
+    await api.getEngine().commandManager.redo();
+    await settle();
+    expect(orderOf(model, handle, 'r1a')).toEqual(['a1', 'a2', 'd1']);
+    rowOneGrew(handle);
+    nothingOverlaps(model);
+  });
+
+  it('stretch: the row\'s lists stay as tall as the row after it grows, and their cards keep their height', async () => {
+    const { model, handle } = mount(TASKBOARD({}, { stretch: true }));
+    await drag(model, 'r2b', 'd1', endOf(model, 'r1a'));
+    rowOneGrew(handle);
+    for (const list of ['r1a', 'r1b']) {
+      expect(box(model, list).y).toBeCloseTo(box(model, 'r1').y, 3);
+      expect(box(model, list).h).toBeCloseTo(box(model, 'r1').h, 3);
+    }
+    for (const list of ['r2a', 'r2b']) expect(box(model, list).h).toBeCloseTo(box(model, 'r2').h, 3);
+    expect(box(model, 'b1').h).toBeCloseTo(box(model, 'a1').h, 3); // a card in the stretched list is not stretched
+    expect(box(model, 'b1').h).toBeCloseTo(40, 3);
+    nothingOverlaps(model);
+  });
+
+  it('the keyboard (Ctrl+←) into a full nested list grows it the same way, and "This list is full" is never said', async () => {
+    const { model, api, handle } = mount(TASKBOARD());
+    const host = document.createElement('div');
+    host.className = 'grafloria-node-host';
+    host.setAttribute('data-node-id', 'b1');
+    api.layer.appendChild(host);
+    handle.refresh();
+    host.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    host.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 4; i++) await settle();
+    expect(orderOf(model, handle, 'r1a')).toEqual(['b1', 'a1', 'a2']);
+    rowOneGrew(handle);
+    nothingOverlaps(model);
+    expect(liveTextOf(api)).not.toContain(LIST_FULL);
   });
 });

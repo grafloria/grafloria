@@ -4,6 +4,7 @@ export {
   type DashboardGridOptions,
   type DashboardGridHandle,
   type DashboardResponsiveOptions,
+  type DropOutHooks,
   type DragHandleOption,
   type DragGripOptions,
   normalizeDragHandle,

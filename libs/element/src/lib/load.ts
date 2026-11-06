@@ -187,6 +187,9 @@ interface PersistedBoard {
   escalate?: boolean;
   /** Containers: a list — gravity packs the dragged tile too. */
   stack?: boolean;
+  /** Containers: the section takes exactly the rows its tallest member needs; its member sections are drawn to its last row. */
+  hug?: boolean;
+  stretch?: boolean;
 }
 
 /** True when the node is an ER entity card or a UML class card. */

@@ -9,7 +9,7 @@
  * module sees the engine the binder holds NOW, not the one it was created
  * with (the binder rebuilds its engine on every sync).
  */
-import type { DiagramModel, GridPackEngine, GroupModel, NodeModel } from '@grafloria/engine';
+import type { DiagramModel, GridPackEngine, GridPackItem, GroupModel, NodeModel } from '@grafloria/engine';
 import type { DashboardGridGeometry, WorldRect } from './grid-mapping';
 import type { DashboardGridApi, DashboardGridOptions } from './grid-binder';
 
@@ -35,6 +35,8 @@ export interface BoardCtx {
   frame(): WorldRect;
   geom(): DashboardGridGeometry;
   rows(): number;
+  /** The cells a member is DRAWN at: its own, or past them for a `stretch` board's sections. */
+  drawnCell(item: GridPackItem): GridPackItem;
   sizing(): 'fit' | 'grow';
   /** The board's design height in px, 0 when it has none. */
   designH(): number;

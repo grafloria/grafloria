@@ -232,6 +232,23 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           is full": the card snaps home and is never dropped on the board beside the columns.
           The API (<code>addWidget</code>, <code>moveTo</code>, <code>place</code>, undo) is
           not asked</td></tr>
+        <tr><td><code>dropOut</code></td><td>—</td>
+          <td>Drop targets on the page, outside the canvas — a planning pane's release cards
+          beside a taskboard (element 0.8.2). While a widget is held off every board,
+          <code>zoneAt({ widgetId, client })</code> names the page's zone under the hand, or
+          <code>null</code>; <code>client</code> is in viewport pixels, as
+          <code>clientX</code>/<code>clientY</code> and <code>getBoundingClientRect()</code>
+          give them, so <code>document.elementFromPoint(client.x, client.y)</code> finds it. It
+          is never asked over a board. <code>canDropOut({ widgetId, zone })</code> may refuse a
+          zone, with <code>false</code> or a sentence that is spoken, as <code>canDrop</code>
+          does. <code>onZoneHover({ widgetId, zone, refusal? })</code> reports each change of
+          zone, and <code>null</code> when the hand leaves the zones and at the end of the drag,
+          for the page's own highlight. Released over a zone that takes it, the widget snaps
+          home (no undo step, no <code>onLayoutChange</code>) and
+          <code>onDropOut({ widgetId, zone, viewId })</code> lets the page decide what the drop
+          means. A board that refused the widget on the way does not stop it, nor does
+          <code>canDrop</code> refusing it everywhere. Past the canvas edge a chip with the
+          widget's name follows the hand. Grid boards</td></tr>
         <tr><td><code>userHistory</code></td><td><code>true</code></td>
           <td><code>false</code>: only the page changes this board — for a board whose every
           move is a server write. Undo and redo (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y), the clipboard
@@ -269,7 +286,9 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
   x: 0, y: 1,           // explicit cell — OMIT and widgets flow in declaration
                         // order, wrapping at the column count
   pinned: true,         // never pushed, refuses the mover, survives every reflow
-  movable: false,       // the pointer and keyboard may not move it (the API may)
+  movable: false,       // the pointer and keyboard may not move it (the API may);
+                        // true on a PINNED widget: it may still be lifted out to a
+                        // dropOut zone, though it takes no cell on any board
   resizable: false,     // no handle, no edge pull (the API may)
   limits: { minSpan: 2, maxSpan: 8, minRows: 1, maxRows: 3 },   // cells; resizes clamp
   title: 'Revenue',     // used by the built-in renderers' header — and as its spoken name
@@ -514,7 +533,7 @@ render(SPEC2, host);</pre>
       being re-packed tile by tile. A widget dragged from the board into a page's <em>body</em> joins that page's grid (element 0.4.34): a
       page with room takes it where the pointer is, a full page squeezes its rows to make room — the tile under the
       pointer moves aside, the way the board itself behaves — instead of refusing the drop with no sign of why. (A full
-      <em>section</em> still refuses; growing its slab for a drop is the escalation path's, a later release.)</p>
+      <em>section</em> grows its slab for the drop instead: see the next paragraph but one.)</p>
       <p><b>The identification round</b> (element 0.4.35). Every tab gesture driven along long paths with a frame every
       few steps found a family of drifts with one root: the renderer's empty-canvas pan ran underneath every tab drag,
       sliding the camera 10–20 px so the strip, the bands and the home test disagreed with the pointer — the board's
@@ -798,6 +817,47 @@ render(SPEC2, host);</pre>
       <code>onGesture</code> reports <code>changed: false</code>, and nothing outside the pane moves.
       A split container keeps its own members — tiles are not dragged into or out of it — and
       nothing scrolls inside a pane.</p>
+      <p><b>Rows of lists: growth escalates through every level</b> (element 0.8.2). A taskboard is
+      a view of one column holding a section per row, and in each row a pinned head card and a
+      <code>stack</code> list per state column. When a list needs rows its row does not have — a
+      card dropped into a full list, a card whose <code>autoHeight</code> content grows, a list
+      hugging its cards, <code>resize()</code> from code, <code>place()</code> or
+      <code>addWidget(…, { index })</code>, with or without <code>history: false</code>, and
+      Ctrl+← / Ctrl+→ — the row asks the view in turn, and every level pushes what is below it:
+      the row grows and the rows under it move down, nothing changes column, and "This list is
+      full" is never said. Rows the growth took go back when nothing needs them, never below the
+      design, and the rows under them move back up. A drop and its growth are one undo step at
+      every level; the history-free paths write it all as layout. A section resized from code
+      pushes the sections under it as one moved by hand does. Two container options finish the
+      table: <code>hug: true</code> makes a section take exactly the rows its tallest member
+      needs, never fewer than its <code>maxRows</code>, from the start and after every change,
+      as a <code>stack</code> list does for its cards — a row as tall as its fullest list; and
+      <code>stretch: true</code> draws its member sections down to its last row, so a row's lists
+      line up as a table's cells do, take a drop anywhere in their column, and keep their cards at
+      their own height (their cells, which a save writes, stay their own). The escalation counts
+      a section's rows as its parent's, which is what a section whose <code>rows</code> equals its
+      <code>maxRows</code> gets.</p>
+<pre data-lang="typescript">const list = (id, x, cards) =&gt; ({ id, x, y: 0, span: 1, rows: 6, maxRows: 6, columns: 1,
+  stack: true, pinned: true, movable: false, widgets: cards });
+dashboard({
+  columns: 1, sizing: 'grow', rowHeight: 8, gap: 8, autoHeight: true,
+  widgets: [
+    { id: 'row-1', span: 1, rows: 6, maxRows: 6, columns: 3, pinned: true, movable: false,
+      hug: true, stretch: true,
+      widgets: [
+        { id: 'pbi-1', kind: 'head', span: 1, rows: 3, x: 0, y: 0, pinned: true, movable: true },
+        list('row-1:todo', 1, todo), list('row-1:doing', 2, doing),
+      ] },
+    // …a section per row
+  ],
+  canDrop: ({ to }) =&gt; to.includes(':'),            // cards go into lists only
+  dropOut: {
+    zoneAt: ({ client }) =&gt; document.elementFromPoint(client.x, client.y)
+      ?.closest('[data-release]')?.getAttribute('data-release') ?? null,
+    onZoneHover: ({ zone }) =&gt; highlight(zone),
+    onDropOut: ({ widgetId, zone }) =&gt; moveToRelease(widgetId, zone),
+  },
+});</pre>
 <pre data-lang="typescript">const spec = dashboard({
   columns: 12,
   widgets: [

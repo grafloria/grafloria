@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Taskboard fixture</title>
+<style>
+  body { margin: 0; font: 13px system-ui, sans-serif; display: flex; gap: 16px; padding: 16px; }
+  #b { width: 900px; height: 640px; }
+  #pane { width: 220px; display: flex; flex-direction: column; gap: 8px; }
+  #pane h2 { font-size: 13px; margin: 0 0 4px; }
+  .release { border: 1px solid #c9ced6; border-radius: 6px; padding: 12px; background: #fff; }
+  .release.hover { border-color: #2f6fde; background: #eaf1fd; }
+  .release.refused { border-color: #c2412d; background: #fdecea; }
+  .task { box-sizing: border-box; height: 100%; padding: 6px 8px; border: 1px solid #d6dae0; border-radius: 4px; background: #fff; }
+  .head { box-sizing: border-box; height: 100%; padding: 6px 8px; border-radius: 4px; background: #eef1f5; font-weight: 600; }
+</style>
+<div id="b"></div>
+<aside id="pane">
+  <h2>Planning</h2>
+  <div class="release" data-release="rel-1">Release 1</div>
+  <div class="release" data-release="rel-2">Release 2</div>
+  <div class="release" data-release="rel-3">Release 3 (closed)</div>
+  <button id="longer" type="button">Longer a2</button>
+  <button id="shorter" type="button">Shorter a2</button>
+</aside>
+<script type="module">
+// A TASKBOARD on the kit (Atloria's Sprints taskboard): a view of one column;
+// one section per row, holding a pinned head card (which may be lifted out to
+// a release) and a `stack` list per state column; cards size to their content.
+// The rows hug their fullest list and stretch their lists to the row. The
+// planning pane is page markup beside the canvas: its release cards are
+// `dropOut` zones.
+import { render, dashboard } from '../shell/grafloria.js';
+const task = (id, h = 40) => ({ id, kind: 'task', span: 1, rows: 3, title: id.toUpperCase(), data: { h } });
+const list = (id, x, cards) => ({ id, span: 1, rows: 6, x, y: 0, columns: 1, maxRows: 6, pinned: true, movable: false, stack: true, widgets: cards });
+const row = (id, y, head, lists) => ({
+  id, span: 1, rows: 6, x: 0, y, columns: 3, maxRows: 6, pinned: true, movable: false, hug: true, stretch: true,
+  widgets: [{ id: head, kind: 'head', span: 1, rows: 3, x: 0, y: 0, pinned: true, movable: true, title: head.toUpperCase(), data: { h: 40 } }, ...lists],
+});
+const drops = [];
+const hovered = [];
+const spec = dashboard({
+  columns: 1, gap: 8, rowHeight: 8, sizing: 'grow', float: false, autoHeight: true,
+  widgets: [
+    row('r1', 0, 'h1', [list('r1a', 1, [task('a1'), task('a2')]), list('r1b', 2, [task('b1')])]),
+    row('r2', 6, 'h2', [list('r2a', 1, [task('c1')]), list('r2b', 2, [task('d1')])]),
+  ],
+  renderWidget: (w, host) => {
+    host.replaceChildren();
+    const el = document.createElement('div');
+    el.className = w.kind === 'head' ? 'head' : 'task';
+    el.style.height = `${w.data?.h ?? 40}px`;
+    el.textContent = w.title ?? w.id;
+    host.appendChild(el);
+  },
+  canDrop: ({ to }) => /^r\d[ab]$/.test(to),
+  dropOut: {
+    zoneAt: ({ client }) => document.elementFromPoint(client.x, client.y)?.closest?.('[data-release]')?.getAttribute('data-release') ?? null,
+    canDropOut: ({ zone }) => (zone === 'rel-3' ? 'Release 3 is closed' : true),
+    onDropOut: (e) => drops.push(e),
+    onZoneHover: ({ zone, refusal }) => {
+      hovered.push(zone);
+      for (const el of document.querySelectorAll('[data-release]')) {
+        const on = el.getAttribute('data-release') === zone;
+        el.classList.toggle('hover', on && refusal === undefined);
+        el.classList.toggle('refused', on && refusal !== undefined);
+      }
+    },
+  },
+});
+const instance = render(spec, document.getElementById('b'));
+window.__demoCtx = { handle: spec.handle, instance, drops, hovered };
+const setA2 = (h) => {
+  const w = spec.handle.widget('a2');
+  w.update({ data: { h } });
+};
+document.getElementById('longer').onclick = () => setA2(88);
+document.getElementById('shorter').onclick = () => setA2(40);
+window.__demoReady = true;
+</script>
