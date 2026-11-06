@@ -4137,7 +4137,7 @@ export function bindDashboardGrid(
       // pushes plain tiles. Without it the section clamped at the first section
       // below it and the pull capped at its rows (S13).
       let r = engine.resizeCheck(id, cellBefore.w, want, { pushSolid: dRows > 0 });
-      if (dRows > 0 && !reached()) {
+      if (dRows > 0 && !reached() && escalate && designRows !== undefined && parentPeer()) {
         // No row left here: THIS board asks its own parent (escalation). The
         // bound clamps a growth short and still calls it a change — the height
         // reached is the answer — so a short one is taken back first.
