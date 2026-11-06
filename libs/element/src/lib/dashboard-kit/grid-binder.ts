@@ -234,6 +234,13 @@ export interface DashboardGridOptions {
    * it is the page's own.
    */
   canDrop?: (e: { nodeId: string; from: string | null; to: string }) => DropAnswer;
+  /**
+   * DROP TARGETS OUTSIDE EVERY BOARD, owned by the page (a planning pane's
+   * release cards beside the canvas). Asked only while the hand holds a widget
+   * off every board; a release over a zone that takes it snaps the widget home
+   * — no undo step, no layout change — and tells the page, which decides.
+   */
+  dropOut?: DropOutHooks;
   /** A LIST board: gravity packs the dragged tile too (the engine's `packActive`) — a drop below the last tile lands right after it. */
   stack?: boolean;
   /**
@@ -552,6 +559,18 @@ export interface DashboardGridHandle {
 interface GeomSnapshot {
   pos: { x: number; y: number };
   size: { width: number; height: number; depth?: number };
+}
+
+/** The page's drop targets outside every board (`DashboardGridOptions.dropOut`). */
+export interface DropOutHooks {
+  /** The page's zone under the hand, or null — asked as the hand moves while it holds `nodeId` off every board. `client` is in viewport px (`clientX`/`clientY`). */
+  zoneAt(nodeId: string, client: { x: number; y: number }): string | null;
+  /** May `nodeId` land on `zone`? `false`, or a sentence (said, and handed to `onZoneHover`), refuses — as `canDrop` does. Asked once per zone per drag. */
+  canDropOut?(nodeId: string, zone: string): DropAnswer;
+  /** Released over a zone that takes it: the widget is already home, and nothing was committed. */
+  onDropOut(nodeId: string, zone: string): void;
+  /** The zone under the hand changed — null when it left the zones, came back over a board, or the drag ended. `refusal` is set when that zone refuses. */
+  onZoneHover?(nodeId: string, zone: string | null, refusal?: string): void;
 }
 
 /**
@@ -958,6 +977,10 @@ interface GestureState {
   leg: { peer: BinderPeer; adopted: AdoptedLeg } | null;
   /** The tab strip under the pointer, when a release would make this widget a new tab there. */
   strip: { containerId: string; index: number } | null;
+  /** The page's `dropOut` zone under the hand, off every board, and its refusal (null: it takes the widget). */
+  zone?: { id: string; refusal: string | null } | null;
+  /** `canDropOut`'s answers this gesture, per zone — asked once, as `canDrop` is. */
+  zoneVerdicts?: Map<string, string | null>;
   /** Last pointer position, world coords — release semantics depend on WHERE. */
   lastWorld: { x: number; y: number } | null;
   /** Last pointer position, screen coords (for the removeZone test). */
@@ -2269,6 +2292,10 @@ export function bindDashboardGrid(
 
   const cleanupGestureVisuals = (g: GestureState): void => {
     idleSoon(); // every gesture that ran ends here
+    if (g.zone) {
+      g.zone = null;
+      options.dropOut?.onZoneHover?.(g.id, null);
+    }
     markDrop(null, false);
     showRefusal(null, 0, 0); // a widget's refused cell too (0.4.74), and a chip's
     if (g.kind !== 'palette') {
@@ -2424,6 +2451,33 @@ export function bindDashboardGrid(
     return policy ?? (g.fullLists?.has(board.id) ? LIST_FULL : null);
   };
 
+  /** The page's `dropOut` zone under the hand, with its verdict — null with no hooks, for a section or a palette chip, or when the page names none. */
+  const zoneUnder = (g: GestureState, ev: ToolPointerEvent): { id: string; refusal: string | null } | null => {
+    const out = options.dropOut;
+    if (!out || g.subject !== 'node' || g.kind !== 'move') return null;
+    const src = ev.source as { clientX?: number; clientY?: number } | undefined;
+    const cr = api.container.getBoundingClientRect();
+    const client = {
+      x: typeof src?.clientX === 'number' ? src.clientX : cr.left + ev.screen.x,
+      y: typeof src?.clientY === 'number' ? src.clientY : cr.top + ev.screen.y,
+    };
+    const id = out.zoneAt(g.id, client);
+    if (typeof id !== 'string') return null;
+    const ask = out.canDropOut;
+    const refusal = ask ? refusalFor((g.zoneVerdicts ??= new Map()), id, () => ask(g.id, id)) : null;
+    return { id, refusal };
+  };
+  /** Tell the page when the zone under the hand changes; a refusing zone says why once, as the hand arrives. */
+  const hoverZone = (g: GestureState, next: { id: string; refusal: string | null } | null): void => {
+    const was = g.zone?.id ?? null;
+    g.zone = next;
+    if ((next?.id ?? null) === was) return;
+    if (next && next.refusal !== null) {
+      live.announce(next.refusal || `${nameOf(nodeOf(g))} cannot go there`, 'polite', true);
+    }
+    options.dropOut?.onZoneHover?.(g.id, next?.id ?? null, next?.refusal ?? undefined);
+  };
+
   /**
    * THE GHOST FOLLOWS THE HAND — for a tile of this board and for a palette
    * chip alike (tile first, step 4a): the zone under the pointer is resolved
@@ -2447,6 +2501,15 @@ export function bindDashboardGrid(
     prevWorld = g.lastWorld;
     g.lastWorld = { x: ev.world.x, y: ev.world.y };
     g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
+    if (g.subject === 'node' && nodeOf(g).state?.locked === true) {
+      // A PINNED widget that may be lifted (`movable: true`) takes no cell on
+      // any board and pushes nothing — its own included: it only goes out, to
+      // a page zone. Anywhere else a release snaps it home.
+      const zone = resolveTileZone(g, ev).kind === 'off' ? zoneUnder(g, ev) : null;
+      hoverZone(g, zone);
+      setDim(g, !zone || zone.refusal !== null);
+      return;
+    }
     /** The ghost's pixel size on THIS board — a palette chip has spans, not a size. */
     const pxSize = (): { width: number; height: number } => {
       if (g.kind !== 'palette') return sizeOf(g.entity);
@@ -2490,6 +2553,25 @@ export function bindDashboardGrid(
     // BEFORE any engine is asked anything. The strip still wins over every
     // board; a band's stickiness and the vacated cell still hold a beside.
     const z = resolveTileZone(g, ev);
+    // -- OUT TO A PAGE ZONE (`dropOut`): asked only off every board, and before
+    // the grace band at the board's edge — a pane right beside the canvas
+    // starts there. The widget leaves the boards it was previewing on, as
+    // anywhere outside, and dims only where the zone refuses it.
+    const zone = z.kind === 'off' ? zoneUnder(g, ev) : null;
+    hoverZone(g, zone);
+    if (zone) {
+      if (g.strip) {
+        options.tabDrop?.markDrop(null, null);
+        g.strip = null;
+      }
+      endBeside(true);
+      leaveSelf();
+      g.refusedPeer = null;
+      showRefusal(null, 0, 0);
+      setDim(g, zone.refusal !== null);
+      syncPlaceholder();
+      return;
+    }
     /**
      * REFUSED: board `to` will not take this tile — its `canDrop` said so, or
      * it is a list with no room. Answered like a full board with nowhere to
@@ -2985,6 +3067,16 @@ export function bindDashboardGrid(
     if (!g.started) {
       gesture = null; // a plain click — the page's own click-to-focus handles it
       idleSoon();
+      return;
+    }
+    if (g.zone || (g.subject === 'node' && nodeOf(g).state?.locked === true)) {
+      // -- OVER A PAGE ZONE: the widget snaps home and nothing is committed —
+      // whatever `dragOut` says, and whatever a board refused on the way. The
+      // page decides what the drop means. (A lifted pinned widget anywhere
+      // else just goes home.)
+      const zone = g.zone;
+      cancelActiveGesture();
+      if (zone && zone.refusal === null) options.dropOut?.onDropOut(g.id, zone.id);
       return;
     }
     if (g.strip && options.tabDrop) {
@@ -4209,14 +4301,16 @@ export function bindDashboardGrid(
       const node = diagram.getNode(onGrip ? (gripId as string) : (hit.node as { id: string }).id);
       if (!node) return;
       selectWidget(node.id); // a press selects, whether or not it starts a gesture
-      if (node.state?.locked === true) return; // pinned: refuse; click still focuses
+      // Pinned: refuse — unless it may be LIFTED (`movable: true`) out to a page zone; a click still focuses.
+      if (node.state?.locked === true && node.getMetadata?.('widgetMovable') !== true) return;
       if (isStatic) return; // a static board: claimed and deadened, click still focuses
       // Which edges did the press take? The corner handle names its own (s+e,
       // or s+w on RTL); a bare press within EDGE_GRIP of the tile's border
       // takes that border; anywhere else is a move. A grip press is a move.
       const onHandle = !!target?.closest?.('.axdb-rs');
       const hostEl = hostOf(node.id);
-      const resizable = node.getMetadata?.('widgetResizable') !== false;
+      // A pinned widget that may be lifted is never resized by hand: a press near its edge lifts it too.
+      const resizable = node.getMetadata?.('widgetResizable') !== false && node.state?.locked !== true;
       const movable = node.getMetadata?.('widgetMovable') !== false;
       // `ev.screen` is ELEMENT-LOCAL px; host rects are in client px. Compare
       // like with like — the source event's clientX/Y when there is one, else

@@ -113,7 +113,9 @@ export interface DashboardWidgetSpec {
    * longer drags it), and `'row'` lets it only REORDER along its row among
    * the other `'row'` sections: the hand picks a slot, the others slide
    * aside, nothing moves up or down or into another board, one undo step.
-   * The column order of a Kanban board.
+   * The column order of a Kanban board. On a PINNED widget, `true` said out
+   * loud means it may be LIFTED — out to a `dropOut` zone on the page — while
+   * nothing pushes it and it takes no cell on any board.
    */
   movable?: boolean | 'row';
   /** May the user resize it? Default true (no handle when false). The API can always resize it. */
@@ -416,6 +418,26 @@ export interface DashboardOptions {
    * `moveTo`, `place`, undo) is not asked.
    */
   canDrop?: (e: { widgetId: string; from: string | null; to: string; viewId: string }) => DropAnswer;
+  /**
+   * DROP TARGETS ON THE PAGE, OUTSIDE THE CANVAS — a planning pane's release
+   * cards beside a taskboard. While the hand holds a widget off every board,
+   * `zoneAt` names the page's zone under it (never asked over a board);
+   * `canDropOut` may refuse one, `false` or a sentence that is read out, as
+   * `canDrop` does; a release over a zone that takes the widget snaps it home
+   * — no undo step, no `onLayoutChange` — and calls `onDropOut`: the page
+   * decides what the drop means. A board that refused the widget on the way
+   * does not stop it, and nor does `canDrop` refusing it everywhere: a pinned
+   * widget declared `movable: true` can be lifted out this way too. Grid
+   * boards only (a split pane does not ask).
+   */
+  dropOut?: {
+    /** The page's zone under the hand, or null. `client`: viewport px, as `clientX`/`clientY` and `getBoundingClientRect()`. */
+    zoneAt(e: { widgetId: string; client: { x: number; y: number } }): string | null;
+    canDropOut?(e: { widgetId: string; zone: string }): DropAnswer;
+    onDropOut(e: { widgetId: string; zone: string; viewId: string }): void;
+    /** The zone under the hand changed (null: none, and at the end of every drag) — for the page's own highlight; `refusal` when that zone refuses. */
+    onZoneHover?(e: { widgetId: string; zone: string | null; refusal?: string }): void;
+  };
   /**
    * THE USER'S UNDO, AND THE KEYS THAT EDIT BESIDE THE BOARD'S OWN MOVES.
    * `false`: a board whose every change is a server write, so only the page
@@ -1012,7 +1034,8 @@ function buildWidgetNode(w: DashboardWidgetSpec, rowHeight: number): NodeModel {
   // them and a reload rebuilds them (only when authored — an unconstrained
   // widget serialises exactly as it always did).
   if (w.limits !== undefined) node.setMetadata('widgetLimits', { ...w.limits });
-  if (w.movable === false) node.setMetadata('widgetMovable', false);
+  // `true` said out loud matters on a PINNED widget: it may still be lifted, out to a `dropOut` zone.
+  if (w.movable === false || w.movable === true) node.setMetadata('widgetMovable', w.movable);
   if (w.resizable === false) node.setMetadata('widgetResizable', false);
   if (w.autoHeight !== undefined) node.setMetadata('widgetAutoHeight', w.autoHeight);
   if (w.x !== undefined && w.y !== undefined) {
@@ -3240,7 +3263,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           // comment on buildWidgetNode warns about — they must agree.
           ...(w.title !== undefined ? { widgetTitle: w.title } : {}),
           ...(w.limits !== undefined ? { widgetLimits: { ...w.limits } } : {}),
-          ...(w.movable === false ? { widgetMovable: false } : {}),
+          ...(w.movable === false || w.movable === true ? { widgetMovable: w.movable } : {}),
           ...(w.resizable === false ? { widgetResizable: false } : {}),
           ...(w.autoHeight !== undefined ? { widgetAutoHeight: w.autoHeight } : {}),
           columnSpan: w.span,
@@ -3689,6 +3712,22 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         return canDrop ? { canDrop: (e) => canDrop({ widgetId: e.nodeId, from: e.from, to: e.to, viewId }) } : {};
       }
 
+      /** The page's `dropOut`, in the binder's terms. */
+      function dropOutHooks(viewId: string): Pick<DashboardGridOptions, 'dropOut'> {
+        const out = options.dropOut;
+        if (!out) return {};
+        return {
+          dropOut: {
+            zoneAt: (widgetId, client) => out.zoneAt({ widgetId, client }),
+            ...(out.canDropOut ? { canDropOut: (widgetId: string, zone: string) => out.canDropOut!({ widgetId, zone }) } : {}),
+            onDropOut: (widgetId, zone) => out.onDropOut({ widgetId, zone, viewId }),
+            ...(out.onZoneHover
+              ? { onZoneHover: (widgetId: string, zone: string | null, refusal?: string) => out.onZoneHover!({ widgetId, zone, ...(refusal !== undefined ? { refusal } : {}) }) }
+              : {}),
+          },
+        };
+      }
+
       function captionHooks(viewId: string): Pick<DashboardGridOptions, 'renderCaption' | 'onCaptionAction' | 'renderFooter'> {
         const render = options.renderCaption;
         const footer = options.renderFooter;
@@ -3742,6 +3781,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           onMemberMoving: (memberId: string, from: string, to: string) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...(ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}),
           ...dropPolicy(v.id),
+          ...dropOutHooks(v.id),
         };
         if (viewLayout === 'split') {
           return bindDashboardSplit(a as never, g, {
@@ -3794,6 +3834,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           onMemberMoving: (memberId: string, from: string, to: string) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...(ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}),
           ...dropPolicy(ctx.viewOfBoard.get(w.id) ?? ctx.active),
+          ...dropOutHooks(ctx.viewOfBoard.get(w.id) ?? ctx.active),
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === 'split') {
           // A splitter tree covering the pane; the pane's frame is the parent's
