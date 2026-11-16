@@ -13,13 +13,13 @@ jobs:
   gallery:
     if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'github-pages')
     name: Gallery on grafloria.com
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-28.02
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
